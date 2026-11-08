@@ -4,7 +4,7 @@
  * faixa larga logo abaixo do trilho, com a ação impressa. Uma aberta por vez;
  * a aberta também publica a evidência dela ($evidence) para KPIs e gráficos.
  */
-import { ChevronUp, CircleSlash, Filter, LineChart, MessageSquareText, ShieldCheck } from "lucide-react";
+import { ChevronDown, ChevronUp, CircleSlash, Filter, LineChart, MessageSquareText, ShieldCheck } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import type { Alert } from "@/lib/api/client";
 import { askAgentAbout } from "@/lib/agentBridge";
@@ -25,17 +25,17 @@ const CATEGORY: Record<Alert["category"], string> = {
 };
 
 /** Movimento da faixa aberta: cada modo vira uma classe de animação em global.css. */
-type Motion = "print" | "open" | "fold";
+type Motion = "print" | "open" | "none";
 const MOTION_CLASS: Record<Motion, string> = {
   print: "ticket-print",
   open: "ticket-open",
-  fold: "ticket-fold",
+  none: "",
 };
 
 /** Reimpressão: 40ms por comanda, até o índice 5 (seis passos no máximo). Espelha o `calc(var(--i) * 40ms)`. */
 const PRINT_STAGGER_CAP = 5;
-/** Recolhimento: `ticket-fold` dura 160ms; este fallback fecha a faixa se animationend não disparar. */
-const FOLD_FALLBACK_MS = 220;
+/** Recolhimento: 250ms (--duration-fast) + 80ms de margem; este fallback fecha a faixa se transitionend não disparar. */
+const FOLD_FALLBACK_MS = 330;
 const BAND_ID = "comanda-aberta";
 
 const num = (i: number) => `Nº ${String(i + 1).padStart(2, "0")}`;
@@ -49,8 +49,20 @@ const printVars = (index: number) => ({ "--i": Math.min(index, PRINT_STAGGER_CAP
 /** Movimento reduzido do sistema: o recolhimento acontece na hora, sem animação. */
 const prefersReducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-/** Cabeçalho da comanda. No trilho (`compact`) a severidade fica só na marca: o espaço vai para a categoria. */
-function TicketHead({ alert, index, action, compact }: { alert: Alert; index: number; action?: ReactNode; compact?: boolean }) {
+/** Cabeçalho da comanda. No trilho (`compact`) a severidade fica na marca e um chevron indica expansão. */
+function TicketHead({
+  alert,
+  index,
+  action,
+  compact,
+  selected,
+}: {
+  alert: Alert;
+  index: number;
+  action?: ReactNode;
+  compact?: boolean;
+  selected?: boolean;
+}) {
   const s = SEVERITY[alert.severity];
   return (
     <span className="cond flex items-center justify-between gap-3 text-[0.8rem] font-bold">
@@ -60,7 +72,16 @@ function TicketHead({ alert, index, action, compact }: { alert: Alert; index: nu
           {num(index)} · {CATEGORY[alert.category]}
         </span>
       </span>
-      {!compact && (
+      {compact ? (
+        <span
+          data-selected={selected ? "true" : undefined}
+          className={`stub-chevron-wrap shrink-0 items-center justify-center ${
+            selected ? "text-ink" : "text-muted group-hover:text-ink"
+          }`}
+        >
+          <ChevronDown className="stub-chevron size-3.5 shrink-0" aria-hidden />
+        </span>
+      ) : (
         <span className="flex shrink-0 items-center gap-3">
           <span className={s.tone}>{s.label}</span>
           {action}
@@ -75,6 +96,7 @@ function Stub({
   alert,
   index,
   selected,
+  bandMounted,
   printing,
   focusOnMount,
   onToggle,
@@ -82,6 +104,7 @@ function Stub({
   alert: Alert;
   index: number;
   selected: boolean;
+  bandMounted: boolean;
   printing: boolean;
   focusOnMount: boolean;
   onToggle: () => void;
@@ -91,10 +114,12 @@ function Stub({
     if (focusOnMount) buttonRef.current?.focus();
   }, [focusOnMount]);
 
+  const hoverClasses = !selected ? "hover:after:opacity-100 has-[:focus-visible]:after:opacity-100" : "";
+
   return (
     <li
       data-alert={alert.id}
-      className={`ticket snap-start transition-colors duration-(--duration-quick) ${selected ? "bg-surface" : "bg-surface/60 hover:bg-surface"} ${
+      className={`relative snap-start after:pointer-events-none after:absolute after:inset-x-0 after:-bottom-2 after:h-[3px] after:rounded-full after:bg-rule after:opacity-0 after:transition-opacity after:duration-(--duration-quick) after:ease-(--ease-smooth-out) print:after:hidden ${hoverClasses} ${
         printing ? "ticket-print" : ""
       }`}
       style={printVars(index)}
@@ -103,13 +128,19 @@ function Stub({
         ref={buttonRef}
         type="button"
         aria-expanded={selected}
-        aria-controls={BAND_ID}
+        aria-controls={bandMounted ? BAND_ID : undefined}
         aria-label={`${alert.title} · ${SEVERITY[alert.severity].label} · ${num(index)}, ${CATEGORY[alert.category]}`}
         onClick={onToggle}
-        className="flex h-full w-full flex-col justify-start px-4 pt-4 pb-3.5 text-left"
+        className={`group ticket flex h-full w-full flex-col justify-start px-4 pt-4 pb-3.5 text-left transition-colors duration-(--duration-quick) ease-(--ease-smooth-out) ${
+          selected ? "bg-surface" : "bg-surface/60 hover:bg-surface"
+        }`}
       >
-        <TicketHead alert={alert} index={index} compact />
-        <span className={`mt-1.5 line-clamp-2 text-[0.95rem] leading-snug font-semibold text-pretty ${selected ? "" : "text-ink/85"}`}>
+        <TicketHead alert={alert} index={index} compact selected={selected} />
+        <span
+          className={`mt-1.5 line-clamp-2 text-[0.95rem] leading-snug font-semibold text-pretty transition-colors duration-(--duration-quick) ease-(--ease-smooth-out) ${
+            selected ? "" : "text-ink/85 group-hover:text-ink"
+          }`}
+        >
           {alert.title}
         </span>
         <span className="mt-1 hidden text-[0.85rem] text-pretty print:block">
@@ -128,14 +159,12 @@ function OpenBand({
   motion,
   focusOnMount,
   onCollapse,
-  onFolded,
 }: {
   alert: Alert;
   index: number;
   motion: Motion;
   focusOnMount: boolean;
   onCollapse: () => void;
-  onFolded: () => void;
 }) {
   const titleRef = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
@@ -150,9 +179,6 @@ function OpenBand({
       aria-labelledby={`${BAND_ID}-title`}
       className={`ticket mt-2 bg-surface px-5 pt-5 pb-4 ${MOTION_CLASS[motion]}`}
       style={printVars(index)}
-      onAnimationEnd={(e) => {
-        if (e.animationName === "ticket-fold") onFolded();
-      }}
     >
       <div className="border-b-[1.5px] border-dashed border-rule pb-2.5">
         <TicketHead
@@ -184,7 +210,12 @@ function OpenBand({
               </button>
             )}
             {anchor && (
-              <button type="button" className="btn-ghost max-lg:min-h-11 lg:min-h-9" aria-label={anchor.label} onClick={() => showEvidence(view!)}>
+              <button
+                type="button"
+                className="btn-ghost max-lg:min-h-11 lg:min-h-9"
+                aria-label={`Ver no gráfico · ${anchor.label}`}
+                onClick={() => showEvidence(view!)}
+              >
                 <LineChart className="size-3.5" aria-hidden /> Ver no gráfico
               </button>
             )}
@@ -213,7 +244,7 @@ function OpenBand({
  * então acompanha a rolagem horizontal sem recalcular.
  */
 function useRailMarker(railRef: React.RefObject<HTMLOListElement | null>, selectedId: string | null, deps: unknown) {
-  const [marker, setMarker] = useState<{ x: number; w: number; animate: boolean } | null>(null);
+  const [marker, setMarker] = useState<{ x: number; w: number; visible: boolean; slide: boolean } | null>(null);
   const placed = useRef(false);
 
   useLayoutEffect(() => {
@@ -222,11 +253,15 @@ function useRailMarker(railRef: React.RefObject<HTMLOListElement | null>, select
     const place = (animate: boolean) => {
       const item = selectedId ? rail.querySelector<HTMLElement>(`[data-alert="${CSS.escape(selectedId)}"]`) : null;
       if (!item) {
-        setMarker((m) => (m ? { ...m, w: 0, animate: false } : null));
-        placed.current = false;
+        setMarker((m) => (m ? { ...m, visible: false, slide: false } : null));
         return;
       }
-      setMarker({ x: item.offsetLeft, w: item.offsetWidth, animate: animate && placed.current });
+      setMarker((prev) => ({
+        x: item.offsetLeft,
+        w: item.offsetWidth,
+        visible: true,
+        slide: animate && placed.current && prev?.visible === true,
+      }));
       placed.current = true;
     };
     place(true);
@@ -246,6 +281,8 @@ function AlertsPanelInner() {
   // undefined = o operador ainda não escolheu (abre a primeira); null = recolheu todas
   const [openId, setOpenId] = useState<string | null | undefined>(undefined);
   const [folding, setFolding] = useState<string | null>(null);
+  const [expanding, setExpanding] = useState(false);
+  const [openedFromCollapsed, setOpenedFromCollapsed] = useState(false);
   const [focusRequest, setFocusRequest] = useState<FocusRequest>(null);
   const [printKey, setPrintKey] = useState(0);
   const [printing, setPrinting] = useState(false);
@@ -262,6 +299,8 @@ function AlertsPanelInner() {
     setPrintKey((k) => k + 1);
     setPrinting(true);
     setFolding(null);
+    setExpanding(false);
+    setOpenedFromCollapsed(false);
     const kept = typeof openId === "string" && alerts.some((a) => a.id === openId) ? openId : undefined;
     setOpenId(kept);
     // A reimpressão remonta o trilho. Se o foco estava nele (ex.: drill-down da comanda), ele vai para o
@@ -285,13 +324,31 @@ function AlertsPanelInner() {
 
   const marker = useRailMarker(railRef, folding ? null : effectiveOpen, `${printKey}:${alerts.length}`);
 
+  // Se abriu a partir de um estado totalmente recolhido, faz o flip 0fr → 1fr no frame seguinte
+  useLayoutEffect(() => {
+    if (!expanding) return;
+    let raf1: number;
+    let raf2: number;
+    raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => {
+        setExpanding(false);
+      });
+    });
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+    };
+  }, [expanding]);
+
   const finishCollapse = (id: string) => {
     setFolding(null);
     setOpenId(null);
+    setOpenedFromCollapsed(false);
+    setExpanding(false);
     setFocusRequest({ id, on: "stub" });
   };
 
-  // fallback do recolhimento: se animationend não disparar, a faixa fecha no mesmo tempo
+  // fallback do recolhimento: se transitionend não disparar, a faixa fecha no mesmo tempo
   useEffect(() => {
     if (folding === null) return;
     const id = folding;
@@ -301,20 +358,27 @@ function AlertsPanelInner() {
 
   const collapse = (id: string) => {
     setPrinting(false);
+    setExpanding(false);
     if (prefersReducedMotion()) {
       finishCollapse(id);
       return;
     }
     setFolding(id);
   };
+
   const toggle = (id: string) => {
     if (id === effectiveOpen && folding !== id) {
       collapse(id);
       return;
     }
+    const wasClosed = effectiveOpen === null || folding !== null;
     setPrinting(false);
     setFolding(null);
     setOpenId(id);
+    setOpenedFromCollapsed(wasClosed);
+    if (wasClosed && !prefersReducedMotion()) {
+      setExpanding(true);
+    }
     // clique no trilho: o foco fica no trilho (o leitor de tela ouve a faixa pelo aria-expanded)
     setFocusRequest(null);
   };
@@ -328,7 +392,7 @@ function AlertsPanelInner() {
   const status = !data
     ? ""
     : alerts.length > 0
-      ? `${countText}, ${highText}`
+      ? `${countText}, ${highText}${mediumText}`
       : noOrders
         ? "Sem pedidos neste recorte."
         : "Nenhuma comanda aberta neste recorte.";
@@ -384,7 +448,7 @@ function AlertsPanelInner() {
           <ol
             ref={railRef}
             aria-label="Trilho de comandas"
-            className="comanda-rail relative grid snap-x auto-cols-[minmax(12rem,1fr)] grid-flow-col gap-2 overflow-x-auto overscroll-x-contain pb-2 max-sm:auto-cols-[15rem] print:grid-flow-row print:grid-cols-2 print:overflow-visible"
+            className="comanda-rail relative grid snap-x auto-cols-[minmax(12rem,1fr)] grid-flow-col gap-2 overflow-x-auto overflow-y-hidden overscroll-x-contain pb-2 max-sm:auto-cols-[15rem] print:grid-flow-row print:grid-cols-2 print:overflow-visible"
           >
             {alerts.map((a, i) => (
               <Stub
@@ -392,6 +456,7 @@ function AlertsPanelInner() {
                 alert={a}
                 index={i}
                 selected={a.id === effectiveOpen && folding !== a.id}
+                bandMounted={Boolean(open)}
                 printing={printing}
                 focusOnMount={isRequested(a.id, "stub")}
                 onToggle={() => toggle(a.id)}
@@ -399,25 +464,34 @@ function AlertsPanelInner() {
             ))}
             <li
               aria-hidden
-              className={`pointer-events-none absolute bottom-0 left-0 h-[3px] rounded-full bg-ink print:hidden ${
-                marker?.animate
-                  ? "transition-[translate,width,opacity] duration-(--duration-fast) ease-(--ease-smooth-out) motion-reduce:transition-none"
-                  : ""
-              } ${marker && marker.w > 0 ? "opacity-100" : "opacity-0"}`}
+              className={`pointer-events-none absolute bottom-0 left-0 h-[3px] rounded-full bg-ink duration-(--duration-fast) ease-(--ease-smooth-out) motion-reduce:transition-none print:hidden ${
+                marker?.slide ? "transition-[translate,width,opacity]" : "transition-opacity"
+              } ${marker?.visible ? "opacity-100" : "opacity-0"}`}
               style={{ translate: `${marker?.x ?? 0}px 0`, width: marker?.w ?? 0 }}
             />
           </ol>
           {open && (
             // keyed na comanda: trocar de comanda imprime a faixa de novo (desdobra de cima para baixo)
-            <OpenBand
-              key={open.id}
-              alert={open}
-              index={openIndex}
-              motion={folding === open.id ? "fold" : printing ? "print" : "open"}
-              focusOnMount={isRequested(open.id, "title")}
-              onCollapse={() => collapse(open.id)}
-              onFolded={() => finishCollapse(open.id)}
-            />
+            <div
+              className="band-collapse"
+              data-state={folding || expanding ? "closing" : "open"}
+              onTransitionEnd={(e) => {
+                if (e.propertyName === "grid-template-rows" && e.target === e.currentTarget) {
+                  if (folding) finishCollapse(folding);
+                }
+              }}
+            >
+              <div>
+                <OpenBand
+                  key={open.id}
+                  alert={open}
+                  index={openIndex}
+                  motion={printing ? "print" : openedFromCollapsed ? "none" : "open"}
+                  focusOnMount={isRequested(open.id, "title")}
+                  onCollapse={() => collapse(open.id)}
+                />
+              </div>
+            </div>
           )}
         </div>
       )}
