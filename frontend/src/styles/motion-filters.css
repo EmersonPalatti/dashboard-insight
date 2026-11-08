@@ -1,0 +1,174 @@
+/*
+ * Movimento: filters. Keyframes e classes do recorte (folha mobile, popover
+ * "Mais filtros", dígitos que mudam). Tokens vêm de global.css (:root).
+ * Sempre com guarda prefers-reduced-motion.
+ */
+
+/*
+ * Folha de recorte (mobile): native <dialog> que sobe de baixo. A saída usa
+ * transition-behavior allow-discrete: o dialog segue na top layer até a
+ * transição acabar, então o fechamento não depende de timer.
+ * Abrir: --duration-slow / --ease-smooth-out. Fechar: --duration-medium, sem atraso.
+ */
+.recorte-sheet {
+  opacity: 0;
+  transform: translateY(100%);
+  transition:
+    transform var(--duration-medium) var(--ease-smooth-out),
+    opacity var(--duration-medium) var(--ease-smooth-out),
+    display var(--duration-medium) allow-discrete,
+    overlay var(--duration-medium) allow-discrete;
+}
+
+.recorte-sheet[open] {
+  opacity: 1;
+  transform: translateY(0);
+  transition:
+    transform var(--duration-slow) var(--ease-smooth-out),
+    opacity var(--duration-slow) var(--ease-smooth-out),
+    display var(--duration-slow) allow-discrete,
+    overlay var(--duration-slow) allow-discrete;
+}
+
+@starting-style {
+  .recorte-sheet[open] {
+    opacity: 0;
+    transform: translateY(100%);
+  }
+}
+
+/* Véu da folha: cor do vinho da marca, fade de opacidade (sem blur). */
+.recorte-sheet::backdrop {
+  background: color-mix(in srgb, var(--wine) 50%, transparent);
+  opacity: 0;
+  transition: opacity var(--duration-medium) var(--ease-smooth-out);
+}
+
+.recorte-sheet[open]::backdrop {
+  opacity: 1;
+  transition: opacity var(--duration-slow) var(--ease-smooth-out);
+}
+
+@starting-style {
+  .recorte-sheet[open]::backdrop {
+    opacity: 0;
+  }
+}
+
+/*
+ * Popover "Mais filtros" (desktop). data-state: open abre com scale + opacity
+ * a partir da âncora (canto superior direito); closing fecha mais rápido e
+ * mais discreto. A entrada usa @starting-style: o popover sai de display:none.
+ */
+.recorte-popover {
+  opacity: 0;
+  transform: scale(var(--scale-medium));
+  transform-origin: top right;
+  transition:
+    opacity var(--duration-quick) var(--ease-smooth-out),
+    transform var(--duration-quick) var(--ease-smooth-out);
+}
+
+.recorte-popover[data-state="open"] {
+  opacity: 1;
+  transform: scale(1);
+  transition-duration: var(--duration-fast);
+}
+
+.recorte-popover[data-state="closing"] {
+  opacity: 0;
+  transform: scale(var(--scale-tiny));
+  transition-duration: var(--duration-quick);
+}
+
+@starting-style {
+  .recorte-popover[data-state="open"] {
+    opacity: 0;
+    transform: scale(var(--scale-medium));
+  }
+}
+
+/*
+ * Número que muda pouco (transitions.dev, subtle change): só os dígitos que
+ * mudaram cruzam, subindo ou descendo conforme --dir (1 sobe, -1 desce).
+ * O componente remonta a árvore a cada mudança, o que reinicia a animação.
+ */
+.recorte-number {
+  display: inline-flex;
+  align-items: baseline;
+  font-variant-numeric: tabular-nums;
+}
+
+.recorte-digit {
+  position: relative;
+  display: inline-block;
+}
+
+.recorte-digit-new {
+  display: inline-block;
+  animation: recorte-digit-in var(--duration-fast) var(--ease-smooth-out) both;
+}
+
+.recorte-digit-old {
+  position: absolute;
+  inset: 0;
+  text-align: center;
+  pointer-events: none;
+  animation: recorte-digit-out var(--duration-quick) var(--ease-smooth-out) both;
+}
+
+@keyframes recorte-digit-in {
+  from {
+    opacity: 0;
+    transform: translateY(calc(var(--distance-micro) * var(--dir, 1)));
+    filter: blur(var(--blur-small));
+  }
+}
+
+@keyframes recorte-digit-out {
+  to {
+    opacity: 0;
+    transform: translateY(calc(var(--distance-micro) * var(--dir, 1) * -1));
+    filter: blur(var(--blur-small));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* folha: só opacidade, rápida; sem deslizar */
+  .recorte-sheet,
+  .recorte-sheet[open] {
+    transform: none;
+    transition:
+      opacity var(--duration-quick) linear,
+      display var(--duration-quick) allow-discrete,
+      overlay var(--duration-quick) allow-discrete;
+  }
+
+  .recorte-sheet::backdrop,
+  .recorte-sheet[open]::backdrop {
+    transition: opacity var(--duration-quick) linear;
+  }
+
+  @starting-style {
+    .recorte-sheet[open] {
+      transform: none;
+    }
+  }
+
+  /* popover: troca instantânea, sem escala */
+  .recorte-popover,
+  .recorte-popover[data-state="open"],
+  .recorte-popover[data-state="closing"] {
+    transition: none;
+  }
+
+  /* dígitos: sem animação; o número novo aparece direto */
+  .recorte-digit-new,
+  .recorte-digit-old {
+    animation: none;
+  }
+
+  .recorte-digit-old {
+    display: none;
+  }
+}

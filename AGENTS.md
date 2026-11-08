@@ -50,7 +50,7 @@ npm run build                            # astro check + build estático
 5. **Lógica de negócio no backend** (`repository`, `alerts`, `agent`). Componentes só exibem e filtram.
 6. **Ilhas só onde há interação.** Conteúdo estático fica no `.astro`. `client:load` acima da dobra, `client:visible` no resto.
 7. **Decisões de limpeza visíveis.** Fuso UTC→Brasília, SLA por segmento (food 60 / goods 120 min), pedido "preso" (ciclo > 4h) fora de medianas e SLA, valor > R$ 5 mil fora do GMV. Se mudar, atualize rodapé, README e testes.
-8. **Design:** só tokens semânticos (`bg-paper`, `bg-kraft`, `text-chili`…) de `src/styles/global.css`; chili é o único acento; sem sombras; cantos 2px/6px; tema claro e escuro.
+8. **Design (mundo "Comanda", ver `DESIGN.md`):** só tokens semânticos (`bg-field`, `bg-surface`, `bg-wine`, `text-crit`, `text-series`…) de `src/styles/global.css`. Vermelho (`crit`) só para crítico e ação principal; série de dados em vinho (`series`); severidade também por forma (cheia, vazada, traço). Picote (`ticket`) só em comandas de alerta. Sem sombras; cantos 4px/8px; Archivo, condensada só em rótulos; tema claro e escuro.
 9. **Testes:** toda regra de alerta nova ganha um cenário plantado em `backend/tests/conftest.py`.
 
 ## Português

@@ -2,7 +2,8 @@ import { useStore } from "@nanostores/react";
 import { useMutation } from "@tanstack/react-query";
 import { Bot, Cpu, RotateCcw, SendHorizontal, Wrench } from "lucide-react";
 import { atom } from "nanostores";
-import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { $agentDraft } from "@/lib/agentBridge";
 import { askAgent, type ChatResponse } from "@/lib/api/client";
 import { $activeCount, $filters, toBody, type Recorte } from "@/lib/filters";
 import { island, useMeta } from "@/lib/query";
@@ -28,11 +29,55 @@ const SUGGESTIONS = [
   "Quanto estamos subsidiando de frete?",
 ];
 
-/** Markdown mínimo e seguro (negrito, listas, parágrafos), sem innerHTML. */
+/**
+ * Um tokenizador para o markdown inline. Ordem importa: código, negrito, depois itálico.
+ * _itálico_ só abre e fecha em fronteira de palavra, então snake_case (tools_used) fica intacto.
+ */
+const INLINE =
+  /`([^`\n]+)`|\*\*([^*\n]+?)\*\*|(?<![\p{L}\p{N}])_([^_\s](?:[^_\n]*[^_\s])?)_(?![\p{L}\p{N}])|\*([^*\s](?:[^*\n]*[^*\s])?)\*/gu;
+
+/** Markdown inline como ReactNode, sem innerHTML. Asterisco solto ("5 * 3") continua literal. */
 function inline(text: string): ReactNode[] {
-  return text.split(/(\*\*[^*]+\*\*)/g).map((part, i) =>
-    part.startsWith("**") && part.endsWith("**") ? <strong key={i}>{part.slice(2, -2)}</strong> : <Fragment key={i}>{part}</Fragment>,
-  );
+  const out: ReactNode[] = [];
+  let last = 0;
+  for (const m of text.matchAll(INLINE)) {
+    const at = m.index ?? 0;
+    if (at > last) out.push(text.slice(last, at));
+    const key = out.length;
+    const [, code, bold, underscore, star] = m;
+    if (code !== undefined) {
+      out.push(
+        <code key={key} className="rounded-[4px] bg-sunken px-1 text-[0.9em]">
+          {code}
+        </code>,
+      );
+    } else if (bold !== undefined) {
+      out.push(<strong key={key}>{inline(bold)}</strong>);
+    } else {
+      out.push(<em key={key}>{inline(underscore ?? star)}</em>);
+    }
+    last = at + m[0].length;
+  }
+  if (last < text.length) out.push(text.slice(last));
+  return out;
+}
+
+/** Remove os marcadores inline, mantendo o conteúdo. */
+function stripMarks(text: string): string {
+  return text.replace(INLINE, (_m, code, bold, underscore, star) => code ?? stripMarks(bold ?? underscore ?? star));
+}
+
+/** Texto puro para leitor de tela: sem marcadores, títulos, marcas de lista ou tabela. */
+function plainText(md: string): string {
+  const flat = md
+    .replace(/^\s*(?:#{1,4}\s+|[-*•]\s+|\d+\.\s+)/gm, "")
+    .replace(/^\s*\|[\s:|-]+\|\s*$/gm, "")
+    .replace(/\|/g, " ");
+  return stripMarks(flat).replace(/\s+/g, " ").trim();
+}
+
+function clip(text: string, max = 200): string {
+  return text.length > max ? `${text.slice(0, max).trimEnd()}…` : text;
 }
 
 function Markdown({ text }: { text: string }) {
@@ -134,9 +179,17 @@ function AgentChatInner() {
   const messages = useStore($messages);
   const filters = useStore($filters);
   const active = useStore($activeCount);
+  const draft = useStore($agentDraft);
   const { data: meta } = useMeta();
   const [input, setInput] = useState("");
-  const log = useRef<HTMLDivElement>(null);
+  const [elapsed, setElapsed] = useState(0);
+  const panelRef = useRef<HTMLElement>(null);
+  const lastMsgRef = useRef<HTMLDivElement>(null);
+  const pendingRef = useRef<HTMLDivElement>(null);
+  const mountedRef = useRef(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  /** Rascunho cujo caret vai ao fim assim que o React gravar esse valor no campo. */
+  const caretAfter = useRef<string | null>(null);
 
   const mutation = useMutation({
     mutationFn: (vars: { question: string; history: Message[]; filters: Recorte }) =>
@@ -166,9 +219,53 @@ function AgentChatInner() {
       ]),
   });
 
+  // Rola a página até a mensagem nova. Pergunta enviada sempre rola; resposta que chega só rola
+  // se o painel ainda estiver na tela, para não puxar a página de quem já foi embora. Carga com histórico não rola.
   useEffect(() => {
-    log.current?.scrollTo({ top: log.current.scrollHeight, behavior: "smooth" });
+    if (!mountedRef.current) {
+      mountedRef.current = true;
+      return;
+    }
+    const target = mutation.isPending ? pendingRef.current : lastMsgRef.current;
+    const panel = panelRef.current;
+    if (!target || !panel) return;
+    // "Na tela" = pelo menos 120px do painel visíveis; uma faixa de poucos pixels não conta.
+    const box = panel.getBoundingClientRect();
+    const visiblePx = Math.min(box.bottom, window.innerHeight) - Math.max(box.top, 0);
+    if (!mutation.isPending && visiblePx < 120) return;
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    // O alvo é sempre o último filho do log: se o log tiver overflow, scrollIntoView também leva o rolamento interno ao fim.
+    target.scrollIntoView({ block: "nearest", behavior: reduced ? "auto" : "smooth" });
   }, [messages.length, mutation.isPending]);
+
+  // Tempo decorrido na espera. O cliente não sabe as etapas reais da ferramenta, então só mostra segundos.
+  useEffect(() => {
+    if (!mutation.isPending) return;
+    const started = Date.now();
+    const id = window.setInterval(() => setElapsed(Math.floor((Date.now() - started) / 1000)), 1000);
+    return () => {
+      window.clearInterval(id);
+      setElapsed(0);
+    };
+  }, [mutation.isPending]);
+
+  // Ponte com a comanda: preenche o campo e foca, mas não envia. O operador revisa e aperta Enviar.
+  useEffect(() => {
+    if (draft === null) return;
+    const el = inputRef.current;
+    el?.focus({ preventScroll: true });
+    if (el && el.value === draft) el.setSelectionRange(draft.length, draft.length);
+    else caretAfter.current = draft;
+    setInput(draft);
+    $agentDraft.set(null);
+  }, [draft]);
+
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el || caretAfter.current !== input) return;
+    caretAfter.current = null;
+    el.setSelectionRange(input.length, input.length);
+  }, [input]);
 
   const send = (question: string) => {
     const q = question.trim();
@@ -181,12 +278,20 @@ function AgentChatInner() {
 
   const scopeChanged = messages.length > 0 && messages.at(-1)!.scope !== scopeKey(filters);
 
+  // Só a última resposta do agente vai para o leitor de tela, e só quando ela muda.
+  const announcement = useMemo(() => {
+    const latest = messages.filter((m) => m.role === "assistant").at(-1);
+    if (!latest) return "";
+    const text = clip(plainText(latest.content));
+    return latest.error ? text : `Resposta do agente: ${text}`;
+  }, [messages]);
+
   return (
-    <section className="panel flex h-full min-h-[520px] flex-col" aria-label="Agente de insights">
+    <section ref={panelRef} className="panel flex h-full min-h-[440px] flex-col" aria-label="Agente de insights">
       <header className="flex items-start justify-between gap-2 border-b border-rule p-4 pb-3">
         <div>
           <h2 className="section-title flex items-center gap-2">
-            <Bot className="size-4 text-chili" aria-hidden /> Agente do recorte
+            <Bot className="size-4 text-series" aria-hidden /> Agente do recorte
           </h2>
           <p className="label mt-0.5">
             Responde só sobre os filtros ativos{active ? ` (${active})` : ""}.{" "}
@@ -200,7 +305,7 @@ function AgentChatInner() {
         )}
       </header>
 
-      <div ref={log} className="flex-1 space-y-3 overflow-auto p-4" aria-live="polite">
+      <div className="flex-1 space-y-3 overflow-auto p-4" role="log" aria-live="off" aria-label="Conversa com o agente">
         {messages.length === 0 && (
           <div className="space-y-2">
             <p className="label">Comece por uma destas ou escreva a sua:</p>
@@ -215,6 +320,7 @@ function AgentChatInner() {
         )}
         {messages.map((m, i) => {
           const prev = messages[i - 1];
+          const isLast = i === messages.length - 1;
           return (
             <Fragment key={m.id}>
               {prev && m.role === "user" && prev.scope !== m.scope && (
@@ -223,9 +329,15 @@ function AgentChatInner() {
                 </p>
               )}
               {m.role === "user" ? (
-                <div className="ml-8 rounded-fold bg-kraft px-3 py-2 text-[0.95rem]">{m.content}</div>
+                <div ref={isLast ? lastMsgRef : undefined} className="ml-8 rounded-card bg-sunken px-3 py-2 text-[0.95rem]">
+                  {m.content}
+                </div>
               ) : (
-                <div className={`mr-2 border-l-[3px] pl-3 text-[0.95rem] ${m.error ? "border-l-amber" : "border-l-chili"}`}>
+                // Chegada discreta: a resposta entra com fade, 4px de subida e um desfoque leve. Reduzido, aparece direto.
+                <div
+                  ref={isLast ? lastMsgRef : undefined}
+                  className={`mr-2 rounded-card border bg-surface px-3 py-2.5 text-[0.95rem] transition-[opacity,translate,filter] duration-(--duration-fast) ease-(--ease-smooth-out) starting:translate-y-(--distance-micro) starting:opacity-0 starting:blur-(--blur-small) motion-reduce:transition-none ${m.error ? "border-warn" : "border-rule"}`}
+                >
                   <Markdown text={m.content} />
                   {m.meta && (
                     <div className="mt-1.5">
@@ -238,19 +350,27 @@ function AgentChatInner() {
           );
         })}
         {mutation.isPending && (
-          <div className="mr-2 flex items-center gap-2 border-l-[3px] border-l-rule pl-3 text-muted">
-            <span className="flex gap-1" aria-hidden>
-              <span className="size-1.5 animate-bounce rounded-full bg-muted [animation-delay:-0.2s]" />
-              <span className="size-1.5 animate-bounce rounded-full bg-muted [animation-delay:-0.1s]" />
-              <span className="size-1.5 animate-bounce rounded-full bg-muted" />
-            </span>
-            <span className="text-[0.85rem]">Consultando o recorte…</span>
+          <div ref={pendingRef} role="status" className="mr-2 px-3 text-muted">
+            <div className="text-[0.85rem]">
+              <p className="tabular-nums">
+                {/* Brilho sem JS; o texto real fica no DOM uma vez (o pseudo-elemento não é lido). */}
+                <span className="shimmer-text" data-text="Consultando o recorte…">
+                  Consultando o recorte…
+                </span>
+                {elapsed >= 5 && <span aria-hidden> {elapsed} s</span>}
+              </p>
+              {elapsed >= 5 && <p className="text-[0.75rem]">Se o servidor estava dormindo, a primeira resposta leva até ~40 s.</p>}
+            </div>
           </div>
         )}
       </div>
 
+      <p className="sr-only" aria-live="polite" aria-atomic="true">
+        {announcement}
+      </p>
+
       {scopeChanged && !mutation.isPending && (
-        <p className="mx-4 mb-2 rounded-fold bg-kraft px-3 py-1.5 text-[0.8rem] text-muted">
+        <p className="mx-4 mb-2 rounded-card bg-sunken px-3 py-1.5 text-[0.8rem] text-muted">
           Os filtros mudaram desde a última resposta. A próxima pergunta já usa o recorte novo.
         </p>
       )}
@@ -267,13 +387,14 @@ function AgentChatInner() {
         </label>
         <input
           id="agent-input"
+          ref={inputRef}
           value={input}
           maxLength={800}
           onChange={(e) => setInput(e.target.value)}
           placeholder="Pergunte sobre este recorte…"
-          className="min-w-0 flex-1 rounded-fold border border-rule bg-paper px-3 py-2 text-[0.95rem] outline-none placeholder:text-muted focus:border-chili"
+          className="min-w-0 flex-1 rounded-card border border-rule bg-surface px-3 py-2 text-[0.95rem] outline-none placeholder:text-muted focus:border-ink"
         />
-        <button type="submit" className="btn-primary" disabled={!input.trim() || mutation.isPending} aria-label="Enviar">
+        <button type="submit" className="btn-ink" disabled={!input.trim() || mutation.isPending} aria-label="Enviar">
           <SendHorizontal className="size-4" aria-hidden />
         </button>
       </form>

@@ -61,6 +61,35 @@ def test_breakdown_sort_and_min_orders(client):
     assert rows == []
 
 
+def test_breakdown_flags_outliers_against_recorte(client):
+    rows = client.get("/api/breakdown", params={"by": "hub"}).json()["rows"]
+    assert all(isinstance(r["sla_below"], bool) and isinstance(r["cancel_above"], bool) for r in rows)
+    # Hub Lento (trânsito plantado) fica abaixo do SLA do recorte; os demais, não.
+    by_label = {r["label"]: r for r in rows}
+    assert by_label["Hub Lento"]["sla_below"] is True
+    assert by_label["Hub Centro"]["sla_below"] is False
+    # Hub Preso concentra a loja que cancela tudo, então o cancelamento sobe acima do recorte.
+    assert by_label["Hub Preso"]["cancel_above"] is True
+
+
+def test_breakdown_store_cancel_outlier(client):
+    rows = client.get("/api/breakdown", params={"by": "store", "min_orders": 30}).json()["rows"]
+    by_label = {r["label"]: r for r in rows}
+    assert by_label["Loja Quebrada"]["cancel_above"] is True
+    assert client.get("/api/breakdown", params={"by": "hub", "city": "Nenhuma"}).json()["rows"] == []
+
+
+def test_flag_outliers_treats_null_rates_as_not_flagged():
+    from app.repository import _flag_outliers
+
+    base = {"sla_rate": None, "cancel_rate": None}
+    rows = _flag_outliers([{"sla_rate": 0.0, "cancel_rate": 1.0}], base)
+    assert rows[0]["sla_below"] is False
+    assert rows[0]["cancel_above"] is True  # sem base, o piso de 6% ainda vale
+    rows = _flag_outliers([{"sla_rate": None, "cancel_rate": None}], {"sla_rate": 0.9, "cancel_rate": 0.02})
+    assert rows[0]["sla_below"] is False and rows[0]["cancel_above"] is False
+
+
 def test_orders_page_and_sort_whitelist(client):
     page = client.get("/api/orders", params={"limit": 5, "sort": "amount", "desc": "true"}).json()
     amounts = [r["amount"] for r in page["rows"]]

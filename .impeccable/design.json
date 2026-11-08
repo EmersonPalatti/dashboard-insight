@@ -1,146 +1,257 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-28T02:01:27Z",
+  "generatedAt": "2026-11-08T17:09:21Z",
   "title": "Design System: Central de Operações",
   "extensions": {
     "colorMeta": {
-      "burnt-chili": {
+      "crit": {
         "role": "primary",
-        "displayName": "Burnt Chili",
-        "canonical": "#C2410C",
-        "tonalRamp": ["#3B1206", "#5C1C0A", "#7C2D12", "#9A3412", "#C2410C", "#E8590C", "#FB923C", "#FFEDD5"]
+        "displayName": "Crit",
+        "canonical": "#D92B20",
+        "tonalRamp": [
+          "#3D0B08",
+          "#62120D",
+          "#8A1912",
+          "#B32218",
+          "#D92B20",
+          "#E85A50",
+          "#F29A93",
+          "#FBE1DE"
+        ]
       },
-      "chili-deep": {
+      "wine": {
         "role": "secondary",
-        "displayName": "Chili Deep",
-        "canonical": "#7C2D12",
-        "tonalRamp": ["#1C0A05", "#3F1408", "#5C1E09", "#7C2D12", "#9A3412", "#C2410C", "#EA580C", "#FED7AA"]
+        "displayName": "Wine",
+        "canonical": "#3D0B1F",
+        "tonalRamp": [
+          "#1A040C",
+          "#26060F",
+          "#3D0B1F",
+          "#5A1730",
+          "#7A2645",
+          "#A04E6B",
+          "#C98CA2",
+          "#F1DBE3"
+        ]
       },
-      "warm-porcelain": {
-        "role": "neutral",
-        "displayName": "Warm Porcelain",
-        "canonical": "#FFFBF7",
-        "tonalRamp": ["#2C241C", "#4A4038", "#78716C", "#A8A09A", "#D6CCC2", "#E7D8C9", "#F3EBE3", "#FFFBF7"]
+      "series": {
+        "role": "tertiary",
+        "displayName": "Series",
+        "canonical": "#7A1E3D",
+        "tonalRamp": [
+          "#2A0814",
+          "#4A0F25",
+          "#62162F",
+          "#7A1E3D",
+          "#A0466A",
+          "#C47A95",
+          "#E7B3C4",
+          "#F7E6EC"
+        ]
       },
-      "kraft-wash": {
+      "field": {
         "role": "neutral",
-        "displayName": "Kraft Wash",
-        "canonical": "#F3EBE3",
-        "tonalRamp": ["#2A221C", "#4A4038", "#6B5E54", "#A39488", "#C9B8A8", "#E7D8C9", "#F3EBE3", "#FFFBF7"]
+        "displayName": "Field",
+        "canonical": "#ECECEC",
+        "tonalRamp": [
+          "#111111",
+          "#1B1B1B",
+          "#353535",
+          "#666666",
+          "#A6A6A6",
+          "#DCDCDC",
+          "#ECECEC",
+          "#FFFFFF"
+        ]
       },
-      "sand-rule": {
+      "ink": {
         "role": "neutral",
-        "displayName": "Sand Rule",
-        "canonical": "#E7D8C9",
-        "tonalRamp": ["#3A3028", "#5C5046", "#7A6C60", "#A89080", "#C4B09C", "#E7D8C9", "#F3EBE3", "#FFF8F1"]
+        "displayName": "Ink",
+        "canonical": "#1A1A1A",
+        "tonalRamp": [
+          "#1A1A1A",
+          "#2D2D2D",
+          "#3E3E3E",
+          "#666666",
+          "#8A8A8A",
+          "#A6A6A6",
+          "#DCDCDC",
+          "#F2F2F2"
+        ]
       },
-      "stone-ink": {
-        "role": "neutral",
-        "displayName": "Stone Ink",
-        "canonical": "#1C1917",
-        "tonalRamp": ["#1C1917", "#292524", "#44403C", "#57534E", "#78716C", "#A8A29E", "#D6D3D1", "#F5F5F4"]
+      "warn": {
+        "role": "state",
+        "displayName": "Warn",
+        "canonical": "#946000",
+        "tonalRamp": [
+          "#2E1E00",
+          "#4D3200",
+          "#6E4700",
+          "#946000",
+          "#B87A14",
+          "#F0A93B",
+          "#F7CF8E",
+          "#FCEFD6"
+        ]
       },
-      "warm-stone": {
-        "role": "neutral",
-        "displayName": "Warm Stone",
-        "canonical": "#78716C",
-        "tonalRamp": ["#1C1917", "#292524", "#44403C", "#57534E", "#78716C", "#A8A29E", "#D6D3D1", "#F5F5F4"]
+      "good": {
+        "role": "state",
+        "displayName": "Good",
+        "canonical": "#46700F",
+        "tonalRamp": [
+          "#16240A",
+          "#243A0C",
+          "#35560E",
+          "#46700F",
+          "#6A9A2C",
+          "#9BC75A",
+          "#C5E09B",
+          "#EDF6E0"
+        ]
       }
     },
     "typographyMeta": {
-      "headline": { "displayName": "Headline", "purpose": "Page title only — Central de Operações." },
-      "title": { "displayName": "Title", "purpose": "Plotly chart titles and Streamlit subheaders." },
-      "body": { "displayName": "Body", "purpose": "Captions, alert copy, chat." },
-      "label": { "displayName": "Label", "purpose": "Recorte hint, metric labels, ghost buttons." }
+      "figure-hero": {
+        "displayName": "Figure hero",
+        "purpose": "The three operation KPIs; Archivo at 80% width."
+      },
+      "cond-label": {
+        "displayName": "Condensed label",
+        "purpose": "Short uppercase labels, comanda headers, table headers; Archivo at 72% width."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Reading text, ticket detail, agent replies."
+      }
     },
     "shadows": [],
-    "motion": [],
+    "motion": [
+      {
+        "name": "ticket-unfold",
+        "value": "280ms cubic-bezier(0.16, 1, 0.3, 1)",
+        "purpose": "Opening a comanda: top-down clip-path reveal; none under reduced motion."
+      }
+    ],
     "breakpoints": [
-      { "name": "stage", "value": "1400px" }
+      {
+        "name": "sm",
+        "value": "640px"
+      },
+      {
+        "name": "lg",
+        "value": "1024px"
+      },
+      {
+        "name": "xl",
+        "value": "1280px"
+      }
     ]
   },
   "components": [
     {
-      "name": "KPI slip",
-      "kind": "card",
-      "refersTo": "metric-card",
-      "description": "Kraft metric tile with a 3px chili left rail — the briefing stamp.",
-      "html": "<div class=\"ds-metric\"><div class=\"ds-metric-label\">Pedidos</div><div class=\"ds-metric-value\">12.480</div></div>",
-      "css": ".ds-metric { background: #F3EBE3; border: 1px solid #E7D8C9; border-left: 3px solid #C2410C; padding: 0.7rem 0.9rem; border-radius: 2px; font-family: \"Source Sans Pro\", sans-serif; color: #1C1917; } .ds-metric-label { color: #78716C; font-size: 0.92rem; font-weight: 400; margin-bottom: 0.25rem; } .ds-metric-value { font-size: 1.35rem; font-weight: 600; letter-spacing: -0.02em; line-height: 1.2; }"
-    },
-    {
-      "name": "Primary button",
+      "name": "Primary Button",
       "kind": "button",
       "refersTo": "button-primary",
-      "description": "Burnt chili fill for the action that commits — not for suggested prompts.",
-      "html": "<button class=\"ds-btn-primary\" type=\"button\">Aplicar recorte</button>",
-      "css": ".ds-btn-primary { background: #C2410C; color: #FFFBF7; border: none; border-radius: 6px; padding: 0.5rem 0.9rem; font-family: \"Source Sans Pro\", sans-serif; font-size: 0.92rem; font-weight: 400; cursor: pointer; } .ds-btn-primary:hover { background: #7C2D12; } .ds-btn-primary:focus-visible { outline: 2px solid #C2410C; outline-offset: 2px; } .ds-btn-primary:active { background: #7C2D12; }"
+      "description": "The one action to take now: comanda drill-down, send to agent.",
+      "html": "<button class=\"ds-btn-primary\">Ver só a loja</button>",
+      "css": ".ds-btn-primary{background:var(--crit,#D92B20);color:#fff;border:0;border-radius:8px;padding:6px 12px;font:500 .92rem/1.25 Archivo,system-ui,sans-serif;transition:background .15s}.ds-btn-primary:hover{background:var(--crit-deep,#A51E16)}.ds-btn-primary:focus-visible{outline:2px solid var(--ink,#1A1A1A);outline-offset:2px}"
     },
     {
-      "name": "Ghost button",
+      "name": "Ink Button",
+      "kind": "button",
+      "refersTo": "button-ink",
+      "description": "Secondary commitment, such as Exportar.",
+      "html": "<button class=\"ds-btn-ink\">Exportar</button>",
+      "css": ".ds-btn-ink{background:var(--ink,#1A1A1A);color:var(--surface,#fff);border:0;border-radius:8px;padding:6px 12px;font:500 .92rem/1.25 Archivo,system-ui,sans-serif}.ds-btn-ink:hover{opacity:.85}.ds-btn-ink:focus-visible{outline:2px solid var(--ink,#1A1A1A);outline-offset:2px}"
+    },
+    {
+      "name": "Ghost Button",
       "kind": "button",
       "refersTo": "button-ghost",
-      "description": "Kraft ghost for suggested prompts and Nova conversa.",
-      "html": "<button class=\"ds-btn-ghost\" type=\"button\">Quais alertas e ações agora?</button>",
-      "css": ".ds-btn-ghost { background: #F3EBE3; color: #1C1917; border: 1px solid #E7D8C9; border-radius: 6px; padding: 0.5rem 0.9rem; font-family: \"Source Sans Pro\", sans-serif; font-size: 0.92rem; font-weight: 400; width: 100%; cursor: pointer; } .ds-btn-ghost:hover { border-color: #C2410C; } .ds-btn-ghost:focus-visible { outline: 2px solid #C2410C; outline-offset: 2px; } .ds-btn-ghost:active { background: #E7D8C9; }"
+      "description": "Everything else.",
+      "html": "<button class=\"ds-btn-ghost\">Copiar link do recorte</button>",
+      "css": ".ds-btn-ghost{background:var(--surface,#fff);color:var(--ink,#1A1A1A);border:1px solid var(--rule,#DCDCDC);border-radius:8px;padding:6px 12px;font:500 .92rem/1.25 Archivo,system-ui,sans-serif}.ds-btn-ghost:hover{background:var(--sunken,#F5F5F5)}.ds-btn-ghost:focus-visible{outline:2px solid var(--ink,#1A1A1A);outline-offset:2px}"
     },
     {
-      "name": "Recorte hint",
-      "kind": "custom",
-      "refersTo": "hint",
-      "description": "Warm stone caption under the title — recorte + agent mode.",
-      "html": "<p class=\"ds-hint\">12.000 pedidos · 10 cidades · agente em regras locais</p>",
-      "css": ".ds-hint { color: #78716C; font-family: \"Source Sans Pro\", sans-serif; font-size: 0.92rem; font-weight: 400; margin: 0 0 0.6rem; }"
+      "name": "Filter Select",
+      "kind": "input",
+      "refersTo": "",
+      "description": "Multi-select trigger; ink border when the filter is active.",
+      "html": "<button class=\"ds-select is-on\"><span class=\"ds-select-l\">Cidade</span><span>Curitiba</span></button>",
+      "css": ".ds-select{display:flex;flex-direction:column;align-items:flex-start;min-width:9rem;background:var(--surface,#fff);border:1px solid var(--rule,#DCDCDC);border-radius:8px;padding:6px 10px;font:400 .92rem Archivo,system-ui,sans-serif;color:var(--ink,#1A1A1A)}.ds-select:hover{border-color:var(--muted,#666)}.ds-select.is-on{border-color:var(--ink,#1A1A1A)}.ds-select-l{font-size:.72rem;color:var(--muted,#666)}"
     },
     {
-      "name": "Chart frame",
-      "kind": "custom",
-      "refersTo": "chart-plot",
-      "description": "Porcelain plot, sand rules, left-aligned 15px title, no mode bar.",
-      "html": "<div class=\"ds-chart\"><div class=\"ds-chart-title\">Pedidos e GMV por dia</div><div class=\"ds-chart-plot\"><span class=\"ds-chart-empty\">Sem dados no recorte</span></div></div>",
-      "css": ".ds-chart { font-family: \"Source Sans Pro\", sans-serif; color: #1C1917; background: transparent; } .ds-chart-title { font-size: 15px; font-weight: 600; color: #1C1917; margin: 0 0 12px; } .ds-chart-plot { background: #FFFBF7; border: 1px solid #E7D8C9; min-height: 160px; display: flex; align-items: center; justify-content: center; } .ds-chart-empty { color: #78716C; font-size: 14px; }"
-    },
-    {
-      "name": "Recorte rail",
+      "name": "Shell Band",
       "kind": "nav",
-      "refersTo": "sidebar",
-      "description": "Kraft sidebar header for the Recorte — the only navigation.",
-      "html": "<aside class=\"ds-recorte\"><h2 class=\"ds-recorte-title\">Recorte</h2><p class=\"ds-recorte-caption\">Tudo abaixo (KPIs, gráficos e agente) usa só este recorte.</p><label class=\"ds-recorte-label\">Cidade</label><div class=\"ds-recorte-field\">Todas</div></aside>",
-      "css": ".ds-recorte { background: #F3EBE3; padding: 1.4rem 0.9rem; font-family: \"Source Sans Pro\", sans-serif; color: #1C1917; } .ds-recorte-title { font-size: 1.1rem; font-weight: 600; margin: 0 0 0.35rem; } .ds-recorte-caption { color: #78716C; font-size: 0.92rem; margin: 0 0 1rem; } .ds-recorte-label { display: block; font-size: 0.92rem; color: #78716C; margin-bottom: 0.35rem; } .ds-recorte-field { background: #FFFBF7; border: 1px solid #E7D8C9; border-radius: 6px; padding: 0.45rem 0.7rem; font-size: 0.92rem; } .ds-recorte-field:focus-visible { outline: 2px solid #C2410C; outline-offset: 2px; }"
+      "refersTo": "shell-band",
+      "description": "Wine band with name, recorte, links and API status.",
+      "html": "<header class=\"ds-band\"><b>Central de Operações</b><span>Delivery Center · jan–abr 2021</span><a>API (Swagger)</a></header>",
+      "css": ".ds-band{display:flex;gap:16px;align-items:center;height:64px;padding:0 24px;background:var(--wine,#3D0B1F);color:var(--on-wine,#F1DBE3);font:400 .9rem Archivo,system-ui,sans-serif}.ds-band b{color:#fff;font-size:1.4rem;font-stretch:88%}.ds-band a{margin-left:auto;padding:8px 12px;border-radius:8px}.ds-band a:hover{background:var(--wine-raised,#5A1730);color:#fff}"
+    },
+    {
+      "name": "Comanda",
+      "kind": "custom",
+      "refersTo": "ticket",
+      "description": "Alert as a printed order ticket: header, title, detail, inverted action block.",
+      "html": "<article class=\"ds-ticket\"><div class=\"ds-ticket-h\"><span><i></i>Nº 01 · Loja</span><span class=\"ds-crit\">Crítico</span></div><h3>Loja cancela 33% dos pedidos</h3><p>99 cancelamentos em 297 pedidos no hub.</p><div class=\"ds-ticket-a\"><small>Ação</small>Ligar para a loja e checar ruptura de itens.</div></article>",
+      "css": ".ds-ticket{background:var(--surface,#fff);color:var(--ink,#1A1A1A);border-radius:0 0 8px 8px;padding:20px 20px 16px;font:400 .95rem/1.5 Archivo,system-ui,sans-serif;-webkit-mask:radial-gradient(circle 5px at 7px 0,#0000 98%,#000) 0 0/14px 100% repeat-x;mask:radial-gradient(circle 5px at 7px 0,#0000 98%,#000) 0 0/14px 100% repeat-x}.ds-ticket-h{display:flex;justify-content:space-between;font-weight:700;font-size:.8rem;font-stretch:72%;text-transform:uppercase;letter-spacing:.04em;border-bottom:1.5px dashed var(--rule,#DCDCDC);padding-bottom:10px}.ds-ticket-h i{display:inline-block;width:12px;height:12px;border-radius:50%;background:var(--crit,#D92B20);margin-right:8px;vertical-align:-1px}.ds-crit{color:var(--crit,#D92B20)}.ds-ticket h3{font-size:1.08rem;margin:12px 0 4px}.ds-ticket p{margin:0}.ds-ticket-a{margin-top:14px;background:var(--ink,#1A1A1A);color:var(--surface,#fff);border-radius:8px;padding:12px 14px}.ds-ticket-a small{display:block;font-weight:700;font-size:.72rem;font-stretch:72%;text-transform:uppercase;letter-spacing:.04em;opacity:.7}"
+    },
+    {
+      "name": "KPI Cell",
+      "kind": "card",
+      "refersTo": "kpi-cell",
+      "description": "Operation KPI with condensed label, narrow figure and delta.",
+      "html": "<div class=\"ds-kpi\"><small>No prazo (SLA)</small><strong>88,7%</strong><em>−5,8 p.p.</em></div>",
+      "css": ".ds-kpi{background:var(--surface,#fff);border:1px solid var(--rule,#DCDCDC);border-radius:8px;padding:14px 16px 12px;font-family:Archivo,system-ui,sans-serif;color:var(--ink,#1A1A1A);font-variant-numeric:tabular-nums}.ds-kpi small{display:block;font-weight:700;font-size:.78rem;font-stretch:72%;text-transform:uppercase;letter-spacing:.04em;color:var(--muted,#666)}.ds-kpi strong{display:block;font-size:2.6rem;font-stretch:80%;line-height:1.05;margin-top:6px}.ds-kpi em{font-style:normal;font-weight:600;font-size:.82rem;color:var(--crit,#D92B20)}"
     }
   ],
   "narrative": {
-    "northStar": "The Praça Briefing Desk",
-    "overview": "This is a paper ops desk at a Brazilian praça, not a marketing kitchen and not a SaaS command center. The field is warm porcelain; the sidebar and KPI slips are kraft wash; the only loud mark is burnt chili, used like a stamp on a briefing — a left rail, a heat scale, a primary action — never a page fill. Numbers, recorte, and the next action sit closer to the visitor than any chrome.\n\nThe mood is dry, quiet, and dense enough to scan in two minutes. Hierarchy is size and ink weight, not color noise. Charts sit on the same porcelain as the page, with sand rules instead of grid theater. Depth is tonal: porcelain against kraft, a 1px sand rule, a 3px chili rail. No drop shadows. Confirmed refusals: neon SaaS dashboards, glassmorphism, purple AI-agent chrome, iFood red/magenta or official identity, food-stock photography as decoration, emojis, display serifs, and pill-shaped controls.",
+    "northStar": "A comanda na fila",
+    "overview": "The console borrows the grammar of the delivery apps its operators already use every day: cool neutral greys, firm sans type, 8px corners, one red that means something. It adds a world of its own taken from the restaurant counter: the thermal **comanda** a store prints when an order arrives. Every alert in the current recorte is a comanda in a queue, numbered, tagged by category and severity, with the action printed at its foot. One comanda is open at a time; the rest wait, summarised.\n\nThe shell is a wine band, not red: it gives the product a recognisable colour field without borrowing any delivery brand's identity, and keeps red free to mean \"critical\". Data series are drawn in a wine ramp, so the charts belong to the same world as the shell.",
     "keyCharacteristics": [
-      "Porcelain canvas, kraft slips, sand rules — paper, not glass",
-      "Burnt chili as the sole signal color (stamp, heat, primary action)",
-      "Flat by default: no shadows; depth is layered stock",
-      "One sans (Source Sans Pro); size does the hierarchy",
-      "Clipped, clerical components; paper-fold corners (6px) on new chrome",
-      "Independent of iFood wordmark, logo, and official visual identity"
+      "Cool grey field (`field`) with white surfaces; layers separate by tone and hairline, never by shadow.",
+      "Wine shell band on every theme; signals on the band use their own `shell-*` tokens.",
+      "Archivo with a width axis: normal width for reading, condensed caps only for short labels and comanda headers.",
+      "Tabular figures everywhere; headline numbers in a narrow bold cut (`figure`).",
+      "Red (`crit`) reserved for critical severity and the one primary action in view."
     ],
     "rules": [
-      { "name": "The One Chili Rule", "body": "Burnt chili is the only loud color. It marks signal (rail, heat, primary action, the series that matters). Porcelain and kraft carry the field. Do not introduce a second accent family (teal, purple, iFood magenta, electric orange).", "section": "colors" },
-      { "name": "The Briefing Type Rule", "body": "One sans. Hierarchy is size and weight, never a second family. No display serif, no uppercase tracking as decoration, no mono except real data/code (which this product does not surface in the UI).", "section": "typography" },
-      { "name": "The Recorte Rail Rule", "body": "Sidebar is Kraft Wash; the main stage is Warm Porcelain. Do not invert, do not paint the whole app chili, do not collapse the six KPI cells into a dense table unless the recorte itself is empty.", "section": "layout" },
-      { "name": "The Flat-By-Default Rule", "body": "Surfaces are flat at rest and at hover. Never add ambient card shadows, glass blur, or a floating toolbar. If a control needs emphasis, use chili or a sand rule, not lift.", "section": "elevation" },
-      { "name": "The Paper Fold Rule", "body": "Custom corners are 6px (paper fold) or 2px (legacy clip on KPI slips). Never pills, never 16px+ “card” rounding, never circular avatars as decoration.", "section": "elevation" }
+      {
+        "name": "The One Red Rule",
+        "body": "Red marks what is critical or what the operator should press next. Active filters, selected tabs, focus rings and icons use ink, never red.",
+        "section": "colors"
+      },
+      {
+        "name": "The Wine Data Rule",
+        "body": "A chart series is wine unless it encodes state. Volume, heat and stage ramps are never red.",
+        "section": "colors"
+      },
+      {
+        "name": "The One Body Rule",
+        "body": "Tables use one text size; header rank comes from condensed caps and weight, never from a bigger size.",
+        "section": "typography"
+      },
+      {
+        "name": "The Short Caps Rule",
+        "body": "Condensed caps only on labels of a few words. Sentences are never set condensed.",
+        "section": "typography"
+      },
+      {
+        "name": "The No Shadow Rule",
+        "body": "No box-shadows anywhere, including tooltips and dialogs.",
+        "section": "elevation"
+      }
     ],
     "dos": [
-      "Do keep Warm Porcelain as the stage and Kraft Wash as the Recorte rail and KPI slips.",
-      "Do use Burnt Chili as a stamp: 3px left rail, heat stop, primary action, the series that matters.",
-      "Do set Plotly paper transparent, plot porcelain, Y-grid sand, titles 15px Stone Ink, mode bar off.",
-      "Do cap the stage at 1400px and keep six KPI cells in one row on desktop.",
-      "Do keep one sans (Source Sans Pro) and let size/weight rank the briefing."
+      "Do keep every number tabular and every alert closed by an action.",
+      "Do use the wine ramp for data and ink for neutral emphasis.",
+      "Do encode severity by shape and colour together."
     ],
     "donts": [
-      "Don't use iFood red/magenta, wordmark, logo, or official visual identity.",
-      "Don't add drop shadows, glassmorphism, neon SaaS chrome, or purple AI-agent styling.",
-      "Don't fill backgrounds with chili or introduce a second accent family.",
-      "Don't add a display serif, decorative mono, emojis, or food-stock photography as decoration.",
-      "Don't pill-shape controls or round past the paper fold (6px) / clip (2px).",
-      "Don't invent lift on hover to “make it feel premium.” Flat is the doctrine."
+      "Don't use red for selection, focus, filters or decorative icons.",
+      "Don't put the comanda picket or condensed caps on anything that isn't an alert ticket or a short label.",
+      "Don't add shadows, coloured side stripes on cards, or eyebrow labels above headings.",
+      "Don't use any delivery company's wordmark, logo, brand red or proprietary typeface."
     ]
   }
 }

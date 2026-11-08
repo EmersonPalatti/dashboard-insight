@@ -25,7 +25,15 @@ const columns = [
   col.accessor("status", {
     header: "Status",
     size: 90,
-    cell: (c) => <span className={c.getValue() === "canceled" ? "text-chili" : ""}>{label(c.getValue())}</span>,
+    cell: (c) =>
+      c.getValue() === "canceled" ? (
+        <span className="inline-flex items-center gap-1.5 font-semibold text-ink">
+          <span className="size-2 rounded-full border-[1.5px] border-ink" aria-hidden />
+          {label(c.getValue())}
+        </span>
+      ) : (
+        label(c.getValue())
+      ),
   }),
   col.accessor("hub_name", { header: "Hub", size: 140 }),
   col.accessor("store_name", { header: "Loja", size: 160 }),
@@ -36,9 +44,16 @@ const columns = [
   col.accessor("cycle_min", {
     header: "Ciclo",
     size: 80,
-    cell: (c) => (
-      <span className={c.row.original.on_time === false ? "font-semibold text-chili" : ""}>{fmt.min(c.getValue())}</span>
-    ),
+    cell: (c) =>
+      c.row.original.on_time === false ? (
+        <span className="inline-flex items-center gap-1 font-semibold text-ink">
+          <ArrowUp className="size-3" aria-hidden />
+          {fmt.min(c.getValue())}
+          <span className="sr-only"> fora do SLA</span>
+        </span>
+      ) : (
+        fmt.min(c.getValue())
+      ),
   }),
   col.accessor("production_min", { header: "Preparo", size: 80, cell: (c) => fmt.min(c.getValue()) }),
   col.accessor("transit_min", { header: "Trânsito", size: 80, cell: (c) => fmt.min(c.getValue()) }),
@@ -90,7 +105,7 @@ function OrdersTableInner() {
       title="Pedidos do recorte"
       hint={
         query.data
-          ? `${fmt.int(total)} pedidos · ${fmt.int(rows.length)} carregados. Role para buscar mais; clique no cabeçalho para ordenar no servidor. Ciclo em vermelho = fora do SLA.`
+          ? `${fmt.int(total)} pedidos · ${fmt.int(rows.length)} carregados. Role para buscar mais; clique no cabeçalho para ordenar no servidor. Ciclo com seta para cima = fora do SLA.`
           : "Paginação e ordenação no servidor."
       }
       busy={query.isFetching && !query.isFetchingNextPage && Boolean(query.data)}
@@ -100,14 +115,14 @@ function OrdersTableInner() {
       ) : query.error ? (
         <ErrorState error={query.error} onRetry={() => query.refetch()} />
       ) : (
-        <div ref={scroller} className="h-[460px] overflow-auto rounded-clip border border-rule" role="region" aria-label="Tabela de pedidos" tabIndex={0}>
+        <div ref={scroller} className="content-reveal relative h-[460px] min-w-0 overflow-auto rounded-tick border border-rule" role="region" aria-label="Tabela de pedidos" tabIndex={0}>
           <div style={{ width, minWidth: "100%" }} className="text-[0.85rem] tabular-nums" role="table" aria-rowcount={total}>
-            <div className="sticky top-0 z-10 flex border-b border-rule bg-kraft" role="row">
+            <div className="sticky top-0 z-10 flex border-b border-rule bg-sunken" role="row">
               {table.getFlatHeaders().map((h) => {
                 const active = sort.id === h.id;
                 const sortable = SORTABLE.has(h.id);
                 return (
-                  <div key={h.id} role="columnheader" style={{ width: h.getSize() }} className="shrink-0 px-2 py-2 font-semibold">
+                  <div key={h.id} role="columnheader" style={{ width: h.getSize() }} className="cond shrink-0 px-2 py-2 font-bold">
                     {sortable ? (
                       <button
                         type="button"
@@ -115,7 +130,7 @@ function OrdersTableInner() {
                         className={`inline-flex items-center gap-1 ${active ? "text-ink" : "text-muted hover:text-ink"}`}
                       >
                         {flexRender(h.column.columnDef.header, h.getContext())}
-                        {active && (sort.desc ? <ArrowDown className="size-3" aria-hidden /> : <ArrowUp className="size-3" aria-hidden />)}
+                        {active && (sort.desc ? <ArrowDown className="icon-swap size-3" aria-hidden /> : <ArrowUp className="icon-swap size-3" aria-hidden />)}
                       </button>
                     ) : (
                       <span className="text-muted">{flexRender(h.column.columnDef.header, h.getContext())}</span>
@@ -133,7 +148,7 @@ function OrdersTableInner() {
                     key={row.id}
                     role="row"
                     aria-rowindex={item.index + 2}
-                    className="absolute left-0 flex w-full border-b border-rule/50 hover:bg-kraft/60"
+                    className="absolute left-0 flex w-full border-b border-rule/50 transition-colors duration-(--duration-quick) hover:bg-sunken/60"
                     style={{ height: ROW_H, transform: `translateY(${item.start}px)` }}
                   >
                     {row.getVisibleCells().map((cell) => (

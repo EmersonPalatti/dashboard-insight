@@ -1,6 +1,6 @@
 import { useStore } from "@nanostores/react";
 import { CalendarCheck } from "lucide-react";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { $filters, patchFilters } from "@/lib/filters";
 import { fmt } from "@/lib/format";
 import { island, useRecorteQuery } from "@/lib/query";
@@ -19,6 +19,12 @@ function TrendChartInner() {
   const { data, error, isPending, refetch, isPlaceholderData } = useRecorteQuery("/api/timeseries", { grain });
   const points = data ?? [];
 
+  // O zoom pertence à faixa que está na tela. Recorte, granularidade, métrica ou
+  // dados novos zeram o dataZoom do ECharts (notMerge), então o zoom guardado vira obsoleto.
+  useEffect(() => {
+    setZoom(null);
+  }, [filters, grain, view, data]);
+
   const option = useCallback(
     (t: Tokens) => {
       const x = points.map((p) => p.t);
@@ -34,10 +40,10 @@ function TrendChartInner() {
             height: 18,
             bottom: 8,
             borderColor: t.rule,
-            fillerColor: `${t.chili}22`,
-            handleStyle: { color: t.chili, borderColor: t.chili },
-            moveHandleStyle: { color: t.chili },
-            dataBackground: { lineStyle: { color: t.muted }, areaStyle: { color: t.kraft } },
+            fillerColor: `${t.series}22`,
+            handleStyle: { color: t.series, borderColor: t.series },
+            moveHandleStyle: { color: t.series },
+            dataBackground: { lineStyle: { color: t.muted }, areaStyle: { color: t.sunken } },
             textStyle: { color: t.muted },
             labelFormatter: (_: number, v: string) => fmt.date(v),
           },
@@ -51,15 +57,16 @@ function TrendChartInner() {
             { type: "value", name: "GMV", nameTextStyle: { color: t.muted }, splitLine: { show: false }, axisLabel: { formatter: (v: number) => fmt.brlCompact(v) } },
           ],
           series: [
-            { name: "Pedidos", type: "bar", data: points.map((p) => p.orders), itemStyle: { color: t.rule }, large: true },
+            { id: "pedidos", name: "Pedidos", type: "bar", data: points.map((p) => p.orders), itemStyle: { color: t.series }, large: true },
             {
+              id: "gmv",
               name: "GMV",
               type: "line",
               yAxisIndex: 1,
               data: points.map((p) => p.gmv),
               showSymbol: false,
-              lineStyle: { color: t.chili, width: 2 },
-              itemStyle: { color: t.chili },
+              lineStyle: { color: t.ink, width: 2.5 },
+              itemStyle: { color: t.ink },
               tooltip: { valueFormatter: (v: number) => fmt.brl(v) },
             },
           ],
@@ -74,15 +81,17 @@ function TrendChartInner() {
           ],
           series: [
             {
+              id: "no-prazo",
               name: "No prazo",
               type: "line",
               data: points.map((p) => p.sla_rate),
               showSymbol: false,
-              lineStyle: { color: t.chili, width: 2 },
-              itemStyle: { color: t.chili },
+              lineStyle: { color: t.ink, width: 2.5 },
+              itemStyle: { color: t.ink },
               tooltip: { valueFormatter: (v: number) => fmt.pct(v) },
             },
             {
+              id: "ciclo-mediano",
               name: "Ciclo mediano",
               type: "line",
               yAxisIndex: 1,
@@ -100,13 +109,14 @@ function TrendChartInner() {
         yAxis: [{ type: "value", axisLabel: { formatter: (v: number) => fmt.pct(v) } }],
         series: [
           {
+            id: "cancelamento",
             name: "Cancelamento",
             type: "line",
             data: points.map((p) => p.cancel_rate),
             showSymbol: false,
-            areaStyle: { color: `${t.chili}22` },
-            lineStyle: { color: t.chili, width: 2 },
-            itemStyle: { color: t.chili },
+            areaStyle: { color: `${t.ink}14` },
+            lineStyle: { color: t.ink, width: 2.5 },
+            itemStyle: { color: t.ink },
             tooltip: { valueFormatter: (v: number) => fmt.pct(v) },
           },
         ],
@@ -146,7 +156,7 @@ function TrendChartInner() {
       actions={
         <>
           {zoom && (
-            <button type="button" className="btn-primary py-1 text-[0.85rem]" onClick={applyZoom}>
+            <button type="button" className="btn-ink py-1 text-[0.85rem]" onClick={applyZoom}>
               <CalendarCheck className="size-3.5" aria-hidden /> Usar como período
             </button>
           )}
@@ -163,10 +173,7 @@ function TrendChartInner() {
           <Segmented
             label="Granularidade"
             value={grain}
-            onChange={(g) => {
-              setGrain(g);
-              setZoom(null);
-            }}
+            onChange={setGrain}
             options={[
               { value: "hour", label: "Hora" },
               { value: "day", label: "Dia" },
@@ -183,14 +190,15 @@ function TrendChartInner() {
       ) : points.length === 0 ? (
         <Empty />
       ) : (
-        <EChart
-          key={`${grain}-${JSON.stringify(filters)}`}
-          option={option}
-          height={340}
-          onEvents={{ datazoom: onZoom }}
-          onReady={(c) => (chart.current = c)}
-          ariaLabel={`Série ${view} por ${grain} no recorte`}
-        />
+        <div className="content-reveal min-w-0">
+          <EChart
+            option={option}
+            height={340}
+            onEvents={{ datazoom: onZoom }}
+            onReady={(c) => (chart.current = c)}
+            ariaLabel={`Série ${view} por ${grain} no recorte`}
+          />
+        </div>
       )}
     </Panel>
   );

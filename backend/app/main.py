@@ -111,7 +111,7 @@ def register_routes(app: FastAPI) -> None:
 
     @app.get("/api/alerts", response_model=AlertsResponse, tags=["insights"])
     def alerts(repo: Repo, f: F):
-        return {"alerts": detect_alerts(repo, f)}
+        return {"alerts": detect_alerts(repo, f), "orders": repo.metrics(f)["orders"]}
 
     @app.get("/api/orders", response_model=OrdersPage, tags=["pedidos"])
     def orders(

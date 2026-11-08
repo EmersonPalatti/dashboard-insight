@@ -22,6 +22,11 @@ from app.schemas import Dimension, Grain, SortKey
 _VALID = "status = 'delivered' and not cycle_outlier"
 _SALE = "status = 'delivered' and not amount_outlier"
 
+# Desvio de uma linha do ranking em relação ao recorte (marcado pelo servidor).
+SLA_BELOW_GAP = 0.05  # no prazo abaixo de SLA do recorte menos 5 pontos
+CANCEL_ABOVE_RATIO = 1.6  # cancelamento acima de 1,6x o do recorte...
+CANCEL_ABOVE_FLOOR = 0.06  # ...e de pelo menos 6%
+
 METRICS_SQL = f"""
     count(*)::int as orders,
     count(*) filter (where status = 'delivered')::int as delivered,
@@ -71,6 +76,19 @@ ORDER_SORTS = {
     "distance_m", "store_name", "hub_name", "city", "status",
 }
 GRAINS = {"hour": "hour", "day": "day", "week": "week"}
+
+
+def _flag_outliers(rows: list[dict], base: dict) -> list[dict]:
+    """Marca linhas do ranking que desviam do recorte (`base` = metrics do recorte inteiro).
+
+    Taxa nula nunca é marcada: sem base para comparar, não há desvio.
+    """
+    sla_floor = base["sla_rate"] - SLA_BELOW_GAP if base["sla_rate"] is not None else None
+    cancel_ceiling = max((base["cancel_rate"] or 0.0) * CANCEL_ABOVE_RATIO, CANCEL_ABOVE_FLOOR)
+    for row in rows:
+        row["sla_below"] = sla_floor is not None and row["sla_rate"] is not None and row["sla_rate"] < sla_floor
+        row["cancel_above"] = row["cancel_rate"] is not None and row["cancel_rate"] > cancel_ceiling
+    return rows
 
 
 class Repository:
@@ -242,13 +260,14 @@ class Repository:
 
         def build() -> list[dict]:
             where, params = f.where()
-            return self._rows(
+            rows = self._rows(
                 f"""select {key} as key, {label} as label, {parent}::varchar as parent, {METRICS_SQL}
                     from orders where {where} and {key} is not null
                     group by all having count(*) >= ?
                     order by {order} {direction} nulls last, orders desc limit ?""",
                 [*params, int(min_orders), int(limit)],
             )
+            return _flag_outliers(rows, self.metrics(f))
 
         return self._cached(f"bd:{by}:{sort}:{desc}:{limit}:{min_orders}:" + f.cache_key(), build)
 

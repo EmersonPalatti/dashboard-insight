@@ -26,48 +26,47 @@ const repoUrl = "https://github.com/EmersonPalatti/dashboard-insight";
   title="Central de Operações"
   description="Painel de operação de delivery com alertas e agente de insights sobre o recorte filtrado. 369 mil pedidos reais do Delivery Center."
 >
-  <header class="border-b border-rule">
-    <div class="mx-auto flex max-w-[1400px] flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
-      <div class="min-w-0">
-        <h1 class="text-[1.55rem] leading-tight font-bold tracking-[-0.02em]">Central de Operações</h1>
-        <p class="label">
-          Delivery Center · jan–abr 2021 · 369 mil pedidos em 4 cidades. Filtre, veja o que está fora da curva e saia com uma ação.
-        </p>
+  <header class="bg-wine text-white">
+    <div class="mx-auto flex max-w-[1440px] flex-wrap items-center justify-between gap-x-6 gap-y-2 px-4 py-3 sm:px-6 lg:h-16 lg:py-0">
+      <div class="flex min-w-0 items-baseline gap-x-4 gap-y-0.5 max-sm:flex-col">
+        <h1 class="text-[1.4rem] leading-tight font-bold [font-stretch:88%]">Central de Operações</h1>
+        <p class="text-[0.88rem] text-on-wine">Alertas e agente sobre o recorte filtrado · Delivery Center, jan–abr 2021, 369 mil pedidos</p>
       </div>
-      <div class="no-print flex items-center gap-3">
-        <a class="label underline decoration-rule underline-offset-4 hover:text-ink" href="#agente">Perguntar ao agente</a>
-        <a class="label underline decoration-rule underline-offset-4 hover:text-ink" href={`${apiUrl}/docs`} target="_blank" rel="noopener">API (Swagger)</a>
-        <TopBarStatus client:load />
+      <div class="no-print flex flex-wrap items-center gap-1 max-sm:-ml-3">
+        <a class="rounded-card px-3 py-2 text-[0.9rem] text-on-wine hover:bg-wine-raised hover:text-white" href="#agente">Perguntar ao agente</a>
+        <a class="rounded-card px-3 py-2 text-[0.9rem] text-on-wine hover:bg-wine-raised hover:text-white" href={`${apiUrl}/docs`} target="_blank" rel="noopener">API (Swagger)</a>
+        <span class="ml-2"><TopBarStatus client:load /></span>
       </div>
     </div>
   </header>
 
-  <div class="no-print z-20 border-b border-rule bg-paper/95 backdrop-blur-[2px] lg:sticky lg:top-0">
-    <div class="mx-auto max-w-[1400px] px-4 py-2.5 sm:px-6">
+  <div class="no-print sticky top-0 z-20 border-b border-rule bg-surface">
+    <div class="mx-auto max-w-[1440px] px-4 py-2 sm:px-6">
       <FilterBar client:load />
     </div>
   </div>
 
-  <main class="mx-auto grid max-w-[1400px] gap-4 px-4 pt-4 pb-16 sm:px-6">
-    <KpiStrip client:load />
-
-    <div class="grid gap-4 lg:grid-cols-12">
-      <div class="lg:col-span-7">
+  <main class="mx-auto grid max-w-[1440px] grid-cols-[minmax(0,1fr)] gap-5 px-4 pt-5 pb-16 sm:px-6">
+    <div class="grid grid-cols-[minmax(0,1fr)] items-start gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(340px,440px)]">
+      <div class="min-w-0 lg:col-start-1 lg:row-start-1">
+        <KpiStrip client:load />
+      </div>
+      <div id="comandas" class="min-w-0 scroll-mt-16 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:scroll-mt-28">
         <AlertsPanel client:load />
       </div>
-      <div id="agente" class="scroll-mt-40 lg:col-span-5">
+      <div id="agente" class="min-w-0 scroll-mt-28 lg:col-start-1 lg:row-start-2">
         <AgentChat client:visible />
       </div>
     </div>
 
     <TrendChart client:visible />
 
-    <div class="grid gap-4 lg:grid-cols-2">
+    <div class="grid gap-5 lg:grid-cols-2">
       <StagesChart client:visible />
       <HeatmapChart client:visible />
     </div>
 
-    <div class="grid gap-4 xl:grid-cols-2">
+    <div class="grid gap-5 xl:grid-cols-2">
       <StoreScatter client:visible />
       <BreakdownTable client:visible />
     </div>
@@ -75,25 +74,25 @@ const repoUrl = "https://github.com/EmersonPalatti/dashboard-insight";
     <OrdersTable client:visible />
   </main>
 
-  <footer class="border-t border-rule">
-    <div class="mx-auto grid max-w-[1400px] gap-4 px-4 py-6 text-[0.88rem] text-muted sm:px-6 md:grid-cols-3">
+  <footer class="border-t border-rule bg-surface">
+    <div class="mx-auto grid max-w-[1440px] gap-6 px-4 py-7 text-[0.88rem] text-muted sm:px-6 md:grid-cols-3">
       <div>
-        <p class="font-semibold text-ink">Dados</p>
-        <p>
+        <p class="text-pretty cond text-[0.8rem] font-bold text-ink">Dados</p>
+        <p class="text-pretty">
           <a class="underline decoration-rule underline-offset-4" href="https://www.kaggle.com/datasets/nosbielcs/brazilian-delivery-center" target="_blank" rel="noopener">Delivery Center: Food &amp; Goods orders in Brazil</a> (Kaggle). Nomes de lojas vêm anonimizados no dataset.
         </p>
       </div>
       <div>
-        <p class="font-semibold text-ink">Como os números são calculados</p>
-        <p>
+        <p class="text-pretty cond text-[0.8rem] font-bold text-ink">Como os números são calculados</p>
+        <p class="text-pretty">
           Horários convertidos de UTC para Brasília. SLA: food ≤ 60 min, goods ≤ 120 min. Pedidos com ciclo &gt; 4h contam como
           "presos" e ficam fora de medianas e SLA. Valores &gt; R$ 5 mil ficam fora do GMV.
         </p>
       </div>
       <div>
-        <p class="font-semibold text-ink">Stack</p>
-        <p>Astro + ilhas React, ECharts, Nanostores, TanStack Query/Table/Virtual · FastAPI, Pydantic, DuckDB sobre Parquet.</p>
-        <p class="mt-1"><a class="underline decoration-rule underline-offset-4" href={repoUrl} target="_blank" rel="noopener">Código</a></p>
+        <p class="text-pretty cond text-[0.8rem] font-bold text-ink">Stack</p>
+        <p class="text-pretty">Astro + ilhas React, ECharts, Nanostores, TanStack Query/Table/Virtual · FastAPI, Pydantic, DuckDB sobre Parquet.</p>
+        <p class="text-pretty mt-1"><a class="underline decoration-rule underline-offset-4" href={repoUrl} target="_blank" rel="noopener">Código</a></p>
       </div>
     </div>
   </footer>

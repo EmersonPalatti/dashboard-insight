@@ -1,0 +1,16 @@
+/* Movimento: ui. Só @keyframes e @utility; tokens em global.css (:root). Sempre com guarda prefers-reduced-motion. */
+
+/*
+ * Abas deslizantes (Segmented): um indicador só, levado por transform às medidas do
+ * botão marcado. O componente escreve --seg-x, --seg-y, --seg-w e --seg-h no grupo.
+ * Só o transform anima; o tamanho troca na hora.
+ */
+@utility seg-indicator {
+  width: var(--seg-w);
+  height: var(--seg-h);
+  transform: translate(var(--seg-x), var(--seg-y));
+  transition: transform var(--duration-fast) var(--ease-smooth-out);
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+  }
+}

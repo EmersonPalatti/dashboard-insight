@@ -1417,11 +1417,17 @@
             },
             "type": "array",
             "title": "Alerts"
+          },
+          "orders": {
+            "type": "integer",
+            "title": "Orders",
+            "description": "Pedidos no recorte; 0 significa que não há base para afirmar SLA ou cancelamento."
           }
         },
         "type": "object",
         "required": [
-          "alerts"
+          "alerts",
+          "orders"
         ],
         "title": "AlertsResponse"
       },
@@ -1660,6 +1666,18 @@
               }
             ],
             "title": "Parent"
+          },
+          "sla_below": {
+            "type": "boolean",
+            "title": "Sla Below",
+            "description": "No prazo abaixo do SLA do recorte em mais de 5 pontos percentuais",
+            "default": false
+          },
+          "cancel_above": {
+            "type": "boolean",
+            "title": "Cancel Above",
+            "description": "Cancelamento acima de 1,6x o do recorte e de pelo menos 6%",
+            "default": false
           }
         },
         "type": "object",

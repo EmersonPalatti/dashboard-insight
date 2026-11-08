@@ -7,12 +7,12 @@ import {
   type SortingState,
 } from "@tanstack/react-table";
 import { ArrowDown, ArrowUp, ArrowUpDown, Filter } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import type { BreakdownRow, Dimension } from "@/lib/api/client";
 import { applyDrilldown, patchFilters } from "@/lib/filters";
 import { fmt, label, WEEKDAYS } from "@/lib/format";
 import { island, useRecorteQuery } from "@/lib/query";
-import { Empty, ErrorState, Panel, Segmented, Skeleton } from "./ui/Panel";
+import { Empty, ErrorState, Panel, Skeleton } from "./ui/Panel";
 
 type Tab = Extract<Dimension, "hub" | "store" | "city" | "channel" | "modal" | "payment_method" | "weekday">;
 const TABS: { value: Tab; label: string }[] = [
@@ -27,13 +27,33 @@ const TABS: { value: Tab; label: string }[] = [
 
 const col = createColumnHelper<BreakdownRow>();
 
-function rateCell(v: number | null, warnAbove?: number, warnBelow?: number) {
-  const bad = v !== null && ((warnAbove !== undefined && v > warnAbove) || (warnBelow !== undefined && v < warnBelow));
-  return <span className={bad ? "font-semibold text-chili" : ""}>{fmt.pct(v)}</span>;
+/**
+ * Taxa desviada do recorte: o servidor marca a linha; aqui só se mostra com
+ * forma (seta) e peso de texto, sem cor, e um rótulo para leitor de tela.
+ */
+function FlaggedRate({
+  value,
+  flagged,
+  direction,
+}: {
+  value: number | null;
+  flagged?: boolean;
+  direction: "above" | "below";
+}) {
+  if (!flagged) return <span>{fmt.pct(value)}</span>;
+  const Icon = direction === "below" ? ArrowDown : ArrowUp;
+  return (
+    <span className="inline-flex items-center justify-end gap-1 font-semibold text-ink">
+      <Icon className="size-3" aria-hidden />
+      {fmt.pct(value)}
+      <span className="sr-only">{direction === "below" ? " abaixo do recorte" : " acima do recorte"}</span>
+    </span>
+  );
 }
 
 function BreakdownTableInner() {
   const [tab, setTab] = useState<Tab>("hub");
+  const selectId = useId();
   const [sorting, setSorting] = useState<SortingState>([{ id: "orders", desc: true }]);
   const { data, error, isPending, refetch, isPlaceholderData } = useRecorteQuery("/api/breakdown", {
     by: tab,
@@ -42,7 +62,12 @@ function BreakdownTableInner() {
     min_orders: tab === "store" ? 30 : 0,
   });
   const rows = data?.rows ?? [];
-  const kpis = useRecorteQuery("/api/kpis").data?.current;
+  // Aba cujas linhas estão na tela. Troca só quando o recorte novo chega (keepPreviousData mantém as antigas),
+  // então o cross-fade da tabela acontece junto com as linhas novas, não antes delas.
+  const [shownTab, setShownTab] = useState<Tab>(tab);
+  useEffect(() => {
+    if (!isPlaceholderData && !isPending) setShownTab(tab);
+  }, [tab, isPlaceholderData, isPending]);
 
   const columns = useMemo(
     () => [
@@ -62,19 +87,19 @@ function BreakdownTableInner() {
       col.accessor("ticket", { header: "Ticket", cell: (c) => fmt.brl(c.getValue()) }),
       col.accessor("sla_rate", {
         header: "No prazo",
-        cell: (c) => rateCell(c.getValue(), undefined, kpis?.sla_rate ? kpis.sla_rate - 0.05 : undefined),
+        cell: (c) => <FlaggedRate value={c.getValue()} flagged={c.row.original.sla_below} direction="below" />,
         sortUndefined: "last",
       }),
       col.accessor("cycle_p50", { header: "Ciclo", cell: (c) => fmt.min(c.getValue()) }),
       col.accessor("cancel_rate", {
         header: "Cancel.",
-        cell: (c) => rateCell(c.getValue(), kpis?.cancel_rate ? Math.max(kpis.cancel_rate * 1.6, 0.06) : 0.06),
+        cell: (c) => <FlaggedRate value={c.getValue()} flagged={c.row.original.cancel_above} direction="above" />,
       }),
       col.accessor("production_p50", { header: "Preparo", cell: (c) => fmt.min(c.getValue()) }),
       col.accessor("transit_p50", { header: "Trânsito", cell: (c) => fmt.min(c.getValue()) }),
       col.accessor("subsidy", { header: "Subsídio", cell: (c) => fmt.brl(c.getValue()) }),
     ],
-    [tab, kpis],
+    [tab],
   );
 
   const table = useReactTable({
@@ -97,9 +122,27 @@ function BreakdownTableInner() {
   return (
     <Panel
       title="Ranking do recorte"
-      hint={`Ordene pelas colunas. Em vermelho: abaixo/acima do recorte.${tab === "store" ? " Lojas com 30+ pedidos." : ""}`}
+      hint={`Ordene pelas colunas. Seta para baixo: no prazo abaixo do recorte. Seta para cima: cancelamento acima do recorte.${tab === "store" ? " Lojas com 30+ pedidos." : ""}`}
       busy={isPlaceholderData}
-      actions={<Segmented label="Quebrar por" value={tab} onChange={setTab} options={TABS} />}
+      actions={
+        <div className="flex items-center gap-2">
+          <label htmlFor={selectId} className="text-[0.85rem] text-muted">
+            Quebrar por
+          </label>
+          <select
+            id={selectId}
+            value={tab}
+            onChange={(e) => setTab(e.target.value as Tab)}
+            className="min-h-10 rounded-card border border-rule bg-surface px-2.5 py-1.5 text-[0.92rem] text-ink"
+          >
+            {TABS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      }
     >
       {isPending ? (
         <Skeleton height={360} />
@@ -108,9 +151,9 @@ function BreakdownTableInner() {
       ) : rows.length === 0 ? (
         <Empty />
       ) : (
-        <div className="max-h-[420px] overflow-auto rounded-clip border border-rule">
+        <div className="content-reveal relative max-h-[420px] min-w-0 overflow-auto rounded-tick border border-rule">
           <table className="w-full border-collapse text-[0.88rem] tabular-nums">
-            <thead className="sticky top-0 z-10 bg-kraft">
+            <thead className="sticky top-0 z-10 bg-sunken">
               {table.getHeaderGroups().map((hg) => (
                 <tr key={hg.id}>
                   {hg.headers.map((h, i) => {
@@ -121,7 +164,7 @@ function BreakdownTableInner() {
                         key={h.id}
                         scope="col"
                         aria-sort={dir === "asc" ? "ascending" : dir === "desc" ? "descending" : "none"}
-                        className={`border-b border-rule px-2.5 py-2 font-semibold whitespace-nowrap ${i === 0 ? "text-left" : "text-right"}`}
+                        className={`cond border-b border-rule px-2.5 py-2 font-bold whitespace-nowrap ${i === 0 ? "text-left" : "text-right"}`}
                       >
                         <button
                           type="button"
@@ -138,9 +181,9 @@ function BreakdownTableInner() {
                 </tr>
               ))}
             </thead>
-            <tbody>
+            <tbody key={shownTab} className="content-swap">
               {table.getRowModel().rows.map((row) => (
-                <tr key={row.id} className="border-b border-rule/60 last:border-0 hover:bg-kraft/60">
+                <tr key={row.id} className="border-b border-rule/60 last:border-0 hover:bg-sunken/60">
                   {row.getVisibleCells().map((cell, i) => (
                     <td key={cell.id} className={`px-2.5 py-1.5 whitespace-nowrap ${i === 0 ? "text-left" : "text-right"}`}>
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
@@ -151,7 +194,7 @@ function BreakdownTableInner() {
                       <button
                         type="button"
                         onClick={() => drill(row.original)}
-                        className="rounded-[4px] p-1 text-muted hover:bg-kraft-strong hover:text-chili"
+                        className="rounded-[4px] p-1 text-muted hover:bg-sunken-strong hover:text-ink"
                         aria-label={`Filtrar por ${row.original.label}`}
                         title="Filtrar o painel por este grupo"
                       >

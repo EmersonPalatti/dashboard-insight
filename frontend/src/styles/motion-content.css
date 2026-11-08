@@ -1,0 +1,120 @@
+/* Movimento: content. Só @keyframes e @utility; tokens em global.css (:root). Sempre com guarda prefers-reduced-motion. */
+
+/* Conteúdo que entra no lugar do skeleton: fade e desfoque leve até o repouso. */
+@keyframes content-in {
+  from {
+    opacity: 0;
+    filter: blur(var(--blur-small));
+  }
+  to {
+    opacity: 1;
+    filter: none;
+  }
+}
+
+/*
+ * Revelação única, quando o conteúdo monta (não a cada recorte: o placeholder mantém o nó).
+ * Fill "backwards": o repouso é o estilo base, então a classe de opacidade do placeholder (opacity-60) continua valendo.
+ */
+@utility content-reveal {
+  animation: content-in var(--duration-slow) var(--ease-in-out) backwards;
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
+}
+
+/* Troca no lugar sem deslocamento (aba da tabela): mais curta que a revelação. */
+@utility content-swap {
+  animation: content-in var(--duration-quick) var(--ease-in-out) backwards;
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
+}
+
+/* Ícone de ordenação que troca de direção: só fade e desfoque, sem mover. */
+@utility icon-swap {
+  animation: content-in var(--duration-fast) var(--ease-smooth-out) backwards;
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
+}
+
+/*
+ * Dígito do KPI que sobe (valor aumentou) ou desce (caiu). --digit-dir é 1 ou -1,
+ * definido no pai. O dígito novo entra do lado de onde o valor veio.
+ */
+@keyframes digit-rise {
+  from {
+    opacity: 0;
+    transform: translateY(calc(var(--distance-micro) * var(--digit-dir, 1)));
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* O dígito antigo sai para o lado oposto e fica invisível (fill "forwards"). */
+@keyframes digit-fall {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0;
+    transform: translateY(calc(var(--distance-micro) * var(--digit-dir, 1) * -1));
+  }
+}
+
+@utility digit-rise {
+  animation: digit-rise var(--duration-fast) var(--ease-smooth-out) backwards;
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
+}
+
+@utility digit-fall {
+  animation: digit-fall var(--duration-fast) var(--ease-smooth-out) forwards;
+  @media (prefers-reduced-motion: reduce) {
+    display: none;
+  }
+}
+
+/*
+ * Texto de status com brilho varrendo (sem JS). O texto base é --muted; o pseudo-elemento
+ * repete o texto (vem de data-text) com uma faixa --ink, recortada nas letras por background-clip.
+ * A faixa anda por transform (não background-position), para ficar no compositor.
+ * "/ \"\"" zera o texto alternativo do pseudo-elemento: o leitor de tela lê só o texto real, uma vez.
+ */
+@keyframes shimmer-band {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+
+@utility shimmer-text {
+  position: relative;
+  display: inline-block;
+  color: var(--muted);
+  clip-path: inset(0);
+  &::after {
+    content: attr(data-text) / "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    color: transparent;
+    background-image: linear-gradient(90deg, transparent 40%, var(--ink) 50%, transparent 60%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: shimmer-band 1600ms var(--ease-linear) infinite;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    &::after {
+      display: none;
+    }
+  }
+}

@@ -1,205 +1,223 @@
 ---
 name: Central de Operações
-description: Warm paper ops console — porcelain field, kraft slips, burnt-chili signal.
+description: Comanda ops console — cool grey field, wine shell band, alerts as printed order tickets.
 colors:
-  burnt-chili: "#C2410C"
-  chili-deep: "#7C2D12"
-  warm-porcelain: "#FFFBF7"
-  kraft-wash: "#F3EBE3"
-  sand-rule: "#E7D8C9"
-  stone-ink: "#1C1917"
-  warm-stone: "#78716C"
+  field: "#ECECEC"
+  surface: "#FFFFFF"
+  sunken: "#F5F5F5"
+  sunken-strong: "#E8E8E8"
+  rule: "#DCDCDC"
+  ink: "#1A1A1A"
+  muted: "#666666"
+  crit: "#D92B20"
+  crit-deep: "#A51E16"
+  crit-soft: "#FBE1DE"
+  warn: "#946000"
+  good: "#46700F"
+  wine: "#3D0B1F"
+  wine-raised: "#5A1730"
+  on-wine: "#F1DBE3"
+  series: "#7A1E3D"
+  series-deep: "#4A0F25"
+  series-soft: "#E7B3C4"
+  shell-good: "#9BC75A"
+  shell-crit: "#FF6A5E"
+  shell-warn: "#F0A93B"
 typography:
-  headline:
-    fontFamily: "Source Sans Pro, sans-serif"
-    fontSize: "1.55rem"
-    fontWeight: 700
-    letterSpacing: "-0.02em"
   title:
-    fontFamily: "Source Sans Pro, sans-serif"
-    fontSize: "15px"
+    fontFamily: "Archivo, ui-sans-serif, system-ui, sans-serif"
+    fontSize: "1.4rem"
+    fontWeight: 700
+    lineHeight: 1.2
+  figure-hero:
+    fontFamily: "Archivo, ui-sans-serif, system-ui, sans-serif"
+    fontSize: "2.6rem"
+    fontWeight: 700
+    lineHeight: 1.05
+    letterSpacing: "-0.01em"
+  figure:
+    fontFamily: "Archivo, ui-sans-serif, system-ui, sans-serif"
+    fontSize: "1.45rem"
+    fontWeight: 700
+    lineHeight: 1.05
+  section:
+    fontFamily: "Archivo, ui-sans-serif, system-ui, sans-serif"
+    fontSize: "1rem"
     fontWeight: 600
   body:
-    fontFamily: "Source Sans Pro, sans-serif"
-    fontSize: "1rem"
+    fontFamily: "Archivo, ui-sans-serif, system-ui, sans-serif"
+    fontSize: "0.95rem"
     fontWeight: 400
+    lineHeight: 1.6
   label:
-    fontFamily: "Source Sans Pro, sans-serif"
-    fontSize: "0.92rem"
+    fontFamily: "Archivo, ui-sans-serif, system-ui, sans-serif"
+    fontSize: "0.9rem"
     fontWeight: 400
+  cond-label:
+    fontFamily: "Archivo, ui-sans-serif, system-ui, sans-serif"
+    fontSize: "0.78rem"
+    fontWeight: 700
+    letterSpacing: "0.04em"
 rounded:
-  clip: "2px"
-  fold: "6px"
+  tick: "4px"
+  card: "8px"
 spacing:
-  sm: "16px"
-  md: "0.9rem"
-  lg: "1.4rem"
-  xl: "3rem"
+  gutter: "20px"
+  page-x: "24px"
+  ticket-x: "20px"
 components:
-  metric-card:
-    backgroundColor: "{colors.kraft-wash}"
-    textColor: "{colors.stone-ink}"
-    rounded: "{rounded.clip}"
-    padding: "0.7rem 0.9rem"
   button-primary:
-    backgroundColor: "{colors.burnt-chili}"
-    textColor: "{colors.warm-porcelain}"
-    rounded: "{rounded.fold}"
+    backgroundColor: "{colors.crit}"
+    textColor: "#FFFFFF"
+    rounded: "{rounded.card}"
+    padding: "6px 12px"
     typography: "{typography.label}"
   button-primary-hover:
-    backgroundColor: "{colors.chili-deep}"
-    textColor: "{colors.warm-porcelain}"
+    backgroundColor: "{colors.crit-deep}"
+  button-ink:
+    backgroundColor: "{colors.ink}"
+    textColor: "{colors.surface}"
+    rounded: "{rounded.card}"
+    padding: "6px 12px"
   button-ghost:
-    backgroundColor: "{colors.kraft-wash}"
-    textColor: "{colors.stone-ink}"
-    rounded: "{rounded.fold}"
-    typography: "{typography.label}"
-  hint:
-    textColor: "{colors.warm-stone}"
-    typography: "{typography.label}"
-  chart-plot:
-    backgroundColor: "{colors.warm-porcelain}"
-    textColor: "{colors.stone-ink}"
+    backgroundColor: "{colors.surface}"
+    textColor: "{colors.ink}"
+    rounded: "{rounded.card}"
+    padding: "6px 12px"
+  button-ghost-hover:
+    backgroundColor: "{colors.sunken}"
+  shell-band:
+    backgroundColor: "{colors.wine}"
+    textColor: "{colors.on-wine}"
+    height: "64px"
+  kpi-cell:
+    backgroundColor: "{colors.surface}"
+    textColor: "{colors.ink}"
+    padding: "14px 16px 12px"
+    typography: "{typography.figure-hero}"
+  ticket:
+    backgroundColor: "{colors.surface}"
+    textColor: "{colors.ink}"
+    rounded: "{rounded.card}"
+    padding: "20px 20px 16px"
+  ticket-action:
+    backgroundColor: "{colors.ink}"
+    textColor: "{colors.surface}"
+    rounded: "{rounded.card}"
+    padding: "12px 14px"
+  panel:
+    backgroundColor: "{colors.surface}"
+    textColor: "{colors.ink}"
+    rounded: "{rounded.card}"
+    padding: "16px"
 ---
 
 # Design System: Central de Operações
 
-> **Implementação atual (v2):** os tokens abaixo vivem em `frontend/src/styles/global.css` como variáveis CSS mapeadas para o Tailwind (`bg-paper`, `bg-kraft`, `border-rule`, `text-ink`, `text-muted`, `text-chili`…), com um tema escuro equivalente (`[data-theme="dark"]`). Gráficos são ECharts e leem os mesmos tokens. Menções a Streamlit e Plotly neste documento descrevem a v1 e valem como intenção visual: trocar "Plotly" por "ECharts", "sidebar" por "barra de recorte" e `st.dialog` pela seção do agente.
-
 ## Overview
 
-**Creative North Star: "The Praça Briefing Desk"**
+**Creative North Star: "A comanda na fila"**
 
-This is a paper ops desk at a Brazilian praça, not a marketing kitchen and not a SaaS command center. The field is warm porcelain; the sidebar and KPI slips are kraft wash; the only loud mark is burnt chili, used like a stamp on a briefing — a left rail, a heat scale, a primary action — never a page fill. Numbers, recorte, and the next action sit closer to the visitor than any chrome.
+The console borrows the grammar of the delivery apps its operators already use every day: cool neutral greys, firm sans type, 8px corners, one red that means something. It adds a world of its own taken from the restaurant counter: the thermal **comanda** a store prints when an order arrives. Every alert in the current recorte is a comanda in a queue, numbered, tagged by category and severity, with the action printed at its foot. One comanda is open at a time; the rest wait, summarised.
 
-The mood is dry, quiet, and dense enough to scan in two minutes. Hierarchy is size and ink weight, not color noise. Charts sit on the same porcelain as the page, with sand rules instead of grid theater. Depth is tonal: porcelain against kraft, a 1px sand rule, a 3px chili rail. No drop shadows. Confirmed refusals: neon SaaS dashboards, glassmorphism, purple AI-agent chrome, iFood red/magenta or official identity, food-stock photography as decoration, emojis, display serifs, and pill-shaped controls.
+The shell is a wine band, not red: it gives the product a recognisable colour field without borrowing any delivery brand's identity, and keeps red free to mean "critical". Data series are drawn in a wine ramp, so the charts belong to the same world as the shell.
 
 **Key Characteristics:**
-
-- Porcelain canvas, kraft slips, sand rules — paper, not glass
-- Burnt chili as the sole signal color (stamp, heat, primary action)
-- Flat by default: no shadows; depth is layered stock
-- One sans (Source Sans Pro); size does the hierarchy
-- Clipped, clerical components; paper-fold corners (6px) on new chrome
-- Independent of iFood wordmark, logo, and official visual identity
+- Cool grey field (`field`) with white surfaces; layers separate by tone and hairline, never by shadow.
+- Wine shell band on every theme; signals on the band use their own `shell-*` tokens.
+- Archivo with a width axis: normal width for reading, condensed caps only for short labels and comanda headers.
+- Tabular figures everywhere; headline numbers in a narrow bold cut (`figure`).
+- Red (`crit`) reserved for critical severity and the one primary action in view.
 
 ## Colors
 
-Warm paper neutrals carry the field. Burnt chili is the only chromatic voice; darker chili and stone inks exist to grade heat and series, not to add a second brand color.
-
 ### Primary
-
-- **Burnt Chili** (`burnt-chili`): Streamlit `primaryColor`, KPI left rail, GMV line, ranking/rating/cancel bars, and the hot end of heat scales. Use it when something must be *acted on* or *is the series that matters*. It is a stamp, not a fill.
+- **Crit** `#D92B20` (dark `#FF5D50`): critical severity marks, worsening deltas, the primary action button. Hover `crit-deep`.
 
 ### Secondary
-
-- **Chili Deep** (`chili-deep`): Dark stop on the volume heatmap and the deep end of the Plotly colorway. Use it to intensify chili, never as a second accent family.
+- **Wine** `#3D0B1F` (dark `#26060F`): the shell band. `wine-raised` for hover/active inside it, `on-wine` for its text.
+- **Series** `#7A1E3D` (dark `#E0789A`): the data colour. Ordered ramps use `series-deep` → `series` → `series-soft`.
 
 ### Neutral
+- **Field** `#ECECEC`, **Surface** `#FFFFFF`, **Sunken** `#F5F5F5` / `sunken-strong` `#E8E8E8`, **Rule** `#DCDCDC`, **Ink** `#1A1A1A`, **Muted** `#666666`. Dark theme mirrors them (`#111111`, `#1B1B1B`, `#232323`, `#353535`, `#F2F2F2`, `#A6A6A6`).
+- **Warn** `#946000` and **Good** `#46700F` carry state only.
 
-- **Warm Porcelain** (`warm-porcelain`): Page background and Plotly `plot_bgcolor`. The briefing sheet.
-- **Kraft Wash** (`kraft-wash`): Sidebar and KPI card fill (`secondaryBackgroundColor`). Recorte rail and metric slips.
-- **Sand Rule** (`sand-rule`): KPI hairline, chart grid and axis line, “pedidos” bars under a chili GMV line. Rules and quiet series, not text.
-- **Stone Ink** (`stone-ink`): Body text, chart titles, metric values (`textColor`).
-- **Warm Stone** (`warm-stone`): Metric labels, recorte hint, axis ticks, empty-chart annotation. Secondary copy only.
+### Named Rules
+**The One Red Rule.** Red marks what is critical or what the operator should press next. Active filters, selected tabs, focus rings and icons use ink, never red.
 
-Plotly categorical colorway (not separate brand roles): Burnt Chili, `#9A3412`, `#B45309`, `#A16207`, `#44403C`, `#57534E`, `#D97706`, Chili Deep, `#CA8A04`, `#292524`. Heatmap continuous: Porcelain → `#FDBA74` → Burnt Chili → Chili Deep. Delivery-time continuous: `#FED7AA` → Burnt Chili.
-
-**The One Chili Rule.** Burnt chili is the only loud color. It marks signal (rail, heat, primary action, the series that matters). Porcelain and kraft carry the field. Do not introduce a second accent family (teal, purple, iFood magenta, electric orange).
+**The Wine Data Rule.** A chart series is wine unless it encodes state. Volume, heat and stage ramps are never red.
 
 ## Typography
 
-**Display Font:** none — this system has no display face
-**Body Font:** Source Sans Pro (with sans-serif), Streamlit `font = "sans serif"`
-**Label/Mono Font:** same sans; no decorative mono
-
-**Character:** One clerical sans. Tight headline tracking, muted labels, no serif contrast, no type as ornament. The pairing is a briefing, not a magazine.
+One family, **Archivo** (Google Fonts, `wdth` 62–125, `wght` 400–800).
 
 ### Hierarchy
+- **Title** 1.4rem/700 at 88% width: product name in the band.
+- **Figure hero** 2.6rem/700 at 80% width: the three operation KPIs.
+- **Figure** 1.45rem/700 at 80% width: volume KPIs inline with their label.
+- **Section** 1rem/600: panel titles; ticket titles at 1.08rem/600.
+- **Body** 0.95rem/400, 1.6 line height; **Label** 0.9rem muted.
+- **Cond label** 0.78rem/700, uppercase, 72% width, 0.04em tracking: KPI labels, comanda headers, table headers, footer headings.
 
-- **Headline** (700, 1.55rem, letter-spacing -0.02em): Page title only (`h1` “Central de Operações”).
-- **Title** (600, 15px): Plotly chart titles, left-aligned, Stone Ink. Streamlit subheaders (Alertas, Visão do recorte, Agente) sit in this band.
-- **Body** (400, 1rem): Captions, alert copy, chat. Comfortable Streamlit default; do not drop body below this on the main stage.
-- **Label** (400, 0.92rem): Recorte hint, metric labels, suggested-prompt buttons. Warm Stone when the label is supporting.
+### Named Rules
+**The One Body Rule.** Tables use one text size; header rank comes from condensed caps and weight, never from a bigger size.
 
-Chart body type is 12px Stone Ink with Warm Stone ticks — a Plotly-only step under Label, not a second UI font.
-
-**The Briefing Type Rule.** One sans. Hierarchy is size and weight, never a second family. No display serif, no uppercase tracking as decoration, no mono except real data/code (which this product does not surface in the UI).
+**The Short Caps Rule.** Condensed caps only on labels of a few words. Sentences are never set condensed.
 
 ## Layout
 
-Wide Streamlit canvas, sidebar expanded. The main `.block-container` caps at 1400px, with 1.4rem top padding and 5rem bottom padding (room for the Agente FAB). The Recorte sidebar is the left rail; the stage reading order is title → recorte chips (with Limpar) → alerts → hero KPI trio (tempo, nota, cancelamento) → volume trio (pedidos, GMV, ticket) → three tabs (Tendência 1.35/1, Ranking 1.2/1 with piores notas leading GMV, Operação three equal columns). The agent is a chili stamp FAB, bottom-right, opening an `st.dialog` (not an in-page column). Chart default height is 360px (ranking 420px); Plotly margins 16/16/48/16. Density is operate-mode: scan, don’t stroll. Empty recorte stops the stage after the warning and the Limpar exit — do not leave a hollow chart grid. The FAB remains available.
-
-**The Recorte Rail Rule.** Sidebar is Kraft Wash; the main stage is Warm Porcelain. Do not invert, do not paint the whole app chili. Keep six KPI slips: a hero row of three operational stamps, then a volume row of three. Do not collapse them into a dense table unless the recorte itself is empty.
+Max width 1440px, 24px side padding (16px under `sm`), 20px gutters. Desktop first viewport: a two-column grid, KPIs and agent on the left, the comanda queue (340–440px) on the right spanning both rows. Under `lg` the order is KPIs → comandas → agent. Charts and tables follow full width or in pairs. Every grid track is `minmax(0, 1fr)` so truncated text never widens the page.
 
 ## Elevation & Depth
 
-No drop shadows. Depth is stacked paper: porcelain field, kraft slips, a 1px sand rule, a 3px chili rail on KPIs. Plotly paper is transparent so charts sit on the page stock; the plot area is porcelain. Hover labels are white sheets, not lifted cards. Streamlit alerts (error / warning / success) are framework banners — they are semantic, not extra elevation.
+Flat. Depth comes from layer tone: open comanda is pure surface, queued comandas are surface at 70% over the field. The filter bar is the only sticky layer, at every width, separated by a hairline.
 
-**The Flat-By-Default Rule.** Surfaces are flat at rest and at hover. Never add ambient card shadows, glass blur, or a floating toolbar. If a control needs emphasis, use chili or a sand rule, not lift.
+### Named Rules
+**The No Shadow Rule.** No box-shadows anywhere, including tooltips and dialogs.
 
 ## Shapes
 
-Form language is paper, not pills. Incumbent KPI chrome is clipped at 2px (`rounded.clip`) with a 1px sand border and a 3px chili left rail. New custom chrome uses a paper fold of 6px (`rounded.fold`) — the intended 4–6px step. Do not go to full Streamlit pills or iOS continuous corners. Charts are unrounded plot rectangles. Chili appears as a straight rail or a heat stop, never as a circular badge.
-
-**The Paper Fold Rule.** Custom corners are 6px (paper fold) or 2px (legacy clip on KPI slips). Never pills, never 16px+ “card” rounding, never circular avatars as decoration.
+`tick` 4px for inner controls (segmented items, checkboxes, table frames); `card` 8px for panels, tiles, buttons and the comanda body. The comanda's top edge is a row of 5px half-holes (CSS mask), its header sits over a 1.5px dashed rule.
 
 ## Components
 
-Clipped and clerical: paper forms, chili as a left stamp, widgets that look like a briefing desk rather than a product site.
-
 ### Buttons
-
-- **Shape:** Paper fold (6px). Not pills.
-- **Primary:** Burnt Chili fill, Warm Porcelain text. Streamlit `primaryColor`. Hover darkens to Chili Deep.
-- **Hover / Focus:** Darken chili; focus-visible is a 2px chili outline offset 2px, no glow.
-- **Ghost / suggested prompts:** Kraft Wash fill, Stone Ink text, optional 1px Sand Rule. Full-width in their column. “Nova conversa” is this treatment, not primary.
-
-### Cards / Containers
-
-- **Corner Style:** 2px clip on KPI slips (incumbent); 6px fold on any new custom card
-- **Background:** Kraft Wash for slips and sidebar; Warm Porcelain for the stage
-- **Shadow Strategy:** none (see Elevation)
-- **Border:** 1px Sand Rule; KPI slips add a 3px Burnt Chili left rail
-- **Internal Padding:** 0.7rem 0.9rem on KPI slips
+- **Primary** (`btn-primary`): crit fill, white text. One on the page: the open comanda's drill-down.
+- **Ink** (`btn-ink`): ink fill; secondary commitments such as Exportar, the agent's Enviar, Filtrar estas lojas and the trend zoom.
+- **Ghost** (`btn-ghost`): surface with rule border; everything else.
 
 ### Inputs / Fields
+Filter selects are surface boxes with a small label over the value; an active filter gets an ink border. Selected options use an ink checkbox. From `lg` up, Período, Cidade, Hub and Loja stay visible; Segmento, Canal and Modal live in the "Mais filtros" popover, which floats over the page instead of pushing it down. Below `lg` the bar collapses to one recorte summary ("Recorte · N / Rio de Janeiro · Editar") that opens a bottom sheet with every control, plus a "Comandas · N / X críticas" shortcut to the queue. Every active value also shows as a removable chip.
 
-- **Style:** Streamlit native on Kraft Wash sidebar. Do not restyle into dark glass or heavy outlines.
-- **Focus:** Framework focus; if customized, chili outline, not a glow ring.
-- **Error / Disabled:** Empty recorte is a warning banner that stops the stage — not a red input border theater.
+Table outliers (No prazo abaixo do recorte, cancelamento acima, ciclo fora do SLA) are flagged by the backend and drawn in ink with weight and an arrow mark, never in red: red stays with the comandas.
 
 ### Navigation
+The wine band holds product name, recorte summary, anchor links (Perguntar ao agente, API), API status dot and the theme toggle.
 
-- Sidebar **Recorte** is the only nav: header + caption, then period / city / cuisine / restaurant / customer type / status. Tabs (Tendência, Ranking, Operação) are in-page, with chili as the active indicator via Streamlit primary. No top marketing bar.
+### Comanda (signature component)
+The alert queue. Header: severity mark + `Nº 01 · CATEGORIA` in cond caps, severity word on the right in its state colour. Body: title, detail, then the **Ação** block in inverted ink. Footer: drill-down (primary) and Perguntar ao agente (ghost). Severity is a shape as well as a colour: filled dot (crítico), hollow ring (atenção), dash (observar). Motion: each new recorte reprints the queue, comandas unfolding top-down in order (40ms stagger, six steps max, 280ms each); opening one unfolds it over 280ms (`cubic-bezier(0.16, 1, 0.3, 1)`); collapsing folds it up in 160ms (`cubic-bezier(0.7, 0, 0.84, 0)`). All of it is skipped under reduced motion.
 
-### KPI slip (signature)
+### Motion
+Tokens live in `:root` (`--duration-*`, `--ease-*`, `--distance-*`, `--scale-*`, `--blur-*`, the transitions.dev scale); pick by usage, not by the nearest number. Closing is faster than opening, never delayed, and drops distance and blur. Only transform, opacity, filter and clip-path animate, and every motion has a reduced-motion path (instant or opacity only). The comanda reprint is the one authored moment; everything else is quiet and functional:
+- Menus (MultiSelect, Mais filtros): open 250ms from scale 0.97, close 150ms to 0.99, `--ease-smooth-out`.
+- Export dialog: open 250ms from scale 0.96, close 150ms; backdrop fades with it. Mobile recorte sheet: rises in 400ms, drops in 350ms.
+- Segmented controls and the period presets: one indicator slides between options in 250ms.
+- Values that change with the recorte (KPI figures, comanda counts) cross-fade only the changed digits, rising or falling with the value; never on first paint.
+- Content replacing a skeleton fades in from a 2px blur over 400ms, once. Icon swaps (theme, copy link) cross-fade with blur in 250ms.
+- The agent's wait is a shimmer over "Consultando o recorte…"; its answer rises 4px into place in 250ms.
 
-Kraft wash tile, 2px clip, 1px sand border, 3px chili left rail. Label in Warm Stone; value in Stone Ink. Six in a row. This is the product’s stamp — do not replace with gradient tiles, icons, or sparkline wallpaper.
-
-### Chart frame (signature)
-
-Transparent paper, porcelain plot, 15px left-aligned Stone Ink title, sand grid on Y only, Warm Stone ticks, chili (or the chili–stone colorway) for data. Mode bar off. Empty state is centered Warm Stone copy: “Sem dados no recorte.”
-
-### Alerts
-
-Streamlit semantic banners (`st.error` / `st.warning` / `st.success`), not custom chili cards. Title + detail + “Ação:” on one briefing block. Do not restyle them into toast stacks or icon tiles.
+### KPI grid
+Three operation cells joined by 1px rule gaps, each with cond label, figure, delta, a daily trail drawn in ink from the recorte's own time series, and a muted footnote. Volume KPIs sit in one tile below, inline.
 
 ## Do's and Don'ts
 
 ### Do:
-
-- **Do** keep Warm Porcelain as the stage and Kraft Wash as the Recorte rail and KPI slips.
-- **Do** use Burnt Chili as a stamp: 3px left rail, heat stop, primary action, the series that matters.
-- **Do** set Plotly paper transparent, plot porcelain, Y-grid sand, titles 15px Stone Ink, mode bar off.
-- **Do** cap the stage at 1400px and keep six KPI slips: operação (tempo, nota, cancelamento) then volume.
-- **Do** keep one sans (Source Sans Pro) and let size/weight rank the briefing.
+- Do keep every number tabular and every alert closed by an action.
+- Do use the wine ramp for data and ink for neutral emphasis.
+- Do encode severity by shape and colour together.
 
 ### Don't:
-
-- **Don't** use iFood red/magenta, wordmark, logo, or official visual identity.
-- **Don't** add drop shadows, glassmorphism, neon SaaS chrome, or purple AI-agent styling.
-- **Don't** fill backgrounds with chili or introduce a second accent family.
-- **Don't** add a display serif, decorative mono, emojis, or food-stock photography as decoration.
-- **Don't** pill-shape controls or round past the paper fold (6px) / clip (2px).
-- **Don't** invent lift on hover to “make it feel premium.” Flat is the doctrine.
+- Don't use red for selection, focus, filters or decorative icons.
+- Don't put the comanda picket or condensed caps on anything that isn't an alert ticket or a short label.
+- Don't add shadows, coloured side stripes on cards, or eyebrow labels above headings.
+- Don't use any delivery company's wordmark, logo, brand red or proprietary typeface.

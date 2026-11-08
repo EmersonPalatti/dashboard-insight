@@ -1,4 +1,5 @@
 import { ArrowDownRight, ArrowUpRight, Minus } from "lucide-react";
+import { Fragment, useState, type CSSProperties } from "react";
 import type { Metrics } from "@/lib/api/client";
 import { fmt } from "@/lib/format";
 import { island, useMeta, useRecorteQuery } from "@/lib/query";
@@ -60,8 +61,13 @@ const VOLUME: KpiDef[] = [
 function Delta({ def, current, previous }: { def: KpiDef; current: Metrics; previous?: Metrics | null }) {
   const a = current[def.key] as number | null;
   const b = previous?.[def.key] as number | null | undefined;
+  // A explicação "sem período anterior" fica uma vez, na linha do recorte; aqui só um traço mudo.
   if (a === null || b === null || b === undefined || (def.kind === "value" && b === 0)) {
-    return <span className="text-[0.8rem] text-muted">sem período anterior</span>;
+    return (
+      <span className="text-[0.8rem] text-muted" aria-hidden title="Sem período anterior para comparar">
+        —
+      </span>
+    );
   }
   const delta = def.kind === "rate" ? a - b : a / b - 1;
   const flat = Math.abs(delta) < (def.kind === "rate" ? 0.001 : 0.005);
@@ -73,8 +79,8 @@ function Delta({ def, current, previous }: { def: KpiDef; current: Metrics; prev
       : `${delta > 0 ? "+" : "−"}${fmt.num1(Math.abs(delta) * 100)}%`;
   return (
     <span
-      className={`inline-flex items-center gap-0.5 text-[0.8rem] font-semibold ${
-        good === null ? "text-muted" : good ? "text-good" : "text-chili"
+      className={`inline-flex items-center gap-0.5 text-[0.82rem] font-semibold ${
+        good === null ? "text-muted" : good ? "text-good" : "text-crit"
       }`}
       title="Contra o período anterior de mesmo tamanho"
     >
@@ -85,40 +91,124 @@ function Delta({ def, current, previous }: { def: KpiDef; current: Metrics; prev
   );
 }
 
-function Card({ def, current, previous, hero }: { def: KpiDef; current: Metrics; previous?: Metrics | null; hero?: boolean }) {
+type SeriesKey = "sla_rate" | "cycle_p50" | "cancel_rate";
+
+/** Histórico diário do próprio recorte (mesma consulta da Tendência, já em cache). */
+function Trail({ values, label }: { values: (number | null)[]; label: string }) {
+  const pts = values.map((v, i) => [i, v] as const).filter((p): p is readonly [number, number] => p[1] !== null);
+  if (pts.length < 2) return <div className="h-7" aria-hidden />;
+  const ys = pts.map((p) => p[1]);
+  const lo = Math.min(...ys);
+  const hi = Math.max(...ys);
+  const w = 100;
+  const h = 28;
+  const n = values.length - 1 || 1;
+  const d = pts
+    .map(([i, v], k) => `${k ? "L" : "M"}${((i / n) * w).toFixed(2)},${(h - 3 - ((v - lo) / (hi - lo || 1)) * (h - 6)).toFixed(2)}`)
+    .join("");
   return (
-    <div className={`slip relative overflow-hidden px-3.5 py-3 ${hero ? "border-l-[3px] border-l-chili" : ""}`}>
-      <p className="label">{def.label}</p>
-      <p className={`mt-0.5 font-bold tracking-tight tabular-nums ${hero ? "text-[1.7rem]" : "text-[1.35rem]"}`}>
-        {def.format(current[def.key] as number | null)}
-      </p>
-      <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+    <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" className="mt-2 block h-7 w-full" role="img" aria-label={label}>
+      <path d={d} fill="none" stroke="var(--ink)" strokeWidth="1.6" vectorEffect="non-scaling-stroke" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+interface FigureState {
+  value: number | null | undefined;
+  text: string;
+  /** Texto anterior: os dígitos que mudaram saem dele. Null na primeira renderização (sem animação). */
+  prev: string | null;
+  dir: 1 | -1;
+  /** Muda a cada troca de texto: a chave remonta os dígitos e a animação roda de novo. */
+  run: number;
+}
+
+/** Dígitos iguais ficam parados; os que mudaram trocam no lugar. Tamanho diferente: o texto inteiro sobe. */
+function Digits({ prev, next }: { prev: string; next: string }) {
+  if (prev === next) return <>{next}</>;
+  const from = Array.from(prev);
+  const to = Array.from(next);
+  if (from.length !== to.length) return <span className="digit-rise inline-block">{next}</span>;
+  return (
+    <>
+      {to.map((ch, i) =>
+        ch === from[i] ? (
+          <Fragment key={i}>{ch}</Fragment>
+        ) : (
+          <span key={i} className="relative inline-block">
+            <span className="digit-fall absolute inset-0 text-center">{from[i]}</span>
+            <span className="digit-rise inline-block">{ch}</span>
+          </span>
+        ),
+      )}
+    </>
+  );
+}
+
+/**
+ * Valor do KPI que muda no lugar quando o recorte muda. Sobe se o número aumentou, desce se caiu.
+ * A primeira renderização não anima. O leitor de tela lê o texto completo uma vez (sr-only);
+ * a parte animada é aria-hidden, então não há fragmentos de dígito.
+ */
+function KpiFigure({ value, format, className }: { value: number | null | undefined; format: KpiDef["format"]; className: string }) {
+  const [state, setState] = useState<FigureState>(() => ({ value, text: format(value), prev: null, dir: 1, run: 0 }));
+  let view = state;
+  if (value !== state.value) {
+    const text = format(value);
+    const dir = value == null || state.value == null || value >= state.value ? 1 : -1;
+    view = text === state.text ? { ...state, value } : { value, text, prev: state.text, dir, run: state.run + 1 };
+    setState(view);
+  }
+  const { text, prev, dir, run } = view;
+  return (
+    <span className={className}>
+      <span aria-hidden="true" style={{ "--digit-dir": dir } as CSSProperties}>
+        {prev === null ? text : <Digits key={run} prev={prev} next={text} />}
+      </span>
+      <span className="sr-only">{text}</span>
+    </span>
+  );
+}
+
+function Hero({ def, current, previous, trail }: { def: KpiDef; current: Metrics; previous?: Metrics | null; trail?: (number | null)[] }) {
+  return (
+    <div className="min-w-0 bg-surface px-4 pt-3.5 pb-3">
+      <p className="cond text-[0.78rem] font-bold text-muted">{def.label}</p>
+      <KpiFigure className="figure mt-1.5 block text-[2.6rem]" value={current[def.key] as number | null} format={def.format} />
+      <div className="mt-1">
         <Delta def={def} current={current} previous={previous} />
       </div>
-      {def.sub && <p className="mt-1 truncate text-[0.8rem] text-muted">{def.sub(current)}</p>}
+      {trail && <Trail values={trail} label={`${def.label} por dia no recorte`} />}
+      {def.sub && <p className="mt-1.5 truncate text-[0.8rem] text-muted">{def.sub(current)}</p>}
+    </div>
+  );
+}
+
+function Volume({ def, current, previous }: { def: KpiDef; current: Metrics; previous?: Metrics | null }) {
+  return (
+    <div className="min-w-0 px-4 py-3">
+      <p className="flex flex-wrap items-baseline gap-x-2">
+        <span className="text-[0.88rem] text-muted">{def.label}</span>
+        <KpiFigure className="figure text-[1.45rem]" value={current[def.key] as number | null} format={def.format} />
+        <Delta def={def} current={current} previous={previous} />
+      </p>
+      {def.sub && <p className="mt-0.5 truncate text-[0.8rem] text-muted">{def.sub(current)}</p>}
     </div>
   );
 }
 
 function KpiSkeleton() {
   return (
-    <div className="grid gap-2">
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-        {[0, 1, 2].map((i) => (
-          <div key={i} className="skeleton h-[112px]" />
-        ))}
-      </div>
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-        {[0, 1, 2].map((i) => (
-          <div key={i} className="skeleton h-[100px]" />
-        ))}
-      </div>
+    <div className="grid gap-2.5">
+      <div className="skeleton h-[188px]" />
+      <div className="skeleton h-[72px]" />
     </div>
   );
 }
 
 function KpiStripInner() {
   const { data, error, isPending, refetch, isPlaceholderData } = useRecorteQuery("/api/kpis");
+  const { data: series } = useRecorteQuery("/api/timeseries", { grain: "day" });
   const { data: meta } = useMeta();
   if (isPending) return <KpiSkeleton />;
   if (error) return <ErrorState error={error} onRetry={() => refetch()} />;
@@ -126,17 +216,25 @@ function KpiStripInner() {
 
   if (current.orders === 0) {
     return (
-      <div className="slip border-l-[3px] border-l-chili p-4">
+      <div className="tile p-4">
         <p className="font-semibold">Nenhum pedido neste recorte.</p>
         <p className="label">Afrouxe período, hub ou loja. Os painéis abaixo ficam vazios até lá.</p>
       </div>
     );
   }
 
+  const trail = (k: SeriesKey) => (series && series.length > 1 ? series.map((p) => p[k]) : undefined);
+  // Resumo para leitor de tela: só os três KPIs de operação, com os mesmos formatadores dos cartões.
+  const summary = `Recorte atualizado: SLA ${fmt.pct(current.sla_rate)}, ciclo mediano ${fmt.min(current.cycle_p50)}, cancelamento ${fmt.pct(current.cancel_rate)}.`;
+
   return (
-    <div className={`grid gap-2 transition-opacity ${isPlaceholderData ? "opacity-60" : ""}`} aria-live="polite">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <p className="label">
+    <div className={`content-reveal grid gap-2.5 transition-opacity ${isPlaceholderData ? "opacity-60" : ""}`}>
+      {/* Vazio durante o dim: o recorte antigo não é anunciado como se fosse o novo. */}
+      <p className="sr-only" aria-live="polite" aria-atomic="true">
+        {isPlaceholderData ? "" : summary}
+      </p>
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 px-0.5">
+        <p className="text-[0.88rem] text-muted">
           {fmt.date(period.start)} a {fmt.date(period.end)}
           {previous_period
             ? ` · comparado com ${fmt.date(previous_period.start)} a ${fmt.date(previous_period.end)}`
@@ -148,18 +246,18 @@ function KpiStripInner() {
           </p>
         )}
       </div>
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-px overflow-hidden rounded-card border border-rule bg-rule sm:grid-cols-3">
         {OPERATION.map((def) => (
-          <Card key={def.key} def={def} current={current} previous={previous} hero />
+          <Hero key={def.key} def={def} current={current} previous={previous} trail={trail(def.key as SeriesKey)} />
         ))}
       </div>
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+      <div className="tile grid grid-cols-1 divide-y divide-rule sm:grid-cols-3 sm:divide-x sm:divide-y-0">
         {VOLUME.map((def) => (
-          <Card key={def.key} def={def} current={current} previous={previous} />
+          <Volume key={def.key} def={def} current={current} previous={previous} />
         ))}
       </div>
     </div>
   );
 }
 
-export default island(KpiStripInner, 236);
+export default island(KpiStripInner, 300);

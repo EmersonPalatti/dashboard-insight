@@ -98,6 +98,14 @@ class BreakdownRow(Metrics):
     key: str | int
     label: str
     parent: str | None
+    sla_below: bool = Field(
+        default=False,
+        description="No prazo abaixo do SLA do recorte em mais de 5 pontos percentuais",
+    )
+    cancel_above: bool = Field(
+        default=False,
+        description="Cancelamento acima de 1,6x o do recorte e de pelo menos 6%",
+    )
 
 
 class BreakdownResponse(BaseModel):
@@ -149,6 +157,7 @@ class Alert(BaseModel):
 
 class AlertsResponse(BaseModel):
     alerts: list[Alert]
+    orders: int = Field(description="Pedidos no recorte; 0 significa que não há base para afirmar SLA ou cancelamento.")
 
 
 class ChatTurn(BaseModel):

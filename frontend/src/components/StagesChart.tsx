@@ -23,7 +23,7 @@ function StagesChartInner() {
 
   const option = useCallback(
     (t: Tokens) => {
-      const colors = [t.chili, t.amber, t.muted, t.chiliDeep];
+      const colors = [t.seriesDeep, t.series, t.seriesSoft, t.muted];
       return {
         grid: { left: 8, right: 24, top: 30, bottom: 8, containLabel: true },
         legend: { top: 0, left: 0, itemWidth: 12, itemHeight: 8 },
@@ -61,17 +61,19 @@ function StagesChartInner() {
       ) : rows.length === 0 ? (
         <Empty>Nenhum hub com 200+ pedidos no recorte.</Empty>
       ) : (
-        <EChart
-          option={option}
-          height={Math.max(220, rows.length * 26 + 50)}
-          ariaLabel="Barras empilhadas com a mediana de cada etapa por hub"
-          onEvents={{
-            click: (p: { dataIndex: number }) => {
-              const row = rows[p.dataIndex];
-              if (row) applyDrilldown({ hub: [Number(row.key)] });
-            },
-          }}
-        />
+        <div className="content-reveal min-w-0">
+          <EChart
+            option={option}
+            height={Math.max(220, rows.length * 26 + 50)}
+            ariaLabel="Barras empilhadas com a mediana de cada etapa por hub"
+            onEvents={{
+              click: (p: { dataIndex: number }) => {
+                const row = rows[p.dataIndex];
+                if (row) applyDrilldown({ hub: [Number(row.key)] });
+              },
+            }}
+          />
+        </div>
       )}
     </Panel>
   );

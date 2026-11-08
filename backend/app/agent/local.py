@@ -9,7 +9,7 @@ from app.alerts import STAGES, detect_alerts
 from app.filters import Filters
 from app.repository import Repository
 
-SEVERITY = {"high": "alta", "medium": "média", "low": "baixa"}
+SEVERITY = {"high": "Crítico", "medium": "Atenção", "low": "Observar"}
 WEEKDAYS = ["segunda", "terça", "quarta", "quinta", "sexta", "sábado", "domingo"]
 SUGGESTIONS = (
     "Tente perguntar: \"quais os alertas?\", \"onde está o gargalo?\", \"quais lojas cancelam mais?\", "

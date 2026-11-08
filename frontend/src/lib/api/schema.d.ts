@@ -204,6 +204,11 @@ export interface components {
         AlertsResponse: {
             /** Alerts */
             alerts: components["schemas"]["Alert"][];
+            /**
+             * Orders
+             * @description Pedidos no recorte; 0 significa que não há base para afirmar SLA ou cancelamento.
+             */
+            orders: number;
         };
         /** BreakdownResponse */
         BreakdownResponse: {
@@ -271,6 +276,18 @@ export interface components {
             label: string;
             /** Parent */
             parent: string | null;
+            /**
+             * Sla Below
+             * @description No prazo abaixo do SLA do recorte em mais de 5 pontos percentuais
+             * @default false
+             */
+            sla_below: boolean;
+            /**
+             * Cancel Above
+             * @description Cancelamento acima de 1,6x o do recorte e de pelo menos 6%
+             * @default false
+             */
+            cancel_above: boolean;
         };
         /** ChatRequest */
         ChatRequest: {

@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { fmt, WEEKDAYS } from "@/lib/format";
 import { island, useRecorteQuery } from "@/lib/query";
 import { EChart, type Tokens } from "./charts/EChart";
@@ -15,23 +15,26 @@ const METRICS: Record<Metric, { label: string; format: (v: number) => string; wo
 
 const HOURS = Array.from({ length: 24 }, (_, h) => `${String(h).padStart(2, "0")}h`);
 const MIN_ORDERS = 20; // células com pouco pedido viram ruído em taxas
+const CHART_H = 300;
 
 function HeatmapChartInner() {
   const [metric, setMetric] = useState<Metric>("orders");
   const { data, error, isPending, refetch, isPlaceholderData } = useRecorteQuery("/api/heatmap");
   const cells = data ?? [];
+  // Células que entram no mapa para a métrica atual: taxas só com MIN_ORDERS pedidos e valor presente.
+  const usable = useMemo(
+    () => cells.filter((c) => (metric === "orders" || c.orders >= MIN_ORDERS) && c[metric] !== null),
+    [cells, metric],
+  );
 
   const option = useCallback(
     (t: Tokens) => {
       const m = METRICS[metric];
-      const values = cells
-        .filter((c) => metric === "orders" || c.orders >= MIN_ORDERS)
-        .map((c) => [c.hour, c.weekday, c[metric], c.orders] as const)
-        .filter((v) => v[2] !== null);
+      const values = usable.map((c) => [c.hour, c.weekday, c[metric], c.orders] as const);
       const nums = values.map((v) => v[2] as number);
       const lo = Math.min(...nums);
       const hi = Math.max(...nums);
-      const scale = [t.paper, t.chiliSoft, t.chili, t.chiliDeep];
+      const scale = [t.sunken, t.seriesSoft, t.series, t.seriesDeep];
       return {
         grid: { left: 44, right: 12, top: 8, bottom: 56 },
         tooltip: {
@@ -58,13 +61,13 @@ function HeatmapChartInner() {
           {
             type: "heatmap",
             data: values,
-            itemStyle: { borderColor: t.paper, borderWidth: 1 },
+            itemStyle: { borderColor: t.surface, borderWidth: 1 },
             emphasis: { itemStyle: { borderColor: t.ink, borderWidth: 1 } },
           },
         ],
       };
     },
-    [cells, metric],
+    [usable, metric],
   );
 
   return (
@@ -82,13 +85,34 @@ function HeatmapChartInner() {
       }
     >
       {isPending ? (
-        <Skeleton height={300} />
+        <Skeleton height={CHART_H} />
       ) : error ? (
         <ErrorState error={error} onRetry={() => refetch()} />
-      ) : cells.length === 0 ? (
-        <Empty />
       ) : (
-        <EChart option={option} height={300} ariaLabel={`Mapa de calor de ${METRICS[metric].label} por dia e hora`} />
+        <div className="content-reveal min-w-0">
+          {usable.length === 0 ? (
+            // Mesma altura do gráfico: trocar de estado não empurra o layout.
+            <div className="flex items-center justify-center" style={{ height: CHART_H }}>
+              <Empty>
+                {/* Empty é flex em linha: um único filho bloco mantém as duas linhas empilhadas. */}
+                <span className="block">
+                  <span className="block font-semibold text-ink">
+                    {cells.length === 0
+                      ? "Sem pedidos neste recorte para montar o mapa de calor."
+                      : `Nenhuma faixa de dia e hora chega a ${MIN_ORDERS} pedidos neste recorte.`}
+                  </span>
+                  <span className="mt-1 block text-[0.85rem]">
+                    {cells.length === 0
+                      ? "Afrouxe o período ou tire um filtro de hub, loja ou cidade para ver as faixas."
+                      : "Troque a métrica para Pedidos ou amplie o período para as taxas aparecerem."}
+                  </span>
+                </span>
+              </Empty>
+            </div>
+          ) : (
+            <EChart option={option} height={CHART_H} ariaLabel={`Mapa de calor de ${METRICS[metric].label} por dia e hora`} />
+          )}
+        </div>
       )}
     </Panel>
   );

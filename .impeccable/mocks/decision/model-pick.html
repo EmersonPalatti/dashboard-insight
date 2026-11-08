@@ -1,0 +1,34 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0}body{width:1440px;height:900px;overflow:hidden;background:#fff;font-family:Archivo,sans-serif;color:#1A1A1A;font-variant-numeric:tabular-nums}
+header{display:flex;align-items:center;gap:24px;padding:0 40px;height:72px;border-bottom:1px solid #F2F2F2}
+header h1{font-size:22px;font-weight:600}header nav{display:flex;gap:24px;font-size:15px;color:#3E3E3E}header nav .on{color:#D92B20}
+header .btn{margin-left:auto}
+.btn{border-radius:8px;padding:10px 18px;font-size:15px;font-weight:500}.btn.p{background:#D92B20;color:#fff}.btn.t{color:#D92B20}
+.hero{background:#F7F7F7;padding:24px 40px;display:flex;gap:12px;align-items:center}
+.f{background:#fff;border:1px solid #DCDCDC;border-radius:8px;padding:10px 14px;font-size:15px;color:#717171}.f b{color:#1A1A1A;font-weight:500}
+.seg{display:grid;grid-template-columns:1fr 1fr 2fr;gap:16px;padding:24px 40px 0}
+.tile{border-radius:12px;padding:20px;color:#fff;height:150px;display:flex;flex-direction:column;justify-content:space-between}
+.tile .t{font-size:24px;font-weight:500}.tile .v{font-size:44px;font-weight:600}.tile small{font-size:14px;opacity:.9;display:block}
+.food{background:#C21D3B}.goods{background:#7E9F22}
+.kp{border:1px solid #DCDCDC;border-radius:12px;padding:20px;display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.kp .l{font-size:14px;color:#717171}.kp .v{font-size:32px;font-weight:600;margin-top:6px}.kp .d{font-size:13px;color:#C21D3B;margin-top:2px}
+.row{display:grid;grid-template-columns:2fr 1fr;gap:16px;padding:16px 40px}
+.card{border:1px solid #DCDCDC;border-radius:12px;padding:20px}.card h2{font-size:20px;font-weight:500;margin-bottom:14px}
+.al{display:flex;gap:14px;padding:14px 0;border-top:1px solid #F2F2F2}.al:first-of-type{border-top:0}
+.al .ic{width:44px;height:44px;border-radius:50%;background:#FBE3E5;color:#C21D3B;display:grid;place-items:center;font-weight:700;flex:none}
+.al h3{font-size:16px;font-weight:500}.al p{font-size:14px;color:#717171;margin-top:4px;line-height:1.4}
+</style></head><body>
+<header><h1>Central de Operações</h1><nav><span class="on">Recorte</span><span>Pedidos</span><span>Agente</span></nav><span class="btn t">API (Swagger)</span><span class="btn p">Exportar</span></header>
+<div class="hero"><span class="f">Período <b>01–31/03/2021</b></span><span class="f">Cidade <b>Curitiba</b></span><span class="f">Hubs <b>8, 13</b></span><span class="f">Modal <b>todos</b></span><span class="btn p" style="margin-left:auto">Aplicar</span></div>
+<div class="seg"><div class="tile food"><span class="t">Food</span><span><span class="v">24.906</span><small>pedidos · SLA 79,8%</small></span></div>
+<div class="tile goods"><span class="t">Goods</span><span><span class="v">3.506</span><small>pedidos · SLA 92,1%</small></span></div>
+<div class="kp"><div><div class="l">SLA no prazo</div><div class="v">81,4%</div><div class="d">−3,2 p.p.</div></div><div><div class="l">Ciclo mediano</div><div class="v">47 min</div><div class="d">+6 min</div></div><div><div class="l">Cancelamento</div><div class="v">4,6%</div><div class="d" style="color:#4F7A12">−0,4 p.p.</div></div></div></div>
+<div class="row"><div class="card"><h2>Volume por dia</h2>
+<svg width="100%" height="330" viewBox="0 0 860 330" preserveAspectRatio="none"><polyline fill="none" stroke="#C21D3B" stroke-width="3" points="0,180 60,170 120,150 180,190 240,160 300,140 360,120 420,175 480,160 540,140 600,120 660,170 720,150 780,130 860,110"/><polyline fill="none" stroke="#7E9F22" stroke-width="3" points="0,290 120,286 240,288 360,280 480,284 600,278 720,282 860,276"/></svg></div>
+<div class="card"><h2>Alertas</h2>
+<div class="al"><span class="ic">!</span><div><h3>Preparo puxa o ciclo do Hub 13</h3><p>31 min de mediana. Ligar para as 5 lojas mais lentas antes das 18h.</p></div></div>
+<div class="al"><span class="ic">!</span><div><h3>Loja 7f3a… cancela 97%</h3><p>Tirar do ar e abrir chamado hoje.</p></div></div>
+<div class="al"><span class="ic">!</span><div><h3>Pico de sexta no Hub 8</h3><p>SLA −9 p.p. entre 19h e 21h. Reforçar frota às 18h30.</p></div></div></div></div>
+</body></html>

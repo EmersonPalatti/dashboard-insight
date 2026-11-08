@@ -29,15 +29,16 @@ export function tokens() {
   const css = getComputedStyle(document.documentElement);
   const v = (name: string) => css.getPropertyValue(name).trim();
   return {
-    paper: v("--paper"),
-    kraft: v("--kraft"),
+    surface: v("--surface"),
+    sunken: v("--sunken"),
     rule: v("--rule"),
     ink: v("--ink"),
     muted: v("--muted"),
-    chili: v("--chili"),
-    chiliDeep: v("--chili-deep"),
-    chiliSoft: v("--chili-soft"),
-    amber: v("--amber"),
+    crit: v("--crit"),
+    warn: v("--warn"),
     good: v("--good"),
+    series: v("--series"),
+    seriesDeep: v("--series-deep"),
+    seriesSoft: v("--series-soft"),
   };
 }

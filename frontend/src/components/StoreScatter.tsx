@@ -33,13 +33,13 @@ function StoreScatterInner() {
         right: 8,
         top: 0,
         iconStyle: { borderColor: t.muted },
-        emphasis: { iconStyle: { borderColor: t.chili } },
+        emphasis: { iconStyle: { borderColor: t.ink } },
         feature: { brush: { type: ["rect", "clear"], title: { rect: "Selecionar área", clear: "Limpar seleção" } } },
       },
       brush: {
         toolbox: ["rect", "clear"],
         xAxisIndex: 0,
-        brushStyle: { color: `${t.chili}1f`, borderColor: t.chili, borderWidth: 1 },
+        brushStyle: { color: `${t.ink}14`, borderColor: t.ink, borderWidth: 1 },
         outOfBrush: { colorAlpha: 0.2 },
         throttleType: "debounce",
         throttleDelay: 200,
@@ -58,7 +58,7 @@ function StoreScatterInner() {
           type: "scatter",
           data: rows.map((r) => [r.orders, r[y]]),
           symbolSize: (_: unknown, p: { dataIndex: number }) => 5 + 18 * Math.sqrt((rows[p.dataIndex]?.gmv ?? 0) / maxGmv),
-          itemStyle: { color: t.chili, opacity: 0.55, borderColor: t.chiliDeep, borderWidth: 0.5 },
+          itemStyle: { color: t.series, opacity: 0.55, borderColor: t.seriesDeep, borderWidth: 0.5 },
           emphasis: { itemStyle: { opacity: 1 } },
           large: rows.length > 2000,
         },
@@ -99,7 +99,7 @@ function StoreScatterInner() {
       ) : rows.length === 0 ? (
         <Empty>Nenhuma loja com 30+ pedidos no recorte.</Empty>
       ) : (
-        <>
+        <div className="content-reveal min-w-0">
           <EChart
             key={y}
             option={option}
@@ -108,7 +108,7 @@ function StoreScatterInner() {
             ariaLabel={`Dispersão de lojas: pedidos contra ${Y_AXIS[y].label}`}
           />
           {picked.length > 0 && (
-            <div className="mt-2 flex flex-wrap items-center gap-2 rounded-fold bg-kraft px-3 py-2">
+            <div className="mt-2 flex flex-wrap items-center gap-2 rounded-card bg-sunken px-3 py-2">
               <p className="mr-auto text-[0.9rem]">
                 {picked.length} loja(s) selecionada(s):{" "}
                 <span className="text-muted">
@@ -124,7 +124,7 @@ function StoreScatterInner() {
               </button>
               <button
                 type="button"
-                className="btn-primary py-1"
+                className="btn-ink py-1"
                 onClick={() => {
                   patchFilters({ store: picked.slice(0, 200).map((r) => Number(r.key)) });
                   setPicked([]);
@@ -134,7 +134,7 @@ function StoreScatterInner() {
               </button>
             </div>
           )}
-        </>
+        </div>
       )}
     </Panel>
   );

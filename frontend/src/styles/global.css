@@ -1,109 +1,266 @@
 @import "tailwindcss";
+/* Movimento por área: cada arquivo só declara utilities e keyframes da sua superfície. */
+@import "./motion-filters.css";
+@import "./motion-ui.css";
+@import "./motion-content.css";
 
 /* Dark mode por atributo: o script inline do layout resolve preferência do SO + escolha salva. */
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
 /*
- * Tokens "Praça Briefing Desk" (ver DESIGN.md): papel quente, kraft, régua de areia
- * e um único sinal cromático, o chili. Componentes usam só os nomes semânticos.
+ * Tokens "Comanda" (ver DESIGN.md): campo cinza frio, superfícies brancas,
+ * faixa vinho no topo, série de dados em vinho e o vermelho reservado para
+ * o que é crítico. Componentes usam só os nomes semânticos.
  */
 :root {
-  --paper: #fffbf7;
-  --kraft: #f3ebe3;
-  --kraft-strong: #ebe0d5;
-  --rule: #e7d8c9;
-  --ink: #1c1917;
-  --muted: #78716c;
-  --chili: #c2410c;
-  --chili-deep: #7c2d12;
-  --chili-soft: #fed7aa;
-  --amber: #b45309;
-  --good: #3f6212;
+  --field: #ececec;
+  --surface: #ffffff;
+  --sunken: #f5f5f5;
+  --sunken-strong: #e8e8e8;
+  --rule: #dcdcdc;
+  --ink: #1a1a1a;
+  --muted: #666666;
+  --crit: #d92b20;
+  --crit-deep: #a51e16;
+  --crit-soft: #fbe1de;
+  --warn: #946000;
+  --good: #46700f;
+  --wine: #3d0b1f;
+  --wine-raised: #5a1730;
+  --on-wine: #f1dbe3;
+  /* sinais sobre a faixa vinho: a faixa é escura nos dois temas */
+  --shell-good: #9bc75a;
+  --shell-crit: #ff6a5e;
+  --shell-warn: #f0a93b;
+  --series: #7a1e3d;
+  --series-deep: #4a0f25;
+  --series-soft: #e7b3c4;
   color-scheme: light;
+
+  /*
+   * Escala de movimento (transitions.dev). Escolha pelo uso, não pelo número
+   * mais próximo: fechar é mais rápido que abrir, atraso só para stagger ou
+   * intenção, nunca em fechamento.
+   */
+  --duration-stagger: 40ms; /* passo de stagger por item */
+  --duration-micro: 80ms; /* atraso de tooltip, segmento de shake */
+  --duration-quick: 150ms; /* fechar menu/modal, troca de texto, tooltip */
+  --duration-fast: 250ms; /* abrir menu/modal, troca de ícone, abas, acordeão */
+  --duration-medium: 350ms; /* fechar painel/folha, fechar toast */
+  --duration-slow: 400ms; /* abrir painel/folha, skeleton → conteúdo */
+  --duration-very-slow: 500ms; /* momento de ênfase, revelação de texto */
+  --ease-smooth-out: cubic-bezier(0.22, 1, 0.36, 1); /* abrir/fechar superfícies, deslocamento, resize */
+  --ease-in-out: ease-in-out; /* troca de ícone/texto, revelação */
+  --ease-out: ease-out; /* tooltip */
+  --ease-linear: linear; /* pulso de skeleton, spinner */
+  --distance-micro: 4px; /* troca de texto */
+  --distance-small: 6px;
+  --distance-base: 8px; /* deslocamento de página/folha curta */
+  --distance-medium: 12px; /* revelação de texto */
+  --scale-large: 0.96; /* modal */
+  --scale-medium: 0.97; /* menu abrindo */
+  --scale-small: 0.98; /* tooltip */
+  --scale-tiny: 0.99; /* menu fechando */
+  --blur-small: 2px; /* troca de ícone/texto, skeleton → conteúdo */
+  --blur-medium: 3px; /* revelação de texto */
 }
 
 :root[data-theme="dark"] {
-  --paper: #161311;
-  --kraft: #211c19;
-  --kraft-strong: #2b2420;
-  --rule: #3a312b;
-  --ink: #f5efe9;
-  --muted: #a8a29e;
-  --chili: #f07a43;
-  --chili-deep: #fdba74;
-  --chili-soft: #4a2414;
-  --amber: #f59e0b;
-  --good: #a3c76b;
+  --field: #111111;
+  --surface: #1b1b1b;
+  --sunken: #232323;
+  --sunken-strong: #2d2d2d;
+  --rule: #353535;
+  --ink: #f2f2f2;
+  --muted: #a6a6a6;
+  --crit: #ff5d50;
+  --crit-deep: #ff9086;
+  --crit-soft: #3d1613;
+  --warn: #f0a93b;
+  --good: #9bc75a;
+  --wine: #26060f;
+  --wine-raised: #45112a;
+  --on-wine: #e6c3cf;
+  --series: #e0789a;
+  --series-deep: #f4b8cb;
+  --series-soft: #5c2337;
   color-scheme: dark;
 }
 
 @theme inline {
-  --font-sans: "Source Sans 3", ui-sans-serif, system-ui, sans-serif;
-  --color-paper: var(--paper);
-  --color-kraft: var(--kraft);
-  --color-kraft-strong: var(--kraft-strong);
+  --font-sans: "Archivo", ui-sans-serif, system-ui, sans-serif;
+  --color-field: var(--field);
+  --color-surface: var(--surface);
+  --color-sunken: var(--sunken);
+  --color-sunken-strong: var(--sunken-strong);
   --color-rule: var(--rule);
   --color-ink: var(--ink);
   --color-muted: var(--muted);
-  --color-chili: var(--chili);
-  --color-chili-deep: var(--chili-deep);
-  --color-chili-soft: var(--chili-soft);
-  --color-amber: var(--amber);
+  --color-crit: var(--crit);
+  --color-crit-deep: var(--crit-deep);
+  --color-crit-soft: var(--crit-soft);
+  --color-warn: var(--warn);
   --color-good: var(--good);
-  --radius-clip: 2px;
-  --radius-fold: 6px;
+  --color-wine: var(--wine);
+  --color-wine-raised: var(--wine-raised);
+  --color-on-wine: var(--on-wine);
+  --color-shell-good: var(--shell-good);
+  --color-shell-crit: var(--shell-crit);
+  --color-shell-warn: var(--shell-warn);
+  --color-series: var(--series);
+  --radius-tick: 4px;
+  --radius-card: 8px;
 }
 
 @layer base {
   html {
-    background: var(--paper);
+    background: var(--field);
     color: var(--ink);
     font-family: var(--font-sans);
+    font-variant-numeric: tabular-nums;
     -webkit-font-smoothing: antialiased;
+    scrollbar-color: var(--rule) transparent;
   }
   body {
-    background: var(--paper);
+    background: var(--field);
     min-height: 100dvh;
   }
   :focus-visible {
-    outline: 2px solid var(--chili);
+    outline: 2px solid var(--ink);
     outline-offset: 2px;
   }
+  /* Sobre a faixa vinho, --ink não tem contraste: o foco usa a cor do texto da faixa. */
+  .bg-wine :focus-visible {
+    outline-color: var(--on-wine);
+  }
   ::selection {
-    background: var(--chili-soft);
+    background: var(--series-soft);
+    color: var(--ink);
+  }
+  input,
+  textarea {
+    caret-color: var(--crit);
   }
 }
 
-@utility slip {
-  @apply rounded-clip border border-rule bg-kraft;
+/* Voz condensada: só rótulos curtos e cabeçalhos de comanda. */
+@utility cond {
+  font-stretch: 72%;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* Número de destaque: largura estreita para caber em colunas sem perder corpo. */
+@utility figure {
+  font-stretch: 80%;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.05;
+}
+
+@utility tile {
+  @apply rounded-card border border-rule bg-surface;
 }
 
 @utility panel {
-  @apply rounded-fold border border-rule bg-paper;
+  @apply rounded-card border border-rule bg-surface;
+}
+
+/*
+ * Comanda: papel picotado no topo (máscara com furos), linha tracejada sob o
+ * cabeçalho. Só alertas usam; fora deles vira fantasia.
+ */
+@utility ticket {
+  border-radius: 0 0 var(--radius-card) var(--radius-card);
+  -webkit-mask: radial-gradient(circle 5px at 7px 0, #0000 98%, #000) 0 0 / 14px 100% repeat-x;
+  mask: radial-gradient(circle 5px at 7px 0, #0000 98%, #000) 0 0 / 14px 100% repeat-x;
+}
+
+/* A comanda aberta desdobra de cima para baixo, como papel saindo da impressora. */
+@keyframes ticket-unfold {
+  from {
+    clip-path: inset(0 0 55% 0);
+    opacity: 0.6;
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+    opacity: 1;
+  }
+}
+
+@utility ticket-open {
+  animation: ticket-unfold 280ms cubic-bezier(0.16, 1, 0.3, 1);
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
+}
+
+/* Reimpressão do recorte: a fila sai em ordem, 40ms por comanda (--i vai até 5). */
+@utility ticket-print {
+  animation: ticket-unfold 280ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: calc(var(--i, 0) * var(--duration-stagger));
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
+}
+
+/* Recolher: a comanda dobra para cima e some. O fill "forwards" segura o fim até o componente trocar. */
+@keyframes ticket-fold {
+  from {
+    clip-path: inset(0 0 0 0);
+    opacity: 1;
+  }
+  to {
+    clip-path: inset(0 0 55% 0);
+    opacity: 0.6;
+  }
+}
+
+@utility ticket-fold {
+  animation: ticket-fold 160ms cubic-bezier(0.7, 0, 0.84, 0) forwards;
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
+}
+
+/*
+ * A máscara corta tudo fora da caixa, e os furos ocupam os primeiros 5px do topo.
+ * O contorno da comanda fechada fica 6px para dentro, abaixo dos furos.
+ */
+.ticket > h3 > button:focus-visible {
+  outline-offset: -6px;
 }
 
 @utility btn {
-  @apply inline-flex items-center gap-1.5 rounded-fold px-3 py-1.5 text-[0.92rem] leading-tight transition-colors disabled:opacity-50;
+  @apply inline-flex items-center gap-1.5 rounded-card px-3 py-1.5 text-[0.92rem] leading-tight font-medium transition-colors disabled:opacity-50;
 }
 
+/* Ação principal: vermelho só onde a tela pede para agir. */
 @utility btn-primary {
-  @apply btn bg-chili text-paper hover:bg-chili-deep dark:text-[#161311];
+  @apply btn bg-crit text-white hover:bg-crit-deep dark:text-[#1b1b1b];
+}
+
+@utility btn-ink {
+  @apply btn bg-ink text-surface hover:opacity-85;
 }
 
 @utility btn-ghost {
-  @apply btn border border-rule bg-kraft text-ink hover:bg-kraft-strong;
+  @apply btn border border-rule bg-surface text-ink hover:bg-sunken;
 }
 
 @utility label {
-  @apply text-[0.92rem] text-muted;
+  @apply text-[0.9rem] text-muted;
 }
 
 @utility section-title {
-  @apply text-[15px] font-semibold text-ink;
+  @apply text-base font-semibold text-ink;
 }
 
 @utility skeleton {
-  @apply animate-pulse rounded-clip bg-kraft;
+  @apply animate-pulse rounded-card bg-sunken-strong;
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
 }
 
 @media print {
@@ -111,7 +268,20 @@
     display: none !important;
   }
   .panel,
-  .slip {
+  .tile,
+  .ticket {
     break-inside: avoid;
+  }
+}
+
+/* Rede de segurança para movimento reduzido: rolagem instantânea e sem pulso. Transições de cor continuam. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+  }
+  .animate-pulse {
+    animation: none !important;
   }
 }
