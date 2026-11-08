@@ -55,17 +55,17 @@ function TopBarStatusInner() {
           }`}
           aria-hidden
         />
-        {/* key no status: cada mudança remonta o texto, que entra de baixo com desfoque. */}
+        {/* key no status: cada mudança remonta o texto, que entra de baixo com desfoque. Abaixo de sm o texto some visualmente, mas segue no DOM para a leitura de tela. */}
         <span
           key={status}
-          className="inline-block transition-[opacity,translate,filter] duration-(--duration-quick) ease-(--ease-in-out) starting:translate-y-(--distance-micro) starting:opacity-0 starting:blur-(--blur-small) motion-reduce:transition-none"
+          className="sr-only sm:not-sr-only inline-block transition-[opacity,translate,filter] duration-(--duration-quick) ease-(--ease-in-out) starting:translate-y-(--distance-micro) starting:opacity-0 starting:blur-(--blur-small) motion-reduce:transition-none"
         >
           {text}
         </span>
       </span>
       <button
         type="button"
-        className="inline-flex size-10 items-center justify-center rounded-card text-on-wine transition-colors duration-(--duration-quick) hover:bg-wine-raised"
+        className="inline-flex size-10 items-center justify-center rounded-card text-on-wine transition-colors duration-(--duration-quick) hover:bg-wine-raised max-lg:-my-0.5 max-lg:size-11"
         onClick={() => setTheme(dark ? "light" : "dark")}
         aria-label={dark ? "Usar tema claro" : "Usar tema escuro"}
       >

@@ -1505,6 +1505,16 @@
             ],
             "title": "Cancel Rate"
           },
+          "measured": {
+            "type": "integer",
+            "title": "Measured",
+            "description": "Entregues com ciclo e sem presos: base do SLA e da mediana"
+          },
+          "low_sample": {
+            "type": "boolean",
+            "title": "Low Sample",
+            "description": "Base medida abaixo do mínimo do painel (MIN_MEASURED): SLA e ciclo mediano não são firmes"
+          },
           "cycle_p50": {
             "anyOf": [
               {
@@ -1688,6 +1698,8 @@
           "gmv",
           "ticket",
           "cancel_rate",
+          "measured",
+          "low_sample",
           "cycle_p50",
           "cycle_p90",
           "sla_rate",
@@ -2189,6 +2201,16 @@
             ],
             "title": "Cancel Rate"
           },
+          "measured": {
+            "type": "integer",
+            "title": "Measured",
+            "description": "Entregues com ciclo e sem presos: base do SLA e da mediana"
+          },
+          "low_sample": {
+            "type": "boolean",
+            "title": "Low Sample",
+            "description": "Base medida abaixo do mínimo do painel (MIN_MEASURED): SLA e ciclo mediano não são firmes"
+          },
           "cycle_p50": {
             "anyOf": [
               {
@@ -2334,6 +2356,8 @@
           "gmv",
           "ticket",
           "cancel_rate",
+          "measured",
+          "low_sample",
           "cycle_p50",
           "cycle_p90",
           "sla_rate",

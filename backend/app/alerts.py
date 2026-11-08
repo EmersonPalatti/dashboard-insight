@@ -11,7 +11,7 @@ from datetime import timedelta
 
 from app import fmt
 from app.filters import Filters
-from app.repository import Repository
+from app.repository import VALUE_LABELS, Repository
 from app.schemas import Alert, DrillDown
 
 SLA_HIGH = 0.80
@@ -54,6 +54,50 @@ def _hours_label(hours: list[int]) -> str:
     return "entre " + f"{min(hours):02d}h e {max(hours) + 1:02d}h"
 
 
+def _slowest_stage(row: dict) -> str | None:
+    """Etapa de maior mediana dentro da própria linha (usada quando não há hub para comparar)."""
+    known = {k: row[k] for k in STAGES if row.get(k) is not None}
+    return max(known, key=known.get) if known else None
+
+
+def _peak_clause(stage: str | None, peak: list[int]) -> str:
+    """Fecho da ação do SLA: a alavanca do pico depende da etapa que atrasa (frota só ajuda fora do preparo)."""
+    if not peak:
+        return ""
+    start = f"{min(peak):02d}h"
+    if stage == "production_p50":
+        return f" Antes das {start}, início da faixa de pico, revisar com as lojas o tempo de preparo informado."
+    return f" Reforçar a frota antes das {start}, início da faixa de pico."
+
+
+def _sla_action(base: dict, hubs: list[dict], peak: list[int]) -> str:
+    ranked = [h for h in hubs if h["sla_rate"] is not None]
+    if not ranked:
+        stage = _slowest_stage(base)
+        etapa = f", com {STAGES[stage]} como a etapa mais lenta" if stage else ""
+        hour = _peak_clause(stage, peak)
+        return (
+            f"Ligar hoje para o líder da operação do recorte: {fmt.pct(base['sla_rate'])} no prazo{etapa}.{hour}"
+        )
+    if len(ranked) == 1:
+        hub = ranked[0]
+        stage = _slowest_stage(hub)
+        etapa = f", com {STAGES[stage]} como a etapa mais lenta" if stage else ""
+        hour = _peak_clause(stage, peak)
+        return (
+            f"Ligar hoje para o líder do hub {hub['label']}: {fmt.pct(hub['sla_rate'])} no prazo "
+            f"neste recorte{etapa}.{hour}"
+        )
+    hub = min(ranked, key=lambda h: h["sla_rate"])
+    stage, gap = _worst_stage(hub, base)
+    etapa = f", com {STAGES[stage]} como a etapa mais lenta" if gap > 0 else ""
+    hour = _peak_clause(stage if gap > 0 else None, peak)
+    return (
+        f"Ligar hoje para o líder do hub {hub['label']}: {fmt.pct(hub['sla_rate'])} no prazo "
+        f"contra {fmt.pct(base['sla_rate'])} do recorte{etapa}.{hour}"
+    )
+
+
 def _stage_action(stage: str, hub: dict, repo: Repository, f: Filters, peak: list[int]) -> str:
     hub_filter = f.model_copy(update={"hub": [int(hub["key"])]})
     if stage == "production_p50":
@@ -61,16 +105,16 @@ def _stage_action(stage: str, hub: dict, repo: Repository, f: Filters, peak: lis
         slow = sorted((s for s in slow if s["production_p50"]), key=lambda s: -s["production_p50"])[:3]
         names = ", ".join(f"{s['label']} ({fmt.minutes(s['production_p50'])})" for s in slow)
         return (
-            f"Ligar para as lojas com preparo mais lento no {hub['label']}: {names}. "
+            f"Ligar para as lojas com preparo mais lento no hub {hub['label']}: {names}. "
             "Revisar o tempo de preparo informado e a pausa de cardápio no pico."
         )
     if stage in ("collected_p50", "expedition_p50"):
         return (
-            f"Gargalo dentro do {hub['label']}: revisar fila de coleta e posicionamento de entregadores "
+            f"Gargalo dentro do hub {hub['label']}: revisar fila de coleta e posicionamento de entregadores "
             f"no hub {_hours_label(peak)}. Meta: expedição abaixo da mediana do recorte."
         )
     return (
-        f"Trânsito longo no {hub['label']} (distância mediana {fmt.km(hub['distance_p50_km'])}): "
+        f"Trânsito longo no hub {hub['label']} (distância mediana {fmt.km(hub['distance_p50_km'])}): "
         f"reforçar motos {_hours_label(peak)} ou reduzir o raio de entrega no pico."
     )
 
@@ -101,7 +145,7 @@ def _detect(repo: Repository, f: Filters) -> list[Alert]:
                 f"goods ≤ {repo.sla_good_min} min). Ciclo mediano {fmt.minutes(base['cycle_p50'])}, "
                 f"p90 {fmt.minutes(base['cycle_p90'])}."
             ),
-            action="Atacar primeiro o hub com pior SLA (alerta abaixo) em vez da média do recorte.",
+            action=_sla_action(base, hubs, peak),
         ))
 
     # Hub com muito pedido preso é problema de dado (alerta 5), não de operação.
@@ -132,7 +176,10 @@ def _detect(repo: Repository, f: Filters) -> list[Alert]:
     if cancel >= CANCEL_WARN:
         segments = repo.breakdown(f, "segment", sort="cancel_rate", limit=5)
         worst = segments[0] if segments else None
-        where = f" Concentrado em {worst['label']} ({fmt.pct(worst['cancel_rate'])})." if worst else ""
+        where = (
+            f" Concentrado no segmento {VALUE_LABELS.get(worst['label'], worst['label'])} "
+            f"({fmt.pct(worst['cancel_rate'])})."
+        ) if worst else ""
         alerts.append(Alert(
             id="cancel-recorte",
             severity="high" if cancel >= CANCEL_HIGH else "medium",
@@ -155,7 +202,7 @@ def _detect(repo: Repository, f: Filters) -> list[Alert]:
                     f"{fmt.pct(hub['cancel_rate'])} de cancelamento ({hub['cancel_rate'] / cancel:.1f}× o recorte) "
                     f"em {fmt.integer(hub['orders'])} pedidos, {fmt.integer(hub['canceled'])} cancelados."
                 ),
-                action=f"Abrir as lojas do {hub['label']} por cancelamento e ligar para as duas primeiras hoje.",
+                action=f"Abrir as lojas do hub {hub['label']} por cancelamento e ligar para as duas primeiras hoje.",
                 drilldown=DrillDown(label=f"Ver só {hub['label']}", filters={"hub": [int(hub["key"])]}),
             ))
 
@@ -173,7 +220,7 @@ def _detect(repo: Repository, f: Filters) -> list[Alert]:
                 title=f"{'Loja sem entregas' if broken else 'Loja crítica'}: {store['label']}",
                 detail=(
                     f"{fmt.integer(store['canceled'])} cancelamentos em {fmt.integer(store['orders'])} pedidos "
-                    f"({fmt.pct(store['cancel_rate'])}) no {store['parent']}."
+                    f"({fmt.pct(store['cancel_rate'])}) no hub {store['parent']}."
                 ),
                 action=(
                     f"Tirar {store['label']} do ar hoje: com quase todo pedido cancelado, o problema é cadastro, "

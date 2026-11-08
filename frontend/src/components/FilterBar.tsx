@@ -27,11 +27,11 @@ function DesktopBar({ m, onExport }: { m: FilterModel; onExport: () => void }) {
 
       <div className="flex flex-wrap items-center gap-2">
         {m.chips.length === 0 ? (
-          <p className="label mr-auto">Recorte completo: todos os pedidos do período.</p>
+          <p className="label mr-auto text-pretty">Recorte completo: todos os pedidos do período.</p>
         ) : (
           <div className="mr-auto flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5">
             <ActiveChips chips={m.chips} />
-            <p className="label">Tudo abaixo segue este recorte.</p>
+            <p className="label text-pretty">Tudo abaixo segue este recorte.</p>
           </div>
         )}
         {m.active > 0 && (
@@ -98,7 +98,7 @@ function FilterBarInner() {
               </div>
               <div className="grid gap-2">
                 {m.chips.length === 0 ? (
-                  <p className="label">Recorte completo: todos os pedidos do período.</p>
+                  <p className="label text-pretty">Recorte completo: todos os pedidos do período.</p>
                 ) : (
                   <ActiveChips chips={m.chips} />
                 )}

@@ -141,7 +141,7 @@ export function ExportDialog({ open, onClose }: Props) {
             <h2 className="text-lg font-semibold">Exportar recorte</h2>
             <p className="label">Tudo segue os filtros ativos agora.</p>
           </div>
-          <button type="button" onClick={onClose} className="btn-ghost px-2" aria-label="Fechar">
+          <button type="button" onClick={onClose} className="btn-ghost px-2 max-lg:min-h-11 max-lg:min-w-11 max-lg:justify-center" aria-label="Fechar">
             <X className="size-4" aria-hidden />
           </button>
         </div>
@@ -150,7 +150,7 @@ export function ExportDialog({ open, onClose }: Props) {
             <FileSpreadsheet className="size-4 text-series" aria-hidden />
             <span>
               <span className="block font-semibold">Pedidos em CSV</span>
-              <span className="label">Uma linha por pedido, gerado no servidor via DuckDB.</span>
+              <span className="label">Uma linha por pedido, com o recorte atual.</span>
             </span>
           </a>
           <button type="button" className="btn-ghost justify-start py-3 text-left" onClick={copyBriefing} disabled={copied === "busy"}>

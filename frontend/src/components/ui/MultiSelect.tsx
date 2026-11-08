@@ -353,7 +353,7 @@ export function MultiSelect<V extends string | number>({
             </p>
           )}
           {ordered.length > maxVisible && (
-            <p className="px-2 py-1.5 text-[0.78rem] text-muted">+{ordered.length - maxVisible} opções. Refine a busca.</p>
+            <p className="px-2 py-1.5 text-pretty text-[0.78rem] text-muted">+{ordered.length - maxVisible} opções. Refine a busca.</p>
           )}
           {value.length > 0 && (
             <button type="button" onClick={clear} className="btn mt-1 w-full justify-center text-muted hover:text-ink">

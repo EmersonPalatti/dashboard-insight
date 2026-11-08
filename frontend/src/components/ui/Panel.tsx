@@ -16,11 +16,11 @@ export function Panel({ title, hint, actions, children, className = "", busy }: 
     <section className={`panel flex min-w-0 flex-col p-4 ${className}`}>
       <header className="mb-3 flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
-          <h2 className="section-title flex items-center gap-2">
+          <h2 className="section-title text-balance flex items-center gap-2">
             {title}
             {busy && <LoaderCircle aria-label="Atualizando" className="size-3.5 animate-spin text-muted motion-reduce:animate-none" />}
           </h2>
-          {hint && <p className="label mt-0.5">{hint}</p>}
+          {hint && <p className="label mt-0.5 text-pretty">{hint}</p>}
         </div>
         {actions && <div className="flex flex-wrap items-center gap-1.5">{actions}</div>}
       </header>
@@ -38,7 +38,7 @@ export function ErrorState({ error, onRetry }: { error: unknown; onRetry?: () =>
   return (
     <div className="flex min-h-32 flex-col items-center justify-center gap-2 text-center transition-opacity duration-(--duration-fast) starting:opacity-0 motion-reduce:transition-none">
       <TriangleAlert className="size-5 text-crit" aria-hidden />
-      <p className="label">Não deu para carregar: {message}</p>
+      <p className="label text-pretty">Não deu para carregar: {message}</p>
       {onRetry && (
         <button type="button" className="btn-ghost" onClick={onRetry}>
           Tentar de novo

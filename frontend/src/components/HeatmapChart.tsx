@@ -96,12 +96,12 @@ function HeatmapChartInner() {
               <Empty>
                 {/* Empty é flex em linha: um único filho bloco mantém as duas linhas empilhadas. */}
                 <span className="block">
-                  <span className="block font-semibold text-ink">
+                  <span className="block font-semibold text-balance text-ink">
                     {cells.length === 0
                       ? "Sem pedidos neste recorte para montar o mapa de calor."
                       : `Nenhuma faixa de dia e hora chega a ${MIN_ORDERS} pedidos neste recorte.`}
                   </span>
-                  <span className="mt-1 block text-[0.85rem]">
+                  <span className="mt-1 block text-pretty text-[0.85rem]">
                     {cells.length === 0
                       ? "Afrouxe o período ou tire um filtro de hub, loja ou cidade para ver as faixas."
                       : "Troque a métrica para Pedidos ou amplie o período para as taxas aparecerem."}

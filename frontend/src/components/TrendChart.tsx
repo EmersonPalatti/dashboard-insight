@@ -10,6 +10,9 @@ import { Empty, ErrorState, Panel, Segmented, Skeleton } from "./ui/Panel";
 type Grain = "hour" | "day" | "week";
 type View = "volume" | "sla" | "cancel";
 
+const GRAIN_LABEL: Record<Grain, string> = { hour: "Hora", day: "Dia", week: "Semana" };
+const VIEW_LABEL: Record<View, string> = { volume: "Volume", sla: "SLA e ciclo", cancel: "Cancelamento" };
+
 function TrendChartInner() {
   const [grain, setGrain] = useState<Grain>("day");
   const [view, setView] = useState<View>("volume");
@@ -164,21 +167,13 @@ function TrendChartInner() {
             label="Métrica"
             value={view}
             onChange={setView}
-            options={[
-              { value: "volume", label: "Volume" },
-              { value: "sla", label: "SLA e ciclo" },
-              { value: "cancel", label: "Cancelamento" },
-            ]}
+            options={(Object.keys(VIEW_LABEL) as View[]).map((value) => ({ value, label: VIEW_LABEL[value] }))}
           />
           <Segmented
             label="Granularidade"
             value={grain}
             onChange={setGrain}
-            options={[
-              { value: "hour", label: "Hora" },
-              { value: "day", label: "Dia" },
-              { value: "week", label: "Semana" },
-            ]}
+            options={(Object.keys(GRAIN_LABEL) as Grain[]).map((value) => ({ value, label: GRAIN_LABEL[value] }))}
           />
         </>
       }
@@ -196,7 +191,7 @@ function TrendChartInner() {
             height={340}
             onEvents={{ datazoom: onZoom }}
             onReady={(c) => (chart.current = c)}
-            ariaLabel={`Série ${view} por ${grain} no recorte`}
+            ariaLabel={`Série ${VIEW_LABEL[view]} por ${GRAIN_LABEL[grain].toLowerCase()} no recorte`}
           />
         </div>
       )}

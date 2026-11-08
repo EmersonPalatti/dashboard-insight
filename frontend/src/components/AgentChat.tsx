@@ -1,6 +1,6 @@
 import { useStore } from "@nanostores/react";
 import { useMutation } from "@tanstack/react-query";
-import { Bot, Cpu, RotateCcw, SendHorizontal, Wrench } from "lucide-react";
+import { Bot, ChevronDown, Cpu, RotateCcw, SendHorizontal, Wrench } from "lucide-react";
 import { atom } from "nanostores";
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { $agentDraft } from "@/lib/agentBridge";
@@ -28,6 +28,8 @@ const SUGGESTIONS = [
   "Como está o pico do jantar?",
   "Quanto estamos subsidiando de frete?",
 ];
+/** Quantas sugestões aparecem de início; o resto fica atrás de "Mais perguntas". */
+const SUGGESTIONS_SHOWN = 3;
 
 /**
  * Um tokenizador para o markdown inline. Ordem importa: código, negrito, depois itálico.
@@ -183,6 +185,7 @@ function AgentChatInner() {
   const { data: meta } = useMeta();
   const [input, setInput] = useState("");
   const [elapsed, setElapsed] = useState(0);
+  const [moreSuggestions, setMoreSuggestions] = useState(false);
   const panelRef = useRef<HTMLElement>(null);
   const lastMsgRef = useRef<HTMLDivElement>(null);
   const pendingRef = useRef<HTMLDivElement>(null);
@@ -299,7 +302,7 @@ function AgentChatInner() {
           </p>
         </div>
         {messages.length > 0 && (
-          <button type="button" className="btn-ghost px-2 py-1 text-[0.8rem]" onClick={() => $messages.set([])}>
+          <button type="button" className="btn-ghost px-2 py-1 text-[0.8rem] max-lg:min-h-11" onClick={() => $messages.set([])}>
             <RotateCcw className="size-3.5" aria-hidden /> Nova conversa
           </button>
         )}
@@ -310,12 +313,23 @@ function AgentChatInner() {
           <div className="space-y-2">
             <p className="label">Comece por uma destas ou escreva a sua:</p>
             <div className="grid gap-1.5">
-              {SUGGESTIONS.map((s) => (
-                <button key={s} type="button" className="btn-ghost justify-start text-left" onClick={() => send(s)}>
+              {(moreSuggestions ? SUGGESTIONS : SUGGESTIONS.slice(0, SUGGESTIONS_SHOWN)).map((s) => (
+                <button key={s} type="button" className="btn-ghost justify-start text-left max-lg:min-h-11" onClick={() => send(s)}>
                   {s}
                 </button>
               ))}
             </div>
+            {SUGGESTIONS.length > SUGGESTIONS_SHOWN && (
+              <button
+                type="button"
+                className="btn-ghost px-2 py-1 text-[0.8rem] max-lg:min-h-11"
+                aria-expanded={moreSuggestions}
+                onClick={() => setMoreSuggestions((v) => !v)}
+              >
+                <ChevronDown className={`size-3.5 transition-transform duration-(--duration-fast) motion-reduce:transition-none ${moreSuggestions ? "rotate-180" : ""}`} aria-hidden />
+                Mais perguntas
+              </button>
+            )}
           </div>
         )}
         {messages.map((m, i) => {
@@ -392,9 +406,9 @@ function AgentChatInner() {
           maxLength={800}
           onChange={(e) => setInput(e.target.value)}
           placeholder="Pergunte sobre este recorte…"
-          className="min-w-0 flex-1 rounded-card border border-rule bg-surface px-3 py-2 text-[0.95rem] outline-none placeholder:text-muted focus:border-ink"
+          className="min-w-0 flex-1 rounded-card border border-rule bg-surface px-3 py-2 text-[0.95rem] outline-none placeholder:text-muted focus:border-ink max-lg:min-h-11"
         />
-        <button type="submit" className="btn-ink" disabled={!input.trim() || mutation.isPending} aria-label="Enviar">
+        <button type="submit" className="btn-ink max-lg:min-h-11 max-lg:min-w-11 max-lg:justify-center" disabled={!input.trim() || mutation.isPending} aria-label="Enviar">
           <SendHorizontal className="size-4" aria-hidden />
         </button>
       </form>

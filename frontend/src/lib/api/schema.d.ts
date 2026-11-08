@@ -235,6 +235,16 @@ export interface components {
             /** Cancel Rate */
             cancel_rate: number | null;
             /**
+             * Measured
+             * @description Entregues com ciclo e sem presos: base do SLA e da mediana
+             */
+            measured: number;
+            /**
+             * Low Sample
+             * @description Base medida abaixo do mínimo do painel (MIN_MEASURED): SLA e ciclo mediano não são firmes
+             */
+            low_sample: boolean;
+            /**
              * Cycle P50
              * @description Mediana do ciclo (min), sem pedidos presos
              */
@@ -450,6 +460,16 @@ export interface components {
             ticket: number | null;
             /** Cancel Rate */
             cancel_rate: number | null;
+            /**
+             * Measured
+             * @description Entregues com ciclo e sem presos: base do SLA e da mediana
+             */
+            measured: number;
+            /**
+             * Low Sample
+             * @description Base medida abaixo do mínimo do painel (MIN_MEASURED): SLA e ciclo mediano não são firmes
+             */
+            low_sample: boolean;
             /**
              * Cycle P50
              * @description Mediana do ciclo (min), sem pedidos presos

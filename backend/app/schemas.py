@@ -49,6 +49,10 @@ class Metrics(BaseModel):
     gmv: float
     ticket: float | None
     cancel_rate: float | None
+    measured: int = Field(description="Entregues com ciclo e sem presos: base do SLA e da mediana")
+    low_sample: bool = Field(
+        description="Base medida abaixo do mínimo do painel (MIN_MEASURED): SLA e ciclo mediano não são firmes",
+    )
     cycle_p50: float | None = Field(description="Mediana do ciclo (min), sem pedidos presos")
     cycle_p90: float | None
     sla_rate: float | None = Field(description="Entregues dentro do SLA do segmento (sem pedidos presos)")

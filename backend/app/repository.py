@@ -21,6 +21,13 @@ from app.schemas import Dimension, Grain, SortKey
 # Colunas de ciclo/etapa só valem para entregues e sem pedido "preso" (> 4h).
 _VALID = "status = 'delivered' and not cycle_outlier"
 _SALE = "status = 'delivered' and not amount_outlier"
+# Base da medição: entregues com ciclo e sem presos. É o denominador do SLA e o universo da mediana.
+_MEASURED = f"{_VALID} and cycle_min is not null"
+# Abaixo disso, SLA e ciclo mediano saem com aviso de amostra pequena. Com n = 100, a margem de erro
+# de 95% de uma taxa perto de 80% é ±8 p.p. (1,96 · √(0,8 · 0,2 / 100)), mais que o desvio de 5 p.p.
+# (SLA_BELOW_GAP) que o painel usa para marcar uma linha. Abaixo de 100, a figura oscila mais que a
+# diferença que o painel quer apontar.
+MIN_MEASURED = 100
 
 # Desvio de uma linha do ranking em relação ao recorte (marcado pelo servidor).
 SLA_BELOW_GAP = 0.05  # no prazo abaixo de SLA do recorte menos 5 pontos
@@ -34,9 +41,11 @@ METRICS_SQL = f"""
     coalesce(sum(amount) filter (where {_SALE}), 0)::double as gmv,
     avg(amount) filter (where {_SALE}) as ticket,
     avg((status = 'canceled')::int) as cancel_rate,
+    count(*) filter (where {_MEASURED})::int as measured,
+    count(*) filter (where {_MEASURED}) < {MIN_MEASURED} as low_sample,
     median(cycle_min) filter (where {_VALID}) as cycle_p50,
     quantile_cont(cycle_min, 0.9) filter (where {_VALID}) as cycle_p90,
-    avg(on_time(segment, cycle_min)::int) filter (where {_VALID} and cycle_min is not null) as sla_rate,
+    avg(on_time(segment, cycle_min)::int) filter (where {_MEASURED}) as sla_rate,
     avg(cycle_outlier::int) filter (where status = 'delivered') as stuck_rate,
     median(production_min) filter (where {_VALID}) as production_p50,
     median(collected_min) filter (where {_VALID}) as collected_p50,
@@ -89,6 +98,11 @@ def _flag_outliers(rows: list[dict], base: dict) -> list[dict]:
         row["sla_below"] = sla_floor is not None and row["sla_rate"] is not None and row["sla_rate"] < sla_floor
         row["cancel_above"] = row["cancel_rate"] is not None and row["cancel_rate"] > cancel_ceiling
     return rows
+
+
+# Rótulos de exibição dos valores crus do dataset (segmento, canal, modal).
+VALUE_LABELS = {"food": "food", "good": "goods", "marketplace": "marketplace", "own": "canal próprio",
+                "moto": "moto", "bike": "bike"}
 
 
 class Repository:
@@ -183,11 +197,9 @@ class Repository:
         if f.store:
             names = self.names("store", f.store)
             parts.append("loja " + (", ".join(names) if len(names) <= 4 else f"{len(names)} lojas"))
-        labels = {"food": "food", "good": "goods", "marketplace": "marketplace", "own": "canal próprio",
-                  "moto": "moto", "bike": "bike"}
         for title, values in (("segmento", f.segment), ("canal", f.channel_type), ("modal", f.modal)):
             if values:
-                parts.append(f"{title} " + ", ".join(labels.get(v, v) for v in values))
+                parts.append(f"{title} " + ", ".join(VALUE_LABELS.get(v, v) for v in values))
         return " · ".join(parts)
 
     # ------------------------------------------------------------- analytics

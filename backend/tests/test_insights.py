@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from app.agent import local
-from app.alerts import detect_alerts
+from app.alerts import _sla_action, detect_alerts
 from app.filters import Filters
 
 
@@ -29,6 +29,37 @@ def test_broken_store_gets_take_down_action(repo):
     alert = next(a for a in detect_alerts(repo, Filters()) if a.id == "cancel-store-30")
     assert alert.title.startswith("Loja sem entregas")
     assert "Tirar" in alert.action
+
+
+def test_sla_action_names_worst_hub_from_data(repo):
+    f = Filters()
+    alert = next(a for a in detect_alerts(repo, f) if a.id == "sla-recorte")
+    worst = repo.breakdown(f, "hub", sort="sla_rate", desc=False, limit=100, min_orders=300)[0]
+    assert f"líder do hub {worst['label']}" in alert.action
+    assert "alerta abaixo" not in alert.action
+
+
+def test_sla_action_single_hub_targets_that_hub(repo):
+    alert = next(a for a in detect_alerts(repo, Filters(hub=[2])) if a.id == "sla-recorte")
+    assert "líder do hub Hub Lento" in alert.action
+    assert "neste recorte" in alert.action
+    assert "alerta abaixo" not in alert.action
+
+
+def test_sla_action_without_hub_breakdown_uses_recorte(repo):
+    base = {"sla_rate": 0.7, "production_p50": 10.0, "collected_p50": 2.0, "expedition_p50": 4.0, "transit_p50": 20.0}
+    action = _sla_action(base, [], [11, 12])
+    assert "líder da operação do recorte" in action
+    assert "trânsito" in action and "antes das 11h" in action
+    assert "alerta abaixo" not in action
+
+
+def test_cancel_and_store_copy_name_segment_and_hub(repo):
+    alerts = detect_alerts(repo, Filters())
+    cancel = next(a for a in alerts if a.id == "cancel-recorte")
+    assert "Concentrado no segmento food" in cancel.detail
+    store = next(a for a in alerts if a.id == "cancel-store-30")
+    assert "no hub Hub Preso." in store.detail
 
 
 def test_alerts_follow_the_filter(repo):

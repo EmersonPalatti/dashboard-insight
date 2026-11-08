@@ -15,6 +15,8 @@ interface KpiDef {
   better: "up" | "down";
   /** taxa: variação em p.p.; valor: variação relativa. */
   kind: "rate" | "value";
+  /** Depende da base medida (entregues sem presos): o backend sinaliza base pequena nesses KPIs. */
+  measured?: boolean;
   sub?: (m: Metrics) => string;
 }
 
@@ -25,6 +27,7 @@ const OPERATION: KpiDef[] = [
     format: fmt.pct,
     better: "up",
     kind: "rate",
+    measured: true,
     sub: (m) => `${fmt.pct(m.stuck_rate)} presos no fluxo (fora do cálculo)`,
   },
   {
@@ -33,6 +36,7 @@ const OPERATION: KpiDef[] = [
     format: fmt.min,
     better: "down",
     kind: "value",
+    measured: true,
     sub: (m) => `p90 ${fmt.min(m.cycle_p90)}`,
   },
   {
@@ -61,13 +65,13 @@ const VOLUME: KpiDef[] = [
 function Delta({ def, current, previous }: { def: KpiDef; current: Metrics; previous?: Metrics | null }) {
   const a = current[def.key] as number | null;
   const b = previous?.[def.key] as number | null | undefined;
-  // A explicação "sem período anterior" fica uma vez, na linha do recorte; aqui só um traço mudo.
-  if (a === null || b === null || b === undefined || (def.kind === "value" && b === 0)) {
-    return (
-      <span className="text-[0.8rem] text-muted" aria-hidden title="Sem período anterior para comparar">
-        —
-      </span>
-    );
+  // Recorte inteiro sem período anterior: a linha do topo já diz isso uma vez; aqui só se guarda a altura.
+  if (!previous) return <span className="invisible text-[0.82rem]" aria-hidden>·</span>;
+  // Há período anterior, mas este KPI não tem base para a variação: aí sim o aviso é deste tile.
+  // Base pequena no período anterior: a variação não tem o que sustentar, então não aparece.
+  const thinBase = def.measured && previous.low_sample;
+  if (thinBase || a === null || b === null || b === undefined || (def.kind === "value" && b === 0)) {
+    return <span className="text-[0.82rem] text-muted">sem comparação</span>;
   }
   const delta = def.kind === "rate" ? a - b : a / b - 1;
   const flat = Math.abs(delta) < (def.kind === "rate" ? 0.001 : 0.005);
@@ -170,16 +174,27 @@ function KpiFigure({ value, format, className }: { value: number | null | undefi
   );
 }
 
+/** Aviso de base pequena no lugar da variação. Uma linha só (nowrap), para os três cartões ficarem alinhados. */
+function SampleNote({ measured }: { measured: number }) {
+  const unit = measured === 1 ? "entrega" : "entregas";
+  return (
+    <span className="whitespace-nowrap text-[0.82rem] font-medium text-warn">
+      base: {fmt.int(measured)} {unit} · amostra pequena
+    </span>
+  );
+}
+
 function Hero({ def, current, previous, trail }: { def: KpiDef; current: Metrics; previous?: Metrics | null; trail?: (number | null)[] }) {
+  const thinBase = def.measured && current.low_sample;
   return (
     <div className="min-w-0 bg-surface px-4 pt-3.5 pb-3">
       <p className="cond text-[0.78rem] font-bold text-muted">{def.label}</p>
       <KpiFigure className="figure mt-1.5 block text-[2.6rem]" value={current[def.key] as number | null} format={def.format} />
       <div className="mt-1">
-        <Delta def={def} current={current} previous={previous} />
+        {thinBase ? <SampleNote measured={current.measured} /> : <Delta def={def} current={current} previous={previous} />}
       </div>
       {trail && <Trail values={trail} label={`${def.label} por dia no recorte`} />}
-      {def.sub && <p className="mt-1.5 truncate text-[0.8rem] text-muted">{def.sub(current)}</p>}
+      {def.sub && <p className="mt-1.5 text-pretty text-[0.8rem] text-muted">{def.sub(current)}</p>}
     </div>
   );
 }
@@ -192,7 +207,7 @@ function Volume({ def, current, previous }: { def: KpiDef; current: Metrics; pre
         <KpiFigure className="figure text-[1.45rem]" value={current[def.key] as number | null} format={def.format} />
         <Delta def={def} current={current} previous={previous} />
       </p>
-      {def.sub && <p className="mt-0.5 truncate text-[0.8rem] text-muted">{def.sub(current)}</p>}
+      {def.sub && <p className="mt-0.5 text-pretty text-[0.8rem] text-muted">{def.sub(current)}</p>}
     </div>
   );
 }
@@ -236,9 +251,9 @@ function KpiStripInner() {
       <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 px-0.5">
         <p className="text-[0.88rem] text-muted">
           {fmt.date(period.start)} a {fmt.date(period.end)}
-          {previous_period
+          {previous_period && previous
             ? ` · comparado com ${fmt.date(previous_period.start)} a ${fmt.date(previous_period.end)}`
-            : " · sem período anterior no dataset para comparar"}
+            : " · sem período anterior para comparar"}
         </p>
         {meta && (
           <p className="text-[0.8rem] text-muted">

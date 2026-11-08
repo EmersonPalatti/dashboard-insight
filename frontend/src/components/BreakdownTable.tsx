@@ -7,12 +7,13 @@ import {
   type SortingState,
 } from "@tanstack/react-table";
 import { ArrowDown, ArrowUp, ArrowUpDown, Filter } from "lucide-react";
-import { useEffect, useId, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { BreakdownRow, Dimension } from "@/lib/api/client";
 import { applyDrilldown, patchFilters } from "@/lib/filters";
 import { fmt, label, WEEKDAYS } from "@/lib/format";
 import { island, useRecorteQuery } from "@/lib/query";
 import { Empty, ErrorState, Panel, Skeleton } from "./ui/Panel";
+import { Select } from "./ui/Select";
 
 type Tab = Extract<Dimension, "hub" | "store" | "city" | "channel" | "modal" | "payment_method" | "weekday">;
 const TABS: { value: Tab; label: string }[] = [
@@ -53,7 +54,6 @@ function FlaggedRate({
 
 function BreakdownTableInner() {
   const [tab, setTab] = useState<Tab>("hub");
-  const selectId = useId();
   const [sorting, setSorting] = useState<SortingState>([{ id: "orders", desc: true }]);
   const { data, error, isPending, refetch, isPlaceholderData } = useRecorteQuery("/api/breakdown", {
     by: tab,
@@ -125,23 +125,7 @@ function BreakdownTableInner() {
       hint={`Ordene pelas colunas. Seta para baixo: no prazo abaixo do recorte. Seta para cima: cancelamento acima do recorte.${tab === "store" ? " Lojas com 30+ pedidos." : ""}`}
       busy={isPlaceholderData}
       actions={
-        <div className="flex items-center gap-2">
-          <label htmlFor={selectId} className="text-[0.85rem] text-muted">
-            Quebrar por
-          </label>
-          <select
-            id={selectId}
-            value={tab}
-            onChange={(e) => setTab(e.target.value as Tab)}
-            className="min-h-10 rounded-card border border-rule bg-surface px-2.5 py-1.5 text-[0.92rem] text-ink"
-          >
-            {TABS.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </select>
-        </div>
+        <Select label="Quebrar por" value={tab} options={TABS} onChange={setTab} align="end" />
       }
     >
       {isPending ? (

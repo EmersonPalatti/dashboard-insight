@@ -1,5 +1,6 @@
-import { CalendarRange, X } from "lucide-react";
+import { X } from "lucide-react";
 import type { Recorte } from "@/lib/filters";
+import { DatePicker } from "../ui/DatePicker";
 import { MultiSelect } from "../ui/MultiSelect";
 import { PeriodPresets } from "./PeriodPresets";
 import type { Chip, FilterModel } from "./useFilterModel";
@@ -11,32 +12,15 @@ export function PeriodFields({ m }: { m: FilterModel }) {
     <fieldset className="flex flex-wrap items-end gap-1.5">
       <legend className="sr-only">Período</legend>
       <PeriodPresets presets={presets} activeId={activePreset} onSelect={(p) => set({ start: p.start, end: p.end })} />
-      {/* o anel de foco fica no wrapper: os inputs nativos não mostram foco sozinhos */}
+      {/* abaixo de lg os calendários abrem em fluxo: o grupo quebra linha para acomodá-los */}
       <div
         role="group"
         aria-label="Período personalizado"
-        className="flex items-center gap-1.5 rounded-card border border-rule bg-surface px-2 py-1 text-[0.88rem] has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-ink"
+        className="flex flex-wrap items-center gap-1.5 rounded-card border border-rule bg-surface p-1 text-[0.88rem]"
       >
-        <CalendarRange className="size-4 text-muted" aria-hidden />
-        <input
-          type="date"
-          aria-label="Início"
-          min={min}
-          max={f.end ?? max}
-          value={f.start ?? ""}
-          onChange={(e) => set({ start: e.target.value || null })}
-          className="bg-transparent outline-none"
-        />
+        <DatePicker label="Início" min={min} max={f.end ?? max} value={f.start} rangeOther={f.end} onChange={(start) => set({ start })} />
         <span className="text-muted">até</span>
-        <input
-          type="date"
-          aria-label="Fim"
-          min={f.start ?? min}
-          max={max}
-          value={f.end ?? ""}
-          onChange={(e) => set({ end: e.target.value || null })}
-          className="bg-transparent outline-none"
-        />
+        <DatePicker label="Fim" min={f.start ?? min} max={max} value={f.end} rangeOther={f.start} onChange={(end) => set({ end })} />
       </div>
     </fieldset>
   );

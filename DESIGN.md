@@ -189,10 +189,12 @@ Flat. Depth comes from layer tone: open comanda is pure surface, queued comandas
 ### Inputs / Fields
 Filter selects are surface boxes with a small label over the value; an active filter gets an ink border. Selected options use an ink checkbox. From `lg` up, Período, Cidade, Hub and Loja stay visible; Segmento, Canal and Modal live in the "Mais filtros" popover, which floats over the page instead of pushing it down. Below `lg` the bar collapses to one recorte summary ("Recorte · N / Rio de Janeiro · Editar") that opens a bottom sheet with every control, plus a "Comandas · N / X críticas" shortcut to the queue. Every active value also shows as a removable chip.
 
+No native dropdown or calendar ships: their open state is the operating system's, with square corners and no tokens. Single choices (Quebrar por) use `Select`, dates use `DatePicker`; both open the same floating panel as the filter menus (`card` corners, rule border, surface, no shadow, same open/close motion). The calendar is pt-BR (dd/mm/aaaa, week from Sunday), day cells are `tick`, the chosen day is ink and the rest of the range a sunken tint. Below `lg` it opens in flow instead of floating, so the bottom sheet never clips it.
+
 Table outliers (No prazo abaixo do recorte, cancelamento acima, ciclo fora do SLA) are flagged by the backend and drawn in ink with weight and an arrow mark, never in red: red stays with the comandas.
 
 ### Navigation
-The wine band holds product name, recorte summary, anchor links (Perguntar ao agente, API), API status dot and the theme toggle.
+The wine band holds product name, recorte summary, anchor links (Perguntar ao agente, API), API status dot and the theme toggle. Below `sm` it is one 56px row: name, status dot (label kept for screen readers) and theme toggle; subtitle and anchor links hide. Below `lg` every control in the page is at least 44px tall.
 
 ### Comanda (signature component)
 The alert queue. Header: severity mark + `Nº 01 · CATEGORIA` in cond caps, severity word on the right in its state colour. Body: title, detail, then the **Ação** block in inverted ink. Footer: drill-down (primary) and Perguntar ao agente (ghost). Severity is a shape as well as a colour: filled dot (crítico), hollow ring (atenção), dash (observar). Motion: each new recorte reprints the queue, comandas unfolding top-down in order (40ms stagger, six steps max, 280ms each); opening one unfolds it over 280ms (`cubic-bezier(0.16, 1, 0.3, 1)`); collapsing folds it up in 160ms (`cubic-bezier(0.7, 0, 0.84, 0)`). All of it is skipped under reduced motion.
@@ -207,7 +209,7 @@ Tokens live in `:root` (`--duration-*`, `--ease-*`, `--distance-*`, `--scale-*`,
 - The agent's wait is a shimmer over "Consultando o recorte…"; its answer rises 4px into place in 250ms.
 
 ### KPI grid
-Three operation cells joined by 1px rule gaps, each with cond label, figure, delta, a daily trail drawn in ink from the recorte's own time series, and a muted footnote. Volume KPIs sit in one tile below, inline.
+Three operation cells joined by 1px rule gaps, each with cond label, figure, delta, a daily trail drawn in ink from the recorte's own time series, and a muted footnote that wraps, never truncates. When the backend flags the measured base as small (`low_sample`), SLA and ciclo keep their figure and swap the delta for a `warn` note ("base: 20 entregas · amostra pequena"). Volume KPIs sit in one tile below, inline.
 
 ## Do's and Don'ts
 

@@ -43,7 +43,8 @@ export function MobileRecorte({ summary, activeCount, onOpen, buttonRef }: Props
           </span>
           <span className="mt-0.5 truncate text-[0.92rem] font-medium">{summary}</span>
         </span>
-        <span aria-hidden className="shrink-0 text-[0.85rem] text-muted">
+        {/* o verbo da linha: ink, negrito e sublinhado, para ler como ação e não como rótulo */}
+        <span aria-hidden className="shrink-0 text-[0.85rem] font-semibold text-ink underline decoration-muted underline-offset-4">
           Editar
         </span>
       </button>

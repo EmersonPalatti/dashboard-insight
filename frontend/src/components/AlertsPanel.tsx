@@ -47,6 +47,9 @@ const num = (i: number) => `Nº ${String(i + 1).padStart(2, "0")}`;
 /** Pedido de foco: vai para o título da comanda aberta ou para o botão da comanda recolhida. */
 type FocusRequest = { id: string; on: "title" | "queued" } | null;
 
+/** Id da comanda (aberta ou na fila): estável por alerta, para o botão de cada comanda apontar para ela (aria-controls). */
+const bodyId = (alertId: string) => `comanda-${alertId.replace(/[^\w-]/g, "-")}`;
+
 /** Índice de escalonamento da reimpressão, lido pelo CSS como `--i`. */
 const printVars = (index: number) => ({ "--i": Math.min(index, PRINT_STAGGER_CAP) }) as CSSProperties;
 
@@ -91,6 +94,7 @@ function OpenTicket({
 
   return (
     <li
+      id={bodyId(alert.id)}
       className={`ticket bg-surface px-5 pt-5 pb-4 ${MOTION_CLASS[motion]}`}
       style={printVars(index)}
       onAnimationEnd={(e) => {
@@ -102,7 +106,13 @@ function OpenTicket({
           alert={alert}
           index={index}
           action={
-            <button type="button" onClick={onCollapse} className="-my-1 -mr-1.5 inline-flex min-h-6 items-center gap-1 rounded-tick px-1.5 font-bold text-muted hover:text-ink">
+            <button
+              type="button"
+              aria-expanded={true}
+              aria-controls={bodyId(alert.id)}
+              onClick={onCollapse}
+              className="-my-1 -mr-1.5 inline-flex min-h-6 max-lg:min-h-11 items-center gap-1 rounded-tick px-1.5 font-bold text-muted hover:text-ink"
+            >
               <ChevronUp className="size-3.5" aria-hidden /> Recolher
             </button>
           }
@@ -111,20 +121,20 @@ function OpenTicket({
       <h3 ref={titleRef} tabIndex={-1} className="mt-3 text-[1.08rem] leading-snug font-semibold text-balance">
         {alert.title}
       </h3>
-      <p className="mt-1.5 text-[0.95rem] leading-relaxed text-ink/85">{alert.detail}</p>
+      <p className="mt-1.5 text-[0.95rem] leading-relaxed text-pretty text-ink/85">{alert.detail}</p>
       <div className="mt-3.5 rounded-card bg-ink px-3.5 py-3 text-surface">
         <p className="cond text-[0.72rem] font-bold opacity-70">Ação</p>
-        <p className="mt-1 text-[0.95rem] leading-snug">{alert.action}</p>
+        <p className="mt-1 text-[0.95rem] leading-snug text-pretty">{alert.action}</p>
       </div>
       <div className="no-print mt-3 flex flex-wrap gap-2">
         {alert.drilldown && (
-          <button type="button" className="btn-primary" onClick={() => applyDrilldown(alert.drilldown!.filters)}>
+          <button type="button" className="btn-primary max-lg:min-h-11 lg:min-h-9" onClick={() => applyDrilldown(alert.drilldown!.filters)}>
             <Filter className="size-3.5" aria-hidden /> {alert.drilldown.label}
           </button>
         )}
         <button
           type="button"
-          className="btn-ghost"
+          className="btn-ghost max-lg:min-h-11 lg:min-h-9"
           onClick={() => askAgentAbout(`Sobre a comanda "${alert.title}": o que explica isso neste recorte e o que fazer hoje?`)}
         >
           <MessageSquareText className="size-3.5" aria-hidden /> Perguntar ao agente sobre esta comanda
@@ -154,12 +164,13 @@ function QueuedTicket({
   }, [focusOnMount]);
 
   return (
-    <li className={`ticket bg-surface/70 transition-colors hover:bg-surface ${MOTION_CLASS[motion]}`} style={printVars(index)}>
+    <li id={bodyId(alert.id)} className={`ticket bg-surface/70 transition-colors hover:bg-surface ${MOTION_CLASS[motion]}`} style={printVars(index)}>
       <h3>
         <button
           ref={buttonRef}
           type="button"
           aria-expanded={false}
+          aria-controls={bodyId(alert.id)}
           aria-label={`${alert.title} · ${SEVERITY[alert.severity].label} · ${num(index)}, ${CATEGORY[alert.category]}`}
           aria-describedby={actionId}
           onClick={onOpen}
@@ -169,7 +180,10 @@ function QueuedTicket({
           <span className="mt-2 flex items-start justify-between gap-3">
             <span className="min-w-0">
               <span className="block leading-snug font-semibold">{alert.title}</span>
-              <span id={actionId} className="mt-0.5 block truncate text-[0.88rem] text-muted">{alert.action}</span>
+              <span id={actionId} className="mt-0.5 line-clamp-2 text-pretty text-[0.88rem] text-muted">
+                <span className="cond mr-1.5 text-[0.72rem] font-bold">Ação</span>
+                {alert.action}
+              </span>
             </span>
             <ChevronDown className="mt-0.5 size-4 shrink-0 text-muted" aria-hidden />
           </span>
@@ -278,7 +292,7 @@ function AlertsPanelInner() {
             <CircleSlash className="mt-0.5 size-5 shrink-0 text-muted" aria-hidden />
             <div>
               <p className="font-semibold">Sem pedidos neste recorte.</p>
-              <p className="label mt-0.5">Não dá para afirmar SLA nem cancelamento sem pedidos. Amplie o período ou tire um filtro.</p>
+              <p className="label mt-0.5 text-pretty">Não dá para afirmar SLA nem cancelamento sem pedidos. Amplie o período ou tire um filtro.</p>
             </div>
           </div>
         ) : (
@@ -286,7 +300,7 @@ function AlertsPanelInner() {
             <ShieldCheck className="mt-0.5 size-5 shrink-0 text-good" aria-hidden />
             <div>
               <p className="font-semibold">Nenhuma comanda aberta neste recorte.</p>
-              <p className="label mt-0.5">SLA, cancelamento e lojas dentro do esperado. Mude o recorte para checar outro hub.</p>
+              <p className="label mt-0.5 text-pretty">SLA, cancelamento e lojas dentro do esperado. Mude o recorte para checar outro hub.</p>
             </div>
           </div>
         )

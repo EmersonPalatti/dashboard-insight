@@ -79,7 +79,7 @@ TOOLS: list[dict[str, Any]] = [
 _KEEP = {
     "key", "label", "parent", "orders", "delivered", "canceled", "gmv", "ticket", "cancel_rate", "cycle_p50",
     "cycle_p90", "sla_rate", "stuck_rate", "production_p50", "collected_p50", "expedition_p50", "transit_p50",
-    "distance_p50_km", "fee_avg", "cost_avg", "subsidy",
+    "distance_p50_km", "fee_avg", "cost_avg", "subsidy", "measured", "low_sample",
 }
 
 
