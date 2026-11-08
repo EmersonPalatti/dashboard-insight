@@ -12,6 +12,7 @@ import type { BreakdownRow, Dimension } from "@/lib/api/client";
 import { applyDrilldown, patchFilters } from "@/lib/filters";
 import { fmt, label, WEEKDAYS } from "@/lib/format";
 import { island, useRecorteQuery } from "@/lib/query";
+import { AskAgentButton } from "./ui/AskAgentButton";
 import { Empty, ErrorState, Panel, Skeleton } from "./ui/Panel";
 import { Select } from "./ui/Select";
 
@@ -25,6 +26,17 @@ const TABS: { value: Tab; label: string }[] = [
   { value: "payment_method", label: "Pagamento" },
   { value: "weekday", label: "Dia da semana" },
 ];
+
+// Singular para a pergunta ao agente ("canais" não casa a regra de canal; "canal" casa).
+const ASK_SUBJECT: Record<Tab, string> = {
+  hub: "hub",
+  store: "loja",
+  city: "cidade",
+  channel: "canal",
+  modal: "modal",
+  payment_method: "forma de pagamento",
+  weekday: "dia da semana",
+};
 
 const col = createColumnHelper<BreakdownRow>();
 
@@ -125,7 +137,13 @@ function BreakdownTableInner() {
       hint={`Ordene pelas colunas. Seta para baixo: no prazo abaixo do recorte. Seta para cima: cancelamento acima do recorte.${tab === "store" ? " Lojas com 30+ pedidos." : ""}`}
       busy={isPlaceholderData}
       actions={
-        <Select label="Quebrar por" value={tab} options={TABS} onChange={setTab} align="end" />
+        <>
+          <Select label="Quebrar por" value={tab} options={TABS} onChange={setTab} align="end" />
+          <AskAgentButton
+            subject={`o ranking por ${ASK_SUBJECT[tab]}`}
+            question={`No ranking por ${ASK_SUBJECT[tab]}, quem está pior e o que fazer?`}
+          />
+        </>
       }
     >
       {isPending ? (

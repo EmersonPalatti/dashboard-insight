@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from "react";
 import { fmt, WEEKDAYS } from "@/lib/format";
 import { island, useRecorteQuery } from "@/lib/query";
 import { EChart, type Tokens } from "./charts/EChart";
+import { AskAgentButton } from "./ui/AskAgentButton";
 import { Empty, ErrorState, Panel, Segmented, Skeleton } from "./ui/Panel";
 
 type Metric = "orders" | "sla_rate" | "cancel_rate" | "cycle_p50";
@@ -11,6 +12,14 @@ const METRICS: Record<Metric, { label: string; format: (v: number) => string; wo
   sla_rate: { label: "No prazo", format: fmt.pct, worseIsHigh: false },
   cancel_rate: { label: "Cancelamento", format: fmt.pct, worseIsHigh: true },
   cycle_p50: { label: "Ciclo", format: fmt.min, worseIsHigh: true },
+};
+
+// Pergunta por métrica do mapa: cada uma cai numa regra do agente local (ver backend/app/agent/local.py).
+const ASK_BY_METRIC: Record<Metric, string> = {
+  orders: "Onde estão os picos de pedidos por dia e hora neste recorte e o que fazer?",
+  sla_rate: "Em quais dias e horas o SLA piora neste recorte e o que fazer?",
+  cancel_rate: "Em quais dias e horas o cancelamento sobe neste recorte e o que fazer?",
+  cycle_p50: "Em quais dias e faixas o ciclo fica mais longo neste recorte e o que fazer?",
 };
 
 const HOURS = Array.from({ length: 24 }, (_, h) => `${String(h).padStart(2, "0")}h`);
@@ -76,12 +85,15 @@ function HeatmapChartInner() {
       hint={metric === "orders" ? "Volume por faixa (horário de Brasília)." : `Taxas só em faixas com ${MIN_ORDERS}+ pedidos.`}
       busy={isPlaceholderData}
       actions={
-        <Segmented
-          label="Métrica do mapa de calor"
-          value={metric}
-          onChange={setMetric}
-          options={(Object.keys(METRICS) as Metric[]).map((k) => ({ value: k, label: METRICS[k].label }))}
-        />
+        <>
+          <Segmented
+            label="Métrica do mapa de calor"
+            value={metric}
+            onChange={setMetric}
+            options={(Object.keys(METRICS) as Metric[]).map((k) => ({ value: k, label: METRICS[k].label }))}
+          />
+          <AskAgentButton subject={`o mapa de ${METRICS[metric].label.toLowerCase()} por dia e hora`} question={ASK_BY_METRIC[metric]} />
+        </>
       }
     >
       {isPending ? (

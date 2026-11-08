@@ -13,7 +13,23 @@ import { apiGet, type OrderRow } from "@/lib/api/client";
 import { $filters, $ready, toQuery } from "@/lib/filters";
 import { fmt, label } from "@/lib/format";
 import { island } from "@/lib/query";
+import { AskAgentButton } from "./ui/AskAgentButton";
 import { ErrorState, Panel, Skeleton } from "./ui/Panel";
+
+// Pergunta pela coluna de ordenação atual (ids de SORTABLE); "Resumo" é o fallback do agente.
+const ASK_BY_SORT: Record<string, string> = {
+  created_at: "Onde estão os picos de horário dos pedidos do recorte e o que fazer?",
+  amount: "Explique a receita dos pedidos do recorte e o que fazer?",
+  delivery_fee: "Explique o frete dos pedidos do recorte e o que fazer?",
+  cycle_min: "Explique o ciclo dos pedidos do recorte e o que fazer?",
+  production_min: "Explique o preparo dos pedidos do recorte e o que fazer?",
+  transit_min: "Explique o trânsito dos pedidos do recorte e o que fazer?",
+  distance_m: "Explique o custo de entrega por distância dos pedidos do recorte e o que fazer?",
+  store_name: "Quais lojas aparecem mais nos pedidos do recorte e o que fazer?",
+  hub_name: "Quais hubs aparecem mais nos pedidos do recorte e o que fazer?",
+  city: "Quais cidades aparecem mais nos pedidos do recorte e o que fazer?",
+  status: "Explique os cancelamentos entre os pedidos do recorte e o que fazer?",
+};
 
 const PAGE = 200;
 const ROW_H = 34;
@@ -109,6 +125,12 @@ function OrdersTableInner() {
           : "Paginação e ordenação no servidor."
       }
       busy={query.isFetching && !query.isFetchingNextPage && Boolean(query.data)}
+      actions={
+        <AskAgentButton
+          subject="os pedidos do recorte"
+          question={ASK_BY_SORT[sort.id] ?? "Resumo dos pedidos do recorte e o que fazer?"}
+        />
+      }
     >
       {query.isPending ? (
         <Skeleton height={420} />

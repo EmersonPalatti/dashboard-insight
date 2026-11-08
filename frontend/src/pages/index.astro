@@ -3,10 +3,11 @@
  * Casca estática (zero JS): cabeçalho, seções, rodapé e metodologia.
  * Só o que reage ao recorte vira ilha React:
  *  - client:load    → filtros, KPIs, alertas (acima da dobra)
- *  - client:visible → gráficos, tabelas e agente (hidratam ao rolar)
+ *  - client:visible → gráficos e tabelas (hidratam ao rolar)
+ *  - client:idle    → painel do agente (fora do fluxo; abre pela barra, pelo botão flutuante ou Ctrl+K)
  */
 import Base from "@/layouts/Base.astro";
-import AgentChat from "@/components/AgentChat";
+import AgentDock from "@/components/agent/AgentDock";
 import AlertsPanel from "@/components/AlertsPanel";
 import BreakdownTable from "@/components/BreakdownTable";
 import FilterBar from "@/components/FilterBar";
@@ -26,77 +27,89 @@ const repoUrl = "https://github.com/EmersonPalatti/dashboard-insight";
   title="Central de Operações"
   description="Painel de operação de delivery com alertas e agente de insights sobre o recorte filtrado. 369 mil pedidos reais do Delivery Center."
 >
-  <!-- no escuro o vinho (#26060F) quase some no campo (#111): um fio de wine-raised marca a borda da faixa -->
-  <header class="bg-wine text-white dark:border-b dark:border-wine-raised">
-    <!-- abaixo de sm a barra vira uma linha só (~56px): subtítulo e links somem; o agente continua na rolagem -->
-    <div class="mx-auto flex max-w-[1440px] flex-wrap items-center justify-between gap-x-6 gap-y-2 px-4 py-2 sm:px-6 sm:py-3 lg:h-16 lg:py-0">
-      <div class="flex min-w-0 items-baseline gap-x-4 gap-y-0.5 max-sm:flex-col">
-        <h1 class="text-[1.4rem] leading-tight font-bold [font-stretch:88%]">Central de Operações</h1>
-        <p class="max-sm:hidden text-[0.88rem] text-on-wine">Alertas e agente sobre o recorte filtrado · Delivery Center, jan–abr 2021, 369 mil pedidos</p>
+  <!-- #page: o painel do agente no mobile deixa tudo isto inerte (folha modal) -->
+  <div id="page">
+    <!-- no escuro o vinho (#26060F) quase some no campo (#111): um fio de wine-raised marca a borda da faixa -->
+    <header class="bg-wine text-white dark:border-b dark:border-wine-raised">
+      <!-- abaixo de sm a barra vira uma linha só (~56px): subtítulo e links somem; o agente abre pelo botão flutuante -->
+      <div class="mx-auto flex max-w-[1440px] flex-wrap items-center justify-between gap-x-6 gap-y-2 px-4 py-2 sm:px-6 sm:py-3 lg:h-16 lg:flex-nowrap lg:py-0">
+        <div class="flex min-w-0 items-baseline gap-x-4 gap-y-0.5 max-sm:flex-col lg:flex-1">
+          <h1 class="shrink-0 text-[1.4rem] leading-tight font-bold [font-stretch:88%]">Central de Operações</h1>
+          <!-- com o agente aberto ao lado a faixa estreita: o subtítulo corta antes de empurrar os links para uma 2ª linha -->
+          <p class="max-sm:hidden min-w-0 text-[0.88rem] text-on-wine lg:truncate">Alertas e agente sobre o recorte filtrado · Delivery Center, jan–abr 2021, 369 mil pedidos</p>
+        </div>
+        <div class="no-print flex shrink-0 flex-wrap items-center gap-1">
+          <a class="max-sm:hidden rounded-card px-3 py-2 text-[0.9rem] text-on-wine hover:bg-wine-raised hover:text-white" href={`${apiUrl}/docs`} target="_blank" rel="noopener">API (Swagger)</a>
+          <span class="ml-2"><TopBarStatus client:load /></span>
+        </div>
       </div>
-      <div class="no-print flex flex-wrap items-center gap-1">
-        <a class="max-sm:hidden rounded-card px-3 py-2 text-[0.9rem] text-on-wine hover:bg-wine-raised hover:text-white" href="#agente">Perguntar ao agente</a>
-        <a class="max-sm:hidden rounded-card px-3 py-2 text-[0.9rem] text-on-wine hover:bg-wine-raised hover:text-white" href={`${apiUrl}/docs`} target="_blank" rel="noopener">API (Swagger)</a>
-        <span class="ml-2"><TopBarStatus client:load /></span>
-      </div>
-    </div>
-  </header>
+    </header>
 
-  <div class="no-print sticky top-0 z-20 border-b border-rule bg-surface">
-    <div class="mx-auto max-w-[1440px] px-4 py-2 sm:px-6">
-      <FilterBar client:load />
+    <div data-filter-bar class="no-print sticky top-0 z-20 border-b border-rule bg-surface">
+      <div class="mx-auto max-w-[1440px] px-4 py-2 sm:px-6">
+        <FilterBar client:load />
+      </div>
     </div>
+
+    <main class="mx-auto grid max-w-[1440px] grid-cols-[minmax(0,1fr)] gap-5 px-4 pt-5 pb-16 max-lg:pb-24 sm:px-6">
+      <!--
+        linha 1 só do tamanho dos KPIs; a tendência ocupa a linha 2, ao lado do resto da fila de comandas.
+        O agente saiu da grade: ele acompanha a rolagem num painel próprio (AgentDock).
+      -->
+      <div class="grid grid-cols-[minmax(0,1fr)] items-start gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(340px,min(440px,34%))] lg:grid-rows-[auto_1fr]">
+        <div class="min-w-0 lg:col-start-1 lg:row-start-1">
+          <KpiStrip client:load />
+        </div>
+        <!--
+          lg+: a fila de comandas tem a altura de KPIs + tendência e rola por dentro. Sem isso, a fila (que
+          muda de tamanho com o recorte) deixava um vão embaixo da tendência ou ao lado dela.
+        -->
+        <div id="comandas" class="min-w-0 scroll-mt-16 lg:relative lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:min-h-[32rem] lg:self-stretch lg:scroll-mt-28">
+          <div class="lg:absolute lg:inset-0 lg:overflow-y-auto lg:overscroll-contain lg:pr-1 lg:[scrollbar-gutter:stable]">
+            <AlertsPanel client:load />
+          </div>
+        </div>
+        <div class="min-w-0 lg:col-start-1 lg:row-start-2">
+          <TrendChart client:visible />
+        </div>
+      </div>
+
+      <div class="grid gap-5 lg:grid-cols-2">
+        <StagesChart client:visible />
+        <HeatmapChart client:visible />
+      </div>
+
+      <div class="grid gap-5 xl:grid-cols-2">
+        <StoreScatter client:visible />
+        <BreakdownTable client:visible />
+      </div>
+
+      <OrdersTable client:visible />
+    </main>
+
+    <footer class="border-t border-rule bg-surface">
+      <div class="mx-auto grid max-w-[1440px] gap-6 px-4 py-7 text-[0.88rem] text-muted sm:px-6 md:grid-cols-3">
+        <div>
+          <p class="text-pretty cond text-[0.8rem] font-bold text-ink">Dados</p>
+          <p class="text-pretty">
+            <a class="underline decoration-rule underline-offset-4" href="https://www.kaggle.com/datasets/nosbielcs/brazilian-delivery-center" target="_blank" rel="noopener">Delivery Center: Food &amp; Goods orders in Brazil</a> (Kaggle). Nomes de lojas vêm anonimizados no dataset.
+          </p>
+        </div>
+        <div>
+          <p class="text-pretty cond text-[0.8rem] font-bold text-ink">Como os números são calculados</p>
+          <p class="text-pretty">
+            Horários convertidos de UTC para Brasília. SLA: food ≤ 60 min, goods ≤ 120 min. Pedidos com ciclo &gt; 4h contam como
+            "presos" e ficam fora de medianas e SLA. Valores &gt; R$ 5 mil ficam fora do GMV.
+          </p>
+        </div>
+        <div>
+          <p class="text-pretty cond text-[0.8rem] font-bold text-ink">Stack</p>
+          <p class="text-pretty">Astro + ilhas React, ECharts, Nanostores, TanStack Query/Table/Virtual · FastAPI, Pydantic, DuckDB sobre Parquet.</p>
+          <p class="text-pretty mt-1"><a class="underline decoration-rule underline-offset-4" href={repoUrl} target="_blank" rel="noopener">Código</a></p>
+        </div>
+      </div>
+    </footer>
   </div>
 
-  <main class="mx-auto grid max-w-[1440px] grid-cols-[minmax(0,1fr)] gap-5 px-4 pt-5 pb-16 sm:px-6">
-    <!-- linha 1 só do tamanho dos KPIs: a altura extra da fila de comandas vai para a linha do agente -->
-    <div class="grid grid-cols-[minmax(0,1fr)] items-start gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(340px,440px)] lg:grid-rows-[auto_1fr]">
-      <div class="min-w-0 lg:col-start-1 lg:row-start-1">
-        <KpiStrip client:load />
-      </div>
-      <div id="comandas" class="min-w-0 scroll-mt-16 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:scroll-mt-28">
-        <AlertsPanel client:load />
-      </div>
-      <div id="agente" class="min-w-0 scroll-mt-28 lg:col-start-1 lg:row-start-2">
-        <AgentChat client:visible />
-      </div>
-    </div>
-
-    <TrendChart client:visible />
-
-    <div class="grid gap-5 lg:grid-cols-2">
-      <StagesChart client:visible />
-      <HeatmapChart client:visible />
-    </div>
-
-    <div class="grid gap-5 xl:grid-cols-2">
-      <StoreScatter client:visible />
-      <BreakdownTable client:visible />
-    </div>
-
-    <OrdersTable client:visible />
-  </main>
-
-  <footer class="border-t border-rule bg-surface">
-    <div class="mx-auto grid max-w-[1440px] gap-6 px-4 py-7 text-[0.88rem] text-muted sm:px-6 md:grid-cols-3">
-      <div>
-        <p class="text-pretty cond text-[0.8rem] font-bold text-ink">Dados</p>
-        <p class="text-pretty">
-          <a class="underline decoration-rule underline-offset-4" href="https://www.kaggle.com/datasets/nosbielcs/brazilian-delivery-center" target="_blank" rel="noopener">Delivery Center: Food &amp; Goods orders in Brazil</a> (Kaggle). Nomes de lojas vêm anonimizados no dataset.
-        </p>
-      </div>
-      <div>
-        <p class="text-pretty cond text-[0.8rem] font-bold text-ink">Como os números são calculados</p>
-        <p class="text-pretty">
-          Horários convertidos de UTC para Brasília. SLA: food ≤ 60 min, goods ≤ 120 min. Pedidos com ciclo &gt; 4h contam como
-          "presos" e ficam fora de medianas e SLA. Valores &gt; R$ 5 mil ficam fora do GMV.
-        </p>
-      </div>
-      <div>
-        <p class="text-pretty cond text-[0.8rem] font-bold text-ink">Stack</p>
-        <p class="text-pretty">Astro + ilhas React, ECharts, Nanostores, TanStack Query/Table/Virtual · FastAPI, Pydantic, DuckDB sobre Parquet.</p>
-        <p class="text-pretty mt-1"><a class="underline decoration-rule underline-offset-4" href={repoUrl} target="_blank" rel="noopener">Código</a></p>
-      </div>
-    </div>
-  </footer>
+  <AgentDock client:idle />
 </Base>

@@ -3,6 +3,7 @@
 @import "./motion-filters.css";
 @import "./motion-ui.css";
 @import "./motion-content.css";
+@import "./motion-agent.css";
 
 /* Dark mode por atributo: o script inline do layout resolve preferência do SO + escolha salva. */
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
@@ -53,6 +54,7 @@
   --ease-in-out: ease-in-out; /* troca de ícone/texto, revelação */
   --ease-out: ease-out; /* tooltip */
   --ease-linear: linear; /* pulso de skeleton, spinner */
+  --ease-bounce: cubic-bezier(0.34, 1.36, 0.64, 1); /* selo/ponto estalando na entrada; nunca em saída */
   --distance-micro: 4px; /* troca de texto */
   --distance-small: 6px;
   --distance-base: 8px; /* deslocamento de página/folha curta */

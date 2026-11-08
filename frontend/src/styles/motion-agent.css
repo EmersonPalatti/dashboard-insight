@@ -1,0 +1,165 @@
+/*
+ * Agente: o painel que acompanha a análise (ver AgentDock). Um nó, três modos
+ * em data-mode; data-open liga e desliga. Tokens de global.css (:root).
+ *
+ * Fechado, o painel fica visibility:hidden só depois que a saída termina
+ * (atraso na transição de visibility), então a saída anima e, parado, ele não
+ * recebe foco nem leitor de tela. O inert do React cobre o intervalo.
+ */
+:root {
+  --agent-w: clamp(360px, 28vw, 420px);
+}
+
+/* Modo lateral: a página abre espaço na hora em que o painel começa a entrar. */
+:root[data-agent-dock] body {
+  padding-right: var(--agent-w);
+}
+
+.agent-panel {
+  position: fixed;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  color: var(--ink);
+  visibility: hidden;
+}
+
+.agent-panel[data-open="true"] {
+  visibility: visible;
+}
+
+/*
+ * dock: coluna inteira à direita, separada só pelo fio. Painel entrando numa
+ * região: deslocamento curto + opacidade (panel reveal sem o desfoque: numa
+ * coluna da altura da tela o blur repinta área demais a cada quadro).
+ * Abrir --duration-slow, fechar --duration-medium, mesma curva.
+ */
+.agent-panel[data-mode="dock"] {
+  inset: 0 0 0 auto;
+  width: var(--agent-w);
+  border-left: 1px solid var(--rule);
+  opacity: 0;
+  transform: translateX(var(--distance-medium));
+  transition:
+    transform var(--duration-medium) var(--ease-smooth-out),
+    opacity var(--duration-medium) var(--ease-smooth-out),
+    visibility 0s linear var(--duration-medium);
+}
+
+.agent-panel[data-mode="dock"][data-open="true"] {
+  opacity: 1;
+  transform: none;
+  transition:
+    transform var(--duration-slow) var(--ease-smooth-out),
+    opacity var(--duration-slow) var(--ease-smooth-out),
+    visibility 0s;
+}
+
+/*
+ * float: painel solto sob a barra, ancorado no canto do botão "Agente".
+ * Sem sombra no sistema: a borda em tinta separa o painel dos gráficos por baixo.
+ * Popover ancorado no gatilho, como "Mais filtros": abre de --scale-medium em
+ * --duration-fast, fecha para --scale-tiny em --duration-quick.
+ */
+.agent-panel[data-mode="float"] {
+  top: var(--agent-top, 7rem);
+  right: 1rem;
+  bottom: 1rem;
+  width: var(--agent-w);
+  max-height: 44rem;
+  border: 1px solid var(--ink);
+  border-radius: var(--radius-card);
+  overflow: hidden;
+  transform-origin: top right;
+  opacity: 0;
+  transform: scale(var(--scale-tiny));
+  transition:
+    transform var(--duration-quick) var(--ease-smooth-out),
+    opacity var(--duration-quick) var(--ease-smooth-out),
+    visibility 0s linear var(--duration-quick);
+}
+
+.agent-panel[data-mode="float"][data-open="true"] {
+  opacity: 1;
+  transform: none;
+  transition: visibility 0s;
+  animation: agent-float-in var(--duration-fast) var(--ease-smooth-out);
+}
+
+/* A entrada parte da escala de menu abrindo (keyframes); a saída é a transição acima, que só encolhe um tico. */
+@keyframes agent-float-in {
+  from {
+    opacity: 0;
+    transform: scale(var(--scale-medium));
+  }
+}
+
+/*
+ * sheet: tela cheia que sobe de baixo, como a folha de recorte.
+ * Abrir --duration-slow, fechar --duration-medium.
+ */
+.agent-panel[data-mode="sheet"] {
+  inset: 0;
+  height: 100dvh;
+  padding-bottom: env(safe-area-inset-bottom);
+  transform: translateY(100%);
+  transition:
+    transform var(--duration-medium) var(--ease-smooth-out),
+    visibility 0s linear var(--duration-medium);
+}
+
+.agent-panel[data-mode="sheet"][data-open="true"] {
+  transform: none;
+  transition:
+    transform var(--duration-slow) var(--ease-smooth-out),
+    visibility 0s;
+}
+
+/* Botão flutuante reaparece com escala de menu quando o painel fecha. */
+.agent-fab {
+  transition:
+    opacity var(--duration-fast) var(--ease-smooth-out),
+    scale var(--duration-fast) var(--ease-smooth-out),
+    background-color var(--duration-quick) var(--ease-out);
+}
+
+@starting-style {
+  .agent-fab {
+    opacity: 0;
+    scale: var(--scale-medium);
+  }
+}
+
+/* Ponto de status: estala como selo de notificação (overshoot só na entrada). */
+.agent-dot {
+  transition: scale var(--duration-very-slow) var(--ease-bounce);
+}
+
+/* Consultando: pulso de opacidade em ritmo constante, como o skeleton. */
+.agent-dot[data-pending] {
+  animation: agent-pulse 1.6s var(--ease-linear) infinite alternate;
+}
+
+@keyframes agent-pulse {
+  to {
+    opacity: 0.35;
+  }
+}
+
+@starting-style {
+  .agent-dot {
+    scale: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-panel,
+  .agent-panel[data-open="true"],
+  .agent-fab,
+  .agent-dot {
+    transition-duration: 0s !important;
+    transition-delay: 0s !important;
+    animation: none !important;
+  }
+}

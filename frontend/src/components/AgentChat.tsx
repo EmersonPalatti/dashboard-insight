@@ -1,12 +1,14 @@
 import { useStore } from "@nanostores/react";
 import { useMutation } from "@tanstack/react-query";
-import { Bot, ChevronDown, Cpu, RotateCcw, SendHorizontal, Wrench } from "lucide-react";
+import { Bot, ChevronDown, Cpu, RotateCcw, SendHorizontal, Wrench, X } from "lucide-react";
 import { atom } from "nanostores";
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { $agentDraft } from "@/lib/agentBridge";
+import { $agentActivity, $agentDraft } from "@/lib/agentBridge";
 import { askAgent, type ChatResponse } from "@/lib/api/client";
 import { $activeCount, $filters, toBody, type Recorte } from "@/lib/filters";
-import { island, useMeta } from "@/lib/query";
+import { useMeta } from "@/lib/query";
+import { ActiveChips } from "./filters/FilterFields";
+import { useFilterModel } from "./filters/useFilterModel";
 
 interface Message {
   id: number;
@@ -17,9 +19,35 @@ interface Message {
   error?: boolean;
 }
 
-/** Histórico vive num átomo: sobrevive a re-renders e pode ser lido por outras ilhas. */
-const $messages = atom<Message[]>([]);
-let nextId = 1;
+/**
+ * Histórico vive num átomo: sobrevive a abrir e fechar o painel. Também fica na
+ * sessionStorage da aba, então recarregar a página não perde a conversa.
+ * Sem storage (aba privada, bloqueio), segue só em memória.
+ */
+const STORAGE_KEY = "central-ops:agent-messages";
+
+function restore(): Message[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.sessionStorage.getItem(STORAGE_KEY);
+    const parsed: unknown = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? (parsed as Message[]).slice(-40) : [];
+  } catch {
+    return [];
+  }
+}
+
+const $messages = atom<Message[]>(restore());
+let nextId = $messages.get().reduce((max, m) => Math.max(max, m.id), 0) + 1;
+
+$messages.listen((list) => {
+  try {
+    if (list.length) window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(list.slice(-40)));
+    else window.sessionStorage.removeItem(STORAGE_KEY);
+  } catch {
+    // storage cheio ou bloqueado: a conversa continua em memória
+  }
+});
 
 const SUGGESTIONS = [
   "Quais os alertas e o que fazer hoje?",
@@ -177,7 +205,14 @@ function scopeKey(f: Recorte) {
   return JSON.stringify(f);
 }
 
-function AgentChatInner() {
+interface ConversationProps {
+  /** Painel visível: foca o campo ao abrir e decide se resposta nova conta como não lida. */
+  visible: boolean;
+  onClose: () => void;
+}
+
+/** Conversa com o agente. O contêiner (lateral, flutuante ou folha) é do AgentDock. */
+export function AgentConversation({ visible, onClose }: ConversationProps) {
   const messages = useStore($messages);
   const filters = useStore($filters);
   const active = useStore($activeCount);
@@ -186,10 +221,8 @@ function AgentChatInner() {
   const [input, setInput] = useState("");
   const [elapsed, setElapsed] = useState(0);
   const [moreSuggestions, setMoreSuggestions] = useState(false);
-  const panelRef = useRef<HTMLElement>(null);
-  const lastMsgRef = useRef<HTMLDivElement>(null);
-  const pendingRef = useRef<HTMLDivElement>(null);
-  const mountedRef = useRef(false);
+  const { chips } = useFilterModel();
+  const logRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   /** Rascunho cujo caret vai ao fim assim que o React gravar esse valor no campo. */
   const caretAfter = useRef<string | null>(null);
@@ -222,24 +255,28 @@ function AgentChatInner() {
       ]),
   });
 
-  // Rola a página até a mensagem nova. Pergunta enviada sempre rola; resposta que chega só rola
-  // se o painel ainda estiver na tela, para não puxar a página de quem já foi embora. Carga com histórico não rola.
+  // O log rola por dentro do painel: mensagem nova ou espera leva ao fim. Fechado, vai direto, sem animar.
   useEffect(() => {
-    if (!mountedRef.current) {
-      mountedRef.current = true;
-      return;
-    }
-    const target = mutation.isPending ? pendingRef.current : lastMsgRef.current;
-    const panel = panelRef.current;
-    if (!target || !panel) return;
-    // "Na tela" = pelo menos 120px do painel visíveis; uma faixa de poucos pixels não conta.
-    const box = panel.getBoundingClientRect();
-    const visiblePx = Math.min(box.bottom, window.innerHeight) - Math.max(box.top, 0);
-    if (!mutation.isPending && visiblePx < 120) return;
+    const log = logRef.current;
+    if (!log) return;
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    // O alvo é sempre o último filho do log: se o log tiver overflow, scrollIntoView também leva o rolamento interno ao fim.
-    target.scrollIntoView({ block: "nearest", behavior: reduced ? "auto" : "smooth" });
-  }, [messages.length, mutation.isPending]);
+    log.scrollTo({ top: log.scrollHeight, behavior: visible && !reduced ? "smooth" : "auto" });
+  }, [messages.length, mutation.isPending, visible]);
+
+  // Foco no campo ao abrir o painel. A pergunta pronta de uma comanda tem o próprio efeito abaixo.
+  useEffect(() => {
+    if (visible) inputRef.current?.focus({ preventScroll: true });
+  }, [visible]);
+
+  // O botão de abrir mostra a espera e a resposta que chegou com o painel fechado.
+  const answers = messages.filter((m) => m.role === "assistant").length;
+  const seenAnswers = useRef(answers);
+  useEffect(() => {
+    if (mutation.isPending) $agentActivity.set("pending");
+    else if (!visible && answers > seenAnswers.current) $agentActivity.set("unread");
+    else if (visible || $agentActivity.get() === "pending") $agentActivity.set("idle");
+    if (visible) seenAnswers.current = answers;
+  }, [mutation.isPending, answers, visible]);
 
   // Tempo decorrido na espera. O cliente não sabe as etapas reais da ferramenta, então só mostra segundos.
   useEffect(() => {
@@ -290,25 +327,44 @@ function AgentChatInner() {
   }, [messages]);
 
   return (
-    <section ref={panelRef} className="panel flex h-full min-h-[440px] flex-col" aria-label="Agente de insights">
-      <header className="flex items-start justify-between gap-2 border-b border-rule p-4 pb-3">
-        <div>
-          <h2 className="section-title flex items-center gap-2">
+    <div className="flex h-full min-h-0 flex-col">
+      <header className="grid gap-2 border-b border-rule px-4 pt-3 pb-3">
+        <div className="flex items-center justify-between gap-2">
+          <h2 id="agent-title" className="section-title flex items-center gap-2">
             <Bot className="size-4 text-series" aria-hidden /> Agente do recorte
           </h2>
-          <p className="label mt-0.5">
-            Responde só sobre os filtros ativos{active ? ` (${active})` : ""}.{" "}
+          <div className="flex items-center gap-1">
+            {messages.length > 0 && (
+              <button type="button" className="btn-ghost px-2 py-1 text-[0.8rem] max-lg:min-h-11" onClick={() => $messages.set([])}>
+                <RotateCcw className="size-3.5" aria-hidden /> Nova conversa
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Fechar agente"
+              title="Fechar (Esc)"
+              className="inline-flex size-8 items-center justify-center rounded-card text-muted hover:bg-sunken hover:text-ink max-lg:size-11"
+            >
+              <X className="size-4" aria-hidden />
+            </button>
+          </div>
+        </div>
+        {/* O recorte da conversa fica à vista: mexer nos filtros com o painel aberto muda a próxima resposta. */}
+        <div className="grid gap-1.5">
+          {chips.length === 0 ? (
+            <p className="label text-pretty">Recorte completo: todos os pedidos do período.</p>
+          ) : (
+            <ActiveChips chips={chips} />
+          )}
+          <p className="text-[0.8rem] text-pretty text-muted">
+            Responde só sobre {active ? `estes ${active === 1 ? "filtro" : `${active} filtros`}` : "este recorte"}.{" "}
             {meta ? (meta.llm_enabled ? "LLM com ferramentas, regras locais de reserva." : "Modo local: regras e estatísticas, sem API key.") : ""}
           </p>
         </div>
-        {messages.length > 0 && (
-          <button type="button" className="btn-ghost px-2 py-1 text-[0.8rem] max-lg:min-h-11" onClick={() => $messages.set([])}>
-            <RotateCcw className="size-3.5" aria-hidden /> Nova conversa
-          </button>
-        )}
       </header>
 
-      <div className="flex-1 space-y-3 overflow-auto p-4" role="log" aria-live="off" aria-label="Conversa com o agente">
+      <div ref={logRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain p-4" role="log" aria-live="off" aria-label="Conversa com o agente">
         {messages.length === 0 && (
           <div className="space-y-2">
             <p className="label">Comece por uma destas ou escreva a sua:</p>
@@ -326,7 +382,7 @@ function AgentChatInner() {
                 aria-expanded={moreSuggestions}
                 onClick={() => setMoreSuggestions((v) => !v)}
               >
-                <ChevronDown className={`size-3.5 transition-transform duration-(--duration-fast) motion-reduce:transition-none ${moreSuggestions ? "rotate-180" : ""}`} aria-hidden />
+                <ChevronDown className={`size-3.5 transition-transform duration-(--duration-fast) ease-(--ease-smooth-out) motion-reduce:transition-none ${moreSuggestions ? "rotate-180" : ""}`} aria-hidden />
                 Mais perguntas
               </button>
             )}
@@ -334,7 +390,6 @@ function AgentChatInner() {
         )}
         {messages.map((m, i) => {
           const prev = messages[i - 1];
-          const isLast = i === messages.length - 1;
           return (
             <Fragment key={m.id}>
               {prev && m.role === "user" && prev.scope !== m.scope && (
@@ -343,13 +398,12 @@ function AgentChatInner() {
                 </p>
               )}
               {m.role === "user" ? (
-                <div ref={isLast ? lastMsgRef : undefined} className="ml-8 rounded-card bg-sunken px-3 py-2 text-[0.95rem]">
+                <div className="ml-8 rounded-card bg-sunken px-3 py-2 text-[0.95rem]">
                   {m.content}
                 </div>
               ) : (
                 // Chegada discreta: a resposta entra com fade, 4px de subida e um desfoque leve. Reduzido, aparece direto.
                 <div
-                  ref={isLast ? lastMsgRef : undefined}
                   className={`mr-2 rounded-card border bg-surface px-3 py-2.5 text-[0.95rem] transition-[opacity,translate,filter] duration-(--duration-fast) ease-(--ease-smooth-out) starting:translate-y-(--distance-micro) starting:opacity-0 starting:blur-(--blur-small) motion-reduce:transition-none ${m.error ? "border-warn" : "border-rule"}`}
                 >
                   <Markdown text={m.content} />
@@ -364,7 +418,7 @@ function AgentChatInner() {
           );
         })}
         {mutation.isPending && (
-          <div ref={pendingRef} role="status" className="mr-2 px-3 text-muted">
+          <div role="status" className="mr-2 px-3 text-muted">
             <div className="text-[0.85rem]">
               <p className="tabular-nums">
                 {/* Brilho sem JS; o texto real fica no DOM uma vez (o pseudo-elemento não é lido). */}
@@ -412,8 +466,7 @@ function AgentChatInner() {
           <SendHorizontal className="size-4" aria-hidden />
         </button>
       </form>
-    </section>
+    </div>
   );
 }
 
-export default island(AgentChatInner, 520);

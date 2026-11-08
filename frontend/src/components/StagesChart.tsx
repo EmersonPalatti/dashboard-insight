@@ -3,6 +3,7 @@ import { applyDrilldown } from "@/lib/filters";
 import { fmt } from "@/lib/format";
 import { island, useRecorteQuery } from "@/lib/query";
 import { EChart, type Tokens } from "./charts/EChart";
+import { AskAgentButton } from "./ui/AskAgentButton";
 import { Empty, ErrorState, Panel, Skeleton } from "./ui/Panel";
 
 const STAGES = [
@@ -53,6 +54,12 @@ function StagesChartInner() {
       title="Onde o tempo vai, por hub"
       hint="Mediana de cada etapa, sem pedidos presos. Clique numa barra para filtrar o hub."
       busy={isPlaceholderData}
+      actions={
+        <AskAgentButton
+          subject="o tempo por etapa e hub"
+          question="Onde está o gargalo do ciclo por hub neste recorte e o que fazer?"
+        />
+      }
     >
       {isPending ? (
         <Skeleton height={340} />

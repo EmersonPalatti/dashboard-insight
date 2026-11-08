@@ -2,6 +2,7 @@ import { Download, RotateCcw } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { resetFilters } from "@/lib/filters";
 import { island } from "@/lib/query";
+import { AgentBarButton } from "./agent/AgentLauncher";
 import { ExportDialog } from "./ExportDialog";
 import { CopyLinkButton } from "./filters/CopyLinkButton";
 import { ActiveChips, ExtraFields, PeriodFields, PlaceFields } from "./filters/FilterFields";
@@ -43,6 +44,8 @@ function DesktopBar({ m, onExport }: { m: FilterModel; onExport: () => void }) {
         <button type="button" className="btn-ink" onClick={onExport}>
           <Download className="size-3.5" aria-hidden /> Exportar
         </button>
+        {/* último da linha: fica acima do canto onde o painel solto abre */}
+        <AgentBarButton />
       </div>
     </>
   );

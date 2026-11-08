@@ -5,6 +5,7 @@ import { patchFilters } from "@/lib/filters";
 import { fmt } from "@/lib/format";
 import { island, useRecorteQuery } from "@/lib/query";
 import { EChart, type ECInstance, type Tokens } from "./charts/EChart";
+import { AskAgentButton } from "./ui/AskAgentButton";
 import { Empty, ErrorState, Panel, Segmented, Skeleton } from "./ui/Panel";
 
 type Y = "cancel_rate" | "cycle_p50" | "sla_rate";
@@ -12,6 +13,12 @@ const Y_AXIS: Record<Y, { label: string; format: (v: number) => string }> = {
   cancel_rate: { label: "Cancelamento", format: fmt.pct },
   cycle_p50: { label: "Ciclo mediano", format: fmt.min },
   sla_rate: { label: "No prazo", format: fmt.pct },
+};
+// Pergunta por eixo: "lojas" leva ao ranking de lojas do agente local; "cancelam" à regra de cancelamento.
+const ASK_BY_Y: Record<Y, string> = {
+  cancel_rate: "Quais lojas cancelam mais neste recorte e o que fazer?",
+  cycle_p50: "Quais lojas são mais lentas neste recorte e o que fazer?",
+  sla_rate: "Quais lojas estão mais atrasadas neste recorte e o que fazer?",
 };
 
 function StoreScatterInner() {
@@ -81,15 +88,18 @@ function StoreScatterInner() {
       hint="Cada ponto é uma loja com 30+ pedidos; tamanho = GMV. Use a seleção retangular para filtrar um grupo."
       busy={isPlaceholderData}
       actions={
-        <Segmented
-          label="Eixo vertical"
-          value={y}
-          onChange={(v) => {
-            setY(v);
-            setPicked([]);
-          }}
-          options={(Object.keys(Y_AXIS) as Y[]).map((k) => ({ value: k, label: Y_AXIS[k].label }))}
-        />
+        <>
+          <Segmented
+            label="Eixo vertical"
+            value={y}
+            onChange={(v) => {
+              setY(v);
+              setPicked([]);
+            }}
+            options={(Object.keys(Y_AXIS) as Y[]).map((k) => ({ value: k, label: Y_AXIS[k].label }))}
+          />
+          <AskAgentButton subject={`lojas por ${Y_AXIS[y].label.toLowerCase()}`} question={ASK_BY_Y[y]} />
+        </>
       }
     >
       {isPending ? (

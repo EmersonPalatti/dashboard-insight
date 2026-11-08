@@ -5,6 +5,7 @@ import { $filters, patchFilters } from "@/lib/filters";
 import { fmt } from "@/lib/format";
 import { island, useRecorteQuery } from "@/lib/query";
 import { EChart, type ECInstance, type Tokens } from "./charts/EChart";
+import { AskAgentButton } from "./ui/AskAgentButton";
 import { Empty, ErrorState, Panel, Segmented, Skeleton } from "./ui/Panel";
 
 type Grain = "hour" | "day" | "week";
@@ -12,6 +13,12 @@ type View = "volume" | "sla" | "cancel";
 
 const GRAIN_LABEL: Record<Grain, string> = { hour: "Hora", day: "Dia", week: "Semana" };
 const VIEW_LABEL: Record<View, string> = { volume: "Volume", sla: "SLA e ciclo", cancel: "Cancelamento" };
+// Cauda da pergunta ao agente por métrica: "picos" e "cancelamento" caem nas regras certas do agente local.
+const ASK_TAIL: Record<View, string> = {
+  volume: "onde estão os picos e o que fazer?",
+  sla: "quando piora e o que fazer?",
+  cancel: "onde estão os picos e o que fazer?",
+};
 
 function TrendChartInner() {
   const [grain, setGrain] = useState<Grain>("day");
@@ -174,6 +181,10 @@ function TrendChartInner() {
             value={grain}
             onChange={setGrain}
             options={(Object.keys(GRAIN_LABEL) as Grain[]).map((value) => ({ value, label: GRAIN_LABEL[value] }))}
+          />
+          <AskAgentButton
+            subject={`a tendência de ${VIEW_LABEL[view].toLowerCase()}`}
+            question={`Explique a tendência de ${VIEW_LABEL[view].toLowerCase()} por ${GRAIN_LABEL[grain].toLowerCase()} neste recorte: ${ASK_TAIL[view]}`}
           />
         </>
       }

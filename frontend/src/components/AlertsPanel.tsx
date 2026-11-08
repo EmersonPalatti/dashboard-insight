@@ -267,7 +267,7 @@ function AlertsPanelInner() {
 
   return (
     <section ref={sectionRef} aria-labelledby="comandas-title" className={`transition-opacity ${isPlaceholderData ? "opacity-60" : ""}`}>
-      <header className="mb-2.5 flex items-baseline justify-between gap-2 px-0.5">
+      <header className="mb-2.5 flex items-baseline justify-between gap-2 bg-field px-0.5 pb-0.5 lg:sticky lg:top-0 lg:z-[2]">
         <h2 id="comandas-title" className="cond text-[0.9rem] font-bold text-ink">
           Comandas abertas{data ? ` · ${alerts.length}` : ""}
         </h2>
