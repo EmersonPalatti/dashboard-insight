@@ -6,6 +6,7 @@ ordenação vêm de listas fixas (DIMENSIONS, SORTS, ORDER_SORTS).
 
 from __future__ import annotations
 
+import tempfile
 import threading
 from collections import OrderedDict
 from datetime import date, timedelta
@@ -80,6 +81,9 @@ class Repository:
             )
         self._con = duckdb.connect(":memory:")
         self._con.execute("set memory_limit = '400MB'")
+        # Spill de memória vai para o temp do sistema, nunca para a pasta do projeto.
+        spill = (Path(tempfile.gettempdir()) / "central-operacoes-duckdb").as_posix().replace("'", "''")
+        self._con.execute(f"set temp_directory = '{spill}'")
         path = data_path.as_posix().replace("'", "''")
         self._con.execute(f"create table orders as select * from read_parquet('{path}')")
         self._con.execute(
