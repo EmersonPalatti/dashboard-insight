@@ -229,12 +229,25 @@
  * A máscara corta tudo fora da caixa, e os furos ocupam os primeiros 5px do topo.
  * O contorno da comanda fechada fica 6px para dentro, abaixo dos furos.
  */
-.ticket > h3 > button:focus-visible {
+.ticket > h3 > button:focus-visible,
+.ticket > button:focus-visible {
   outline-offset: -6px;
 }
 
+/* Gráfico que prova uma comanda: alvo de "Ver no gráfico", abaixo da barra de filtros fixa. */
+.evidence-anchor {
+  scroll-margin-top: 8rem;
+  outline: none;
+}
+
+/* Trilho de comandas: rolagem horizontal discreta, na cor do fio. */
+.comanda-rail {
+  scrollbar-width: thin;
+  scrollbar-color: var(--rule) transparent;
+}
+
 @utility btn {
-  @apply inline-flex items-center gap-1.5 rounded-card px-3 py-1.5 text-[0.92rem] leading-tight font-medium transition-colors disabled:opacity-50;
+  @apply inline-flex items-center gap-1.5 rounded-card px-3 py-1.5 text-[0.92rem] leading-tight font-medium transition-colors duration-(--duration-quick) disabled:opacity-50;
 }
 
 /* Ação principal: vermelho só onde a tela pede para agir. */

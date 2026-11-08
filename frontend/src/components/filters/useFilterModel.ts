@@ -22,6 +22,12 @@ function periodLabel(start: string | null, end: string | null) {
   return `até ${brDate(end ?? "")}`;
 }
 
+/** ISO → dd/mm, para o segmento Datas (o dataset cabe num ano só). */
+function dayMonth(iso: string) {
+  const [, m, d] = iso.slice(0, 10).split("-");
+  return `${d}/${m}`;
+}
+
 const nameOf = (names: Map<string, string>, v: string | number) => names.get(String(v)) ?? `ID ${v}`;
 
 export interface Chip {
@@ -45,7 +51,10 @@ function chipsOf<V extends string | number>(
 
 export interface PresetOption {
   id: "all" | "30d" | "7d";
+  /** Nome completo (chip, leitor de tela). */
   label: string;
+  /** Nome no segmento da barra. */
+  short: string;
   start: string | null;
   end: string | null;
 }
@@ -62,9 +71,9 @@ export function useFilterModel() {
   const max = meta?.max_date ?? "2021-04-30";
   const min = meta?.min_date ?? "2021-01-01";
   const presets: PresetOption[] = [
-    { id: "all", label: "Tudo", start: null, end: null },
-    { id: "30d", label: "Últimos 30 dias", start: shiftDays(max, -29), end: max },
-    { id: "7d", label: "Últimos 7 dias", start: shiftDays(max, -6), end: max },
+    { id: "all", label: "Tudo", short: "Tudo", start: null, end: null },
+    { id: "30d", label: "Últimos 30 dias", short: "30 dias", start: shiftDays(max, -29), end: max },
+    { id: "7d", label: "Últimos 7 dias", short: "7 dias", start: shiftDays(max, -6), end: max },
   ];
   const activePreset = presets.find((p) => p.start === f.start && p.end === f.end)?.id;
 
@@ -156,7 +165,17 @@ export function useFilterModel() {
     ),
   ];
 
-  return { f, active, min, max, presets, activePreset, extraCount, opts, chips, set };
+  // período personalizado: datas que não batem com nenhum preset
+  const customDates = !activePreset && Boolean(f.start || f.end);
+  const datesLabel = !customDates
+    ? "Datas"
+    : f.start && f.end
+      ? `${dayMonth(f.start)} – ${dayMonth(f.end)}`
+      : f.start
+        ? `desde ${dayMonth(f.start)}`
+        : `até ${dayMonth(f.end ?? "")}`;
+
+  return { f, active, min, max, presets, activePreset, customDates, datesLabel, extraCount, opts, chips, set };
 }
 
 export type FilterModel = ReturnType<typeof useFilterModel>;

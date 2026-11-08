@@ -1,6 +1,7 @@
 import { useStore } from "@nanostores/react";
 import { Bot } from "lucide-react";
-import { $agentActivity, $agentOpen, toggleAgent, type AgentActivity } from "@/lib/agentBridge";
+import type { KeyboardEvent } from "react";
+import { $agentActivity, $agentOpen, askAgentAbout, toggleAgent, type AgentActivity } from "@/lib/agentBridge";
 
 const ACTIVITY_TEXT: Record<AgentActivity, string> = {
   idle: "",
@@ -29,10 +30,23 @@ function ActivityDot({ activity, onWine = false }: { activity: AgentActivity; on
   );
 }
 
-/** Botão da barra de filtros (lg e acima). Fica preso no topo junto com o recorte. */
-export function AgentBarButton() {
+/**
+ * Entrada do agente na barra de filtros (lg e acima). Tem cara de campo de
+ * pergunta, porque é isso que o agente faz: responde sobre o recorte na tela.
+ * É um botão: clicar (ou Ctrl K) abre o painel; começar a digitar aqui abre o
+ * painel com a letra já no campo. Largo, mostra o convite; estreito (painel
+ * lateral aberto ou janela menor, pela container query da barra), vira "Agente".
+ */
+export function AgentAskButton() {
   const open = useStore($agentOpen);
   const activity = useStore($agentActivity);
+
+  const onKeyDown = (e: KeyboardEvent<HTMLButtonElement>) => {
+    if (open || e.key.length !== 1 || e.key === " " || e.ctrlKey || e.metaKey || e.altKey) return;
+    e.preventDefault();
+    askAgentAbout(e.key);
+  };
+
   return (
     <button
       type="button"
@@ -40,14 +54,24 @@ export function AgentBarButton() {
       aria-controls="agente"
       aria-expanded={open}
       aria-keyshortcuts="Control+K Meta+K"
+      aria-label={open ? "Fechar agente" : "Perguntar ao agente sobre este recorte"}
       onClick={toggleAgent}
-      className={`btn-ghost ${open ? "border-ink bg-sunken" : ""}`}
+      onKeyDown={onKeyDown}
+      className={`agent-ask flex h-10 min-w-0 items-center gap-2 rounded-card border px-3 text-left text-[0.92rem] whitespace-nowrap transition-colors duration-(--duration-quick) @6xl:w-[19rem] ${
+        open ? "border-series bg-sunken" : "border-series bg-surface hover:bg-sunken"
+      }`}
     >
-      <Bot className="size-3.5 text-series" aria-hidden />
-      Agente
+      <Bot className="size-4 shrink-0 text-series" aria-hidden />
+      {/* estreito (painel lateral aberto, janela menor): só "Agente"; largo: o convite, ou "Conversa aberta" */}
+      <span className="min-w-0 flex-1 truncate font-medium text-ink @6xl:hidden">Agente</span>
+      <span className={`hidden min-w-0 flex-1 truncate @6xl:inline ${open ? "text-ink" : "text-muted"}`}>
+        {open ? "Conversa aberta" : "Pergunte sobre este recorte…"}
+      </span>
       <ActivityDot activity={activity} />
       {activity !== "idle" && <span className="sr-only">: {ACTIVITY_TEXT[activity]}</span>}
-      <kbd className="ml-0.5 rounded-tick border border-rule px-1 font-sans text-[0.72rem] text-muted">{shortcutLabel()}</kbd>
+      <kbd aria-hidden className="hidden shrink-0 rounded-tick border border-rule px-1 font-sans text-[0.72rem] text-muted @6xl:inline">
+        {shortcutLabel()}
+      </kbd>
     </button>
   );
 }

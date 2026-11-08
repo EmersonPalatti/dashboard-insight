@@ -102,3 +102,19 @@ def test_llm_tools_stay_in_recorte_and_return_full_hours(repo):
     assert {h["parent"] for h in hubs} == {"Curitiba"}  # filtro forçado no servidor
     assert runner.run("get_breakdown", {"by": "drop table"}) == {"erro": "dimensão inválida: drop table"}
     assert runner.used[0] == "get_breakdown(hour)"
+
+
+def test_alerts_point_to_their_evidence(repo):
+    alerts = {a.id: a for a in detect_alerts(repo, Filters(segment=["food"]))}
+    slow = alerts["sla-hub-2"]
+    assert slow.evidence is not None and slow.evidence.view == "stages"
+    assert slow.evidence.hubs == [2]
+    assert all(a.evidence is not None for a in alerts.values())
+
+
+def test_store_alert_evidence_targets_the_store(repo):
+    alert = next(a for a in detect_alerts(repo, Filters()) if a.id == "cancel-store-30")
+    assert alert.evidence is not None
+    assert alert.evidence.view == "scatter"
+    assert alert.evidence.metric == "cancel_rate"
+    assert alert.evidence.stores == [30]

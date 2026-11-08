@@ -242,7 +242,7 @@ export function DatePicker({ label, value, min, max, rangeOther = null, onChange
   const selectedText = value ? formatBr(value) : null;
 
   return (
-    <div ref={root} className="relative max-lg:contents" onBlur={onRootBlur}>
+    <div ref={root} className="relative w-full max-lg:contents" onBlur={onRootBlur}>
       <button
         ref={triggerRef}
         type="button"
@@ -252,8 +252,11 @@ export function DatePicker({ label, value, min, max, rangeOther = null, onChange
         aria-label={`${label}, ${selectedText ?? "sem data"}`}
         onClick={() => (open ? close(true) : openPicker())}
         onKeyDown={onTriggerKeyDown}
-        className="flex h-7 max-lg:min-h-11 shrink-0 items-center gap-1.5 rounded-tick px-1.5 text-[0.88rem] transition-colors duration-(--duration-quick) hover:bg-sunken"
+        className={`flex h-10 w-full min-w-0 items-center gap-2 rounded-card border bg-surface px-3 text-left text-[0.92rem] transition-colors duration-(--duration-quick) max-lg:h-auto max-lg:min-h-11 ${
+          value ? "border-ink" : "border-rule hover:border-muted"
+        }`}
       >
+        <span className="w-10 shrink-0 text-muted">{label}</span>
         <Calendar className="size-3.5 shrink-0 text-muted" aria-hidden />
         <span className={`tabular-nums ${selectedText ? "text-ink" : "text-muted"}`}>{selectedText ?? "dd/mm/aaaa"}</span>
       </button>
@@ -270,9 +273,9 @@ export function DatePicker({ label, value, min, max, rangeOther = null, onChange
           }}
           onKeyDown={onPanelKeyDown}
           onMouseDown={onPanelMouseDown}
-          className={`z-30 mt-1 w-full max-w-[calc(100vw-2rem)] rounded-card border border-rule bg-surface p-1.5 transition-[opacity,scale,translate] duration-(--duration-fast) ease-(--ease-smooth-out) max-lg:static max-lg:mt-2 max-lg:basis-full lg:absolute lg:top-full lg:left-0 lg:w-[16.5rem] lg:origin-top-left ${
+          className={`z-30 mt-1 w-full max-w-[calc(100vw-2rem)] rounded-card border border-rule bg-surface p-1.5 transition-[opacity,scale] duration-(--duration-fast) ease-(--ease-smooth-out) max-lg:static max-lg:mt-2 max-lg:basis-full lg:absolute lg:top-full lg:left-0 lg:w-[16.5rem] lg:origin-top-left ${
             open
-              ? "starting:opacity-0 motion-safe:starting:translate-y-[calc(var(--distance-micro)*-1)] motion-safe:starting:scale-(--scale-medium) motion-reduce:duration-(--duration-quick)"
+              ? "starting:opacity-0 motion-safe:starting:scale-(--scale-medium) motion-reduce:duration-(--duration-quick)"
               : "pointer-events-none opacity-0 duration-(--duration-quick) motion-safe:scale-(--scale-tiny)"
           }`}
         >
@@ -282,7 +285,7 @@ export function DatePicker({ label, value, min, max, rangeOther = null, onChange
               aria-label="Mês anterior"
               disabled={prevDisabled}
               onClick={() => shiftMonth(-1)}
-              className="inline-flex size-10 lg:size-8 shrink-0 items-center justify-center rounded-tick text-ink transition-colors hover:bg-sunken disabled:text-muted disabled:opacity-40 disabled:hover:bg-transparent"
+              className="inline-flex size-10 lg:size-8 shrink-0 items-center justify-center rounded-tick text-ink transition-colors duration-(--duration-quick) hover:bg-sunken disabled:text-muted disabled:opacity-40 disabled:hover:bg-transparent"
             >
               <ChevronLeft className="size-4" aria-hidden />
             </button>
@@ -294,7 +297,7 @@ export function DatePicker({ label, value, min, max, rangeOther = null, onChange
               aria-label="Próximo mês"
               disabled={nextDisabled}
               onClick={() => shiftMonth(1)}
-              className="inline-flex size-10 lg:size-8 shrink-0 items-center justify-center rounded-tick text-ink transition-colors hover:bg-sunken disabled:text-muted disabled:opacity-40 disabled:hover:bg-transparent"
+              className="inline-flex size-10 lg:size-8 shrink-0 items-center justify-center rounded-tick text-ink transition-colors duration-(--duration-quick) hover:bg-sunken disabled:text-muted disabled:opacity-40 disabled:hover:bg-transparent"
             >
               <ChevronRight className="size-4" aria-hidden />
             </button>
@@ -349,7 +352,7 @@ export function DatePicker({ label, value, min, max, rangeOther = null, onChange
               type="button"
               disabled={value === null}
               onClick={() => choose(null)}
-              className="rounded-tick px-2 py-1 text-[0.9rem] text-muted transition-colors hover:bg-sunken hover:text-ink disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted"
+              className="rounded-tick px-2 py-1 text-[0.9rem] text-muted transition-colors duration-(--duration-quick) hover:bg-sunken hover:text-ink disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted"
             >
               Limpar
             </button>

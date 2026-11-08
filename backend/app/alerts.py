@@ -12,7 +12,7 @@ from datetime import timedelta
 from app import fmt
 from app.filters import Filters
 from app.repository import VALUE_LABELS, Repository
-from app.schemas import Alert, DrillDown
+from app.schemas import Alert, DrillDown, Evidence
 
 SLA_HIGH = 0.80
 SLA_WARN = 0.85
@@ -146,6 +146,7 @@ def _detect(repo: Repository, f: Filters) -> list[Alert]:
                 f"p90 {fmt.minutes(base['cycle_p90'])}."
             ),
             action=_sla_action(base, hubs, peak),
+            evidence=Evidence(view="kpi", kpi="sla_rate"),
         ))
 
     # Hub com muito pedido preso é problema de dado (alerta 5), não de operação.
@@ -169,6 +170,7 @@ def _detect(repo: Repository, f: Filters) -> list[Alert]:
             ),
             action=_stage_action(stage, hub, repo, f, peak),
             drilldown=DrillDown(label=f"Ver só {hub['label']}", filters={"hub": [int(hub["key"])]}),
+            evidence=Evidence(view="stages", hubs=[int(hub["key"])]),
         ))
 
     # 2. Cancelamento -------------------------------------------------------
@@ -187,6 +189,7 @@ def _detect(repo: Repository, f: Filters) -> list[Alert]:
             title="Cancelamento acima do teto",
             detail=f"{fmt.pct(cancel)} dos pedidos cancelados (teto interno {fmt.pct(CANCEL_WARN, 0)}).{where}",
             action="Separar cancelamento por loja e por canal antes de agir: o mix muda quem precisa ser acionado.",
+            evidence=Evidence(view="kpi", kpi="cancel_rate"),
         ))
 
     if len(hubs) > 1 and cancel > 0:
@@ -204,6 +207,7 @@ def _detect(repo: Repository, f: Filters) -> list[Alert]:
                 ),
                 action=f"Abrir as lojas do hub {hub['label']} por cancelamento e ligar para as duas primeiras hoje.",
                 drilldown=DrillDown(label=f"Ver só {hub['label']}", filters={"hub": [int(hub["key"])]}),
+                evidence=Evidence(view="scatter", metric="cancel_rate", hub_label=hub["label"]),
             ))
 
     # 3. Loja crítica -------------------------------------------------------
@@ -230,6 +234,7 @@ def _detect(repo: Repository, f: Filters) -> list[Alert]:
                     "Se a taxa não cair em 7 dias, pausar o destaque da loja no app."
                 ),
                 drilldown=DrillDown(label=f"Ver só {store['label']}", filters={"store": [int(store["key"])]}),
+                evidence=Evidence(view="scatter", metric="cancel_rate", stores=[int(store["key"])]),
             ))
 
     # 4. Pico ---------------------------------------------------------------
@@ -257,6 +262,7 @@ def _detect(repo: Repository, f: Filters) -> list[Alert]:
                         f"Antecipar a escala de entregadores em 30 min antes das {min(peak):02d}h "
                         "nos hubs com pior SLA e segurar promoções nesse intervalo."
                     ),
+                    evidence=Evidence(view="heatmap", metric="sla_rate", hours=peak),
                 ))
 
     # 5. Pedidos presos no fluxo -------------------------------------------
@@ -282,6 +288,7 @@ def _detect(repo: Repository, f: Filters) -> list[Alert]:
             drilldown=(
                 DrillDown(label=f"Ver só {hub['label']}", filters={"hub": [int(hub["key"])]}) if hub else None
             ),
+            evidence=Evidence(view="kpi", kpi="sla_rate"),
         ))
 
     # 6. Volume: últimos 7 dias contra os 7 anteriores -----------------------
@@ -302,6 +309,7 @@ def _detect(repo: Repository, f: Filters) -> list[Alert]:
                         f"{fmt.integer(prev['orders'])} na semana anterior ({fmt.pct(change)})."
                     ),
                     action="Cruzar a queda por hub e canal: se for um canal só, falar com o parceiro do canal.",
+                    evidence=Evidence(view="kpi", kpi="orders"),
                 ))
 
     # 7. Subsídio de frete --------------------------------------------------
@@ -317,6 +325,7 @@ def _detect(repo: Repository, f: Filters) -> list[Alert]:
                 f"{fmt.brl(subsidy)} de subsídio por pedido."
             ),
             action="Revisar frete mínimo nas lojas com ticket baixo e distância alta.",
+            evidence=Evidence(view="kpi", kpi="ticket"),
         ))
 
     alerts.sort(key=lambda a: _SEVERITY_ORDER[a.severity])

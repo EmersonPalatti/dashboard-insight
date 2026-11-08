@@ -1396,6 +1396,16 @@
                 "type": "null"
               }
             ]
+          },
+          "evidence": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Evidence"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -1840,6 +1850,100 @@
           "filters"
         ],
         "title": "DrillDown"
+      },
+      "Evidence": {
+        "properties": {
+          "view": {
+            "type": "string",
+            "enum": [
+              "kpi",
+              "stages",
+              "heatmap",
+              "scatter"
+            ],
+            "title": "View"
+          },
+          "kpi": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "sla_rate",
+                  "cycle_p50",
+                  "cancel_rate",
+                  "orders",
+                  "gmv",
+                  "ticket"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kpi",
+            "description": "Cartão de KPI que sustenta a comanda (view=kpi)."
+          },
+          "metric": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "orders",
+                  "sla_rate",
+                  "cancel_rate",
+                  "cycle_p50"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metric",
+            "description": "Métrica que o gráfico deve mostrar para a evidência aparecer (heatmap, scatter)."
+          },
+          "hubs": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Hubs",
+            "description": "Hubs a destacar (stages)."
+          },
+          "hub_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hub Label",
+            "description": "Hub cujas lojas se destacam no gráfico de lojas (scatter)."
+          },
+          "stores": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Stores",
+            "description": "Lojas a destacar (scatter)."
+          },
+          "hours": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Hours",
+            "description": "Horas a destacar (heatmap)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "view"
+        ],
+        "title": "Evidence",
+        "description": "Onde a comanda se prova na tela. Enquanto ela está aberta, o painel destaca isto (sem mudar o recorte)."
       },
       "Filters": {
         "properties": {

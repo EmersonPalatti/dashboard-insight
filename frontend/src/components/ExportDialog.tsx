@@ -2,9 +2,8 @@ import { useStore } from "@nanostores/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Check, ClipboardCopy, FileSpreadsheet, Printer, X } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { apiGet, apiUrl, type AlertsResponse, type KpiResponse } from "@/lib/api/client";
-import { $filters, toQuery } from "@/lib/filters";
-import { fmt } from "@/lib/format";
+import { copyBriefing, csvHref } from "@/lib/exportActions";
+import { $filters } from "@/lib/filters";
 
 interface Props {
   open: boolean;
@@ -18,25 +17,6 @@ interface Props {
 const CLOSE_FALLBACK_MS = 170;
 /** A impressão espera o modal fechar (--duration-quick). */
 const PRINT_DELAY_MS = 250;
-
-function briefingMarkdown(kpis: KpiResponse, alerts: AlertsResponse["alerts"], url: string) {
-  const m = kpis.current;
-  const lines = [
-    `# Briefing de operação — ${fmt.date(kpis.period.start)} a ${fmt.date(kpis.period.end)}`,
-    "",
-    `- Pedidos: ${fmt.int(m.orders)} · GMV ${fmt.brl(m.gmv)} · ticket ${fmt.brl(m.ticket)}`,
-    `- SLA no prazo: ${fmt.pct(m.sla_rate)} · ciclo mediano ${fmt.min(m.cycle_p50)} (p90 ${fmt.min(m.cycle_p90)})`,
-    `- Cancelamento: ${fmt.pct(m.cancel_rate)} · subsídio de frete ${fmt.brl(m.subsidy)}/entrega`,
-    "",
-    "## Alertas e ações",
-    ...(alerts.length
-      ? alerts.flatMap((a) => [`### ${a.title}`, a.detail, `**Ação:** ${a.action}`, ""])
-      : ["Nenhum alerta neste recorte."]),
-    "",
-    `Recorte: ${url}`,
-  ];
-  return lines.join("\n");
-}
 
 /*
  * Movimento do modal: abre com transição de entrada (@starting-style via starting:) e
@@ -108,15 +88,10 @@ export function ExportDialog({ open, onClose }: Props) {
   // Desmontar no meio do fechamento limpa timer e listener.
   useEffect(() => () => stopClosing.current?.(), []);
 
-  const copyBriefing = async () => {
+  const onCopyBriefing = async () => {
     setCopied("busy");
     try {
-      const query = toQuery(filters);
-      const [kpis, alerts] = await Promise.all([
-        qc.query({ queryKey: ["/api/kpis", filters, {}], queryFn: () => apiGet("/api/kpis", query) }),
-        qc.query({ queryKey: ["/api/alerts", filters, {}], queryFn: () => apiGet("/api/alerts", query) }),
-      ]);
-      await navigator.clipboard.writeText(briefingMarkdown(kpis, alerts.alerts, location.href));
+      await copyBriefing(qc, filters);
       setCopied("done");
     } catch {
       setCopied("error");
@@ -146,14 +121,14 @@ export function ExportDialog({ open, onClose }: Props) {
           </button>
         </div>
         <div className="grid gap-2">
-          <a className="btn-ghost justify-start py-3" href={apiUrl("/api/orders.csv", toQuery(filters))} download>
+          <a className="btn-ghost justify-start py-3" href={csvHref(filters)} download>
             <FileSpreadsheet className="size-4 text-series" aria-hidden />
             <span>
               <span className="block font-semibold">Pedidos em CSV</span>
               <span className="label">Uma linha por pedido, com o recorte atual.</span>
             </span>
           </a>
-          <button type="button" className="btn-ghost justify-start py-3 text-left" onClick={copyBriefing} disabled={copied === "busy"}>
+          <button type="button" className="btn-ghost justify-start py-3 text-left" onClick={onCopyBriefing} disabled={copied === "busy"}>
             {copied === "done" ? <Check className="size-4 text-good" aria-hidden /> : <ClipboardCopy className="size-4 text-series" aria-hidden />}
             <span>
               <span className="block font-semibold">

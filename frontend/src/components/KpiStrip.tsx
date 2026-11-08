@@ -2,7 +2,9 @@ import { ArrowDownRight, ArrowUpRight, Minus } from "lucide-react";
 import { Fragment, useState, type CSSProperties } from "react";
 import type { Metrics } from "@/lib/api/client";
 import { fmt } from "@/lib/format";
+import type { FocusedEvidence } from "@/lib/evidence";
 import { island, useMeta, useRecorteQuery } from "@/lib/query";
+import { EvidenceTag, useEvidence } from "./ui/EvidenceTag";
 import { ErrorState } from "./ui/Panel";
 
 type Key = keyof Metrics;
@@ -184,11 +186,35 @@ function SampleNote({ measured }: { measured: number }) {
   );
 }
 
-function Hero({ def, current, previous, trail }: { def: KpiDef; current: Metrics; previous?: Metrics | null; trail?: (number | null)[] }) {
+/**
+ * Cartão que prova a comanda aberta: contorno em tinta (por dentro, sem mexer no layout) e a etiqueta da comanda.
+ * O contorno entra e sai por cor, então trocar de comanda não pisca.
+ */
+const markClass = (marked: boolean) =>
+  `outline-2 -outline-offset-2 transition-[outline-color] duration-(--duration-fast) ease-(--ease-smooth-out) motion-reduce:transition-none ${
+    marked ? "outline-ink" : "outline-transparent"
+  }`;
+
+function Hero({
+  def,
+  current,
+  previous,
+  trail,
+  focus,
+}: {
+  def: KpiDef;
+  current: Metrics;
+  previous?: Metrics | null;
+  trail?: (number | null)[];
+  focus: FocusedEvidence | null;
+}) {
   const thinBase = def.measured && current.low_sample;
   return (
-    <div className="min-w-0 bg-surface px-4 pt-3.5 pb-3">
-      <p className="cond text-[0.78rem] font-bold text-muted">{def.label}</p>
+    <div className={`min-w-0 bg-surface px-4 pt-3.5 pb-3 ${markClass(!!focus)}`}>
+      <p className="flex min-w-0 items-center justify-between gap-2">
+        <span className="cond shrink-0 text-[0.78rem] font-bold text-muted">{def.label}</span>
+        {focus && <EvidenceTag focus={focus} note="" className="-my-0.5" />}
+      </p>
       <KpiFigure className="figure mt-1.5 block text-[2.6rem]" value={current[def.key] as number | null} format={def.format} />
       <div className="mt-1">
         {thinBase ? <SampleNote measured={current.measured} /> : <Delta def={def} current={current} previous={previous} />}
@@ -199,13 +225,14 @@ function Hero({ def, current, previous, trail }: { def: KpiDef; current: Metrics
   );
 }
 
-function Volume({ def, current, previous }: { def: KpiDef; current: Metrics; previous?: Metrics | null }) {
+function Volume({ def, current, previous, focus }: { def: KpiDef; current: Metrics; previous?: Metrics | null; focus: FocusedEvidence | null }) {
   return (
-    <div className="min-w-0 px-4 py-3">
+    <div className={`flex min-w-0 flex-col justify-center px-4 py-2.5 ${markClass(!!focus)}`}>
       <p className="flex flex-wrap items-baseline gap-x-2">
         <span className="text-[0.88rem] text-muted">{def.label}</span>
         <KpiFigure className="figure text-[1.45rem]" value={current[def.key] as number | null} format={def.format} />
         <Delta def={def} current={current} previous={previous} />
+        {focus && <EvidenceTag focus={focus} note="" className="ml-auto self-center" />}
       </p>
       {def.sub && <p className="mt-0.5 text-pretty text-[0.8rem] text-muted">{def.sub(current)}</p>}
     </div>
@@ -214,9 +241,9 @@ function Volume({ def, current, previous }: { def: KpiDef; current: Metrics; pre
 
 function KpiSkeleton() {
   return (
-    <div className="grid gap-2.5">
+    <div className="grid gap-2.5 lg:grid-cols-[minmax(0,3fr)_minmax(15rem,1fr)]">
       <div className="skeleton h-[188px]" />
-      <div className="skeleton h-[72px]" />
+      <div className="skeleton h-[72px] lg:h-[188px]" />
     </div>
   );
 }
@@ -225,6 +252,8 @@ function KpiStripInner() {
   const { data, error, isPending, refetch, isPlaceholderData } = useRecorteQuery("/api/kpis");
   const { data: series } = useRecorteQuery("/api/timeseries", { grain: "day" });
   const { data: meta } = useMeta();
+  const evidence = useEvidence("kpi");
+  const focusFor = (key: Key) => (evidence?.evidence.kpi === key ? evidence : null);
   if (isPending) return <KpiSkeleton />;
   if (error) return <ErrorState error={error} onRetry={() => refetch()} />;
   const { current, previous, period, previous_period } = data;
@@ -261,15 +290,18 @@ function KpiStripInner() {
           </p>
         )}
       </div>
-      <div className="grid grid-cols-1 gap-px overflow-hidden rounded-card border border-rule bg-rule sm:grid-cols-3">
-        {OPERATION.map((def) => (
-          <Hero key={def.key} def={def} current={current} previous={previous} trail={trail(def.key as SeriesKey)} />
-        ))}
-      </div>
-      <div className="tile grid grid-cols-1 divide-y divide-rule sm:grid-cols-3 sm:divide-x sm:divide-y-0">
-        {VOLUME.map((def) => (
-          <Volume key={def.key} def={def} current={current} previous={previous} />
-        ))}
+      {/* lg+: operação grande à esquerda, volume empilhado numa coluna estreita ao lado (mesma altura) */}
+      <div className="grid gap-2.5 lg:grid-cols-[minmax(0,3fr)_minmax(15rem,1fr)]">
+        <div className="grid grid-cols-1 gap-px overflow-hidden rounded-card border border-rule bg-rule sm:grid-cols-3">
+          {OPERATION.map((def) => (
+            <Hero key={def.key} def={def} current={current} previous={previous} trail={trail(def.key as SeriesKey)} focus={focusFor(def.key)} />
+          ))}
+        </div>
+        <div className="tile grid grid-cols-1 divide-y divide-rule overflow-hidden sm:grid-cols-3 sm:divide-x sm:divide-y-0 lg:auto-rows-fr lg:grid-cols-1 lg:divide-x-0 lg:divide-y">
+          {VOLUME.map((def) => (
+            <Volume key={def.key} def={def} current={current} previous={previous} focus={focusFor(def.key)} />
+          ))}
+        </div>
       </div>
     </div>
   );

@@ -199,6 +199,7 @@ export interface components {
             /** Action */
             action: string;
             drilldown?: components["schemas"]["DrillDown"] | null;
+            evidence?: components["schemas"]["Evidence"] | null;
         };
         /** AlertsResponse */
         AlertsResponse: {
@@ -339,6 +340,47 @@ export interface components {
             filters: {
                 [key: string]: (string | number)[];
             };
+        };
+        /**
+         * Evidence
+         * @description Onde a comanda se prova na tela. Enquanto ela está aberta, o painel destaca isto (sem mudar o recorte).
+         */
+        Evidence: {
+            /**
+             * View
+             * @enum {string}
+             */
+            view: "kpi" | "stages" | "heatmap" | "scatter";
+            /**
+             * Kpi
+             * @description Cartão de KPI que sustenta a comanda (view=kpi).
+             */
+            kpi?: ("sla_rate" | "cycle_p50" | "cancel_rate" | "orders" | "gmv" | "ticket") | null;
+            /**
+             * Metric
+             * @description Métrica que o gráfico deve mostrar para a evidência aparecer (heatmap, scatter).
+             */
+            metric?: ("orders" | "sla_rate" | "cancel_rate" | "cycle_p50") | null;
+            /**
+             * Hubs
+             * @description Hubs a destacar (stages).
+             */
+            hubs?: number[];
+            /**
+             * Hub Label
+             * @description Hub cujas lojas se destacam no gráfico de lojas (scatter).
+             */
+            hub_label?: string | null;
+            /**
+             * Stores
+             * @description Lojas a destacar (scatter).
+             */
+            stores?: number[];
+            /**
+             * Hours
+             * @description Horas a destacar (heatmap).
+             */
+            hours?: number[];
         };
         /** Filters */
         Filters: {

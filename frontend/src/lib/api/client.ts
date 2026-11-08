@@ -9,6 +9,7 @@ export type Filters = Schemas["Filters"];
 export type Metrics = Schemas["Metrics"];
 export type KpiResponse = Schemas["KpiResponse"];
 export type Alert = Schemas["Alert"];
+export type Evidence = Schemas["Evidence"];
 export type AlertsResponse = Schemas["AlertsResponse"];
 export type BreakdownRow = Schemas["BreakdownRow"];
 export type Dimension = Schemas["BreakdownResponse"]["by"];

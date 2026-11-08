@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef, type ReactNode } from "react";
 import { prefersReducedMotion } from "./media";
 import type { PresetOption } from "./useFilterModel";
 
@@ -17,16 +17,25 @@ function snap(el: HTMLElement, transform: string) {
 
 interface Props {
   presets: PresetOption[];
-  activeId?: PresetOption["id"];
+  /** Preset ativo, ou "dates" quando o período é personalizado. */
+  activeId?: string;
   onSelect: (preset: PresetOption) => void;
+  /** Último segmento (Datas): um botão com data-preset="dates" e a classe de presetClass. */
+  extra?: ReactNode;
 }
+
+/** Classe de um segmento; exportada para o botão Datas, que vive fora deste componente. */
+export const presetClass = (on: boolean) =>
+  `relative flex items-center gap-1.5 rounded-t-[4px] border-b-2 border-transparent px-2.5 text-[0.88rem] whitespace-nowrap transition-colors duration-(--duration-quick) ${
+    on ? "text-ink" : "text-muted hover:text-ink"
+  }`;
 
 /**
  * Presets de período com indicador deslizante (tabs sliding). Só transform e
  * opacity animam: a largura do indicador é fixada na medição, e a troca de
  * posição vai do retângulo antigo ao novo por translate + scaleX (origem à esquerda).
  */
-export function PeriodPresets({ presets, activeId, onSelect }: Props) {
+export function PeriodPresets({ presets, activeId, onSelect, extra }: Props) {
   const groupRef = useRef<HTMLDivElement>(null);
   const indicatorRef = useRef<HTMLSpanElement>(null);
   // último retângulo pintado: undefined = nunca medido; null = sem preset (datas personalizadas)
@@ -34,9 +43,13 @@ export function PeriodPresets({ presets, activeId, onSelect }: Props) {
   // o ResizeObserver lê o preset atual por ref: não é recriado a cada troca (o disparo inicial dele cortaria o deslize)
   const activeRef = useRef(activeId);
 
-  const measure = (id: PresetOption["id"] | undefined): Rect | null => {
-    const btn = id ? groupRef.current?.querySelector<HTMLElement>(`[data-preset="${id}"]`) : null;
-    return btn ? { x: btn.offsetLeft, w: btn.offsetWidth } : null;
+  // pelo retângulo e não por offsetLeft: o botão Datas fica dentro do popover, que é outro offsetParent
+  const measure = (id: string | undefined): Rect | null => {
+    const group = groupRef.current;
+    const btn = id ? group?.querySelector<HTMLElement>(`[data-preset="${id}"]`) : null;
+    if (!group || !btn) return null;
+    const x = btn.getBoundingClientRect().left - group.getBoundingClientRect().left - group.clientLeft;
+    return { x, w: btn.offsetWidth };
   };
 
   useLayoutEffect(() => {
@@ -84,7 +97,7 @@ export function PeriodPresets({ presets, activeId, onSelect }: Props) {
   }, []);
 
   return (
-    <div ref={groupRef} className="relative inline-flex rounded-card border border-rule bg-sunken p-0.5">
+    <div ref={groupRef} className="relative inline-flex h-10 items-stretch rounded-card border border-rule bg-sunken p-0.5 max-lg:h-11">
       <span
         ref={indicatorRef}
         aria-hidden
@@ -97,16 +110,16 @@ export function PeriodPresets({ presets, activeId, onSelect }: Props) {
             key={p.id}
             type="button"
             data-preset={p.id}
+            aria-label={p.label}
             aria-pressed={on}
             onClick={() => onSelect(p)}
-            className={`relative rounded-t-[4px] border-b-2 border-transparent px-2.5 py-1.5 text-[0.85rem] transition-colors ${
-              on ? "text-ink" : "text-muted hover:text-ink"
-            }`}
+            className={presetClass(on)}
           >
-            {p.label}
+            {p.short}
           </button>
         );
       })}
+      {extra}
     </div>
   );
 }

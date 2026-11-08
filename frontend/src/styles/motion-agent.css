@@ -162,4 +162,9 @@
     transition-delay: 0s !important;
     animation: none !important;
   }
+
+  /* sem pulso: consultando vira um ponto a meia tinta, diferente do cheio de "resposta nova" */
+  .agent-dot[data-pending] {
+    opacity: 0.45;
+  }
 }

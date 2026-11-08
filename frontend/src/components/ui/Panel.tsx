@@ -9,9 +9,11 @@ interface PanelProps {
   className?: string;
   /** Mostra um indicador discreto enquanto o recorte novo carrega por cima do antigo. */
   busy?: boolean;
+  /** Linha abaixo da dica, ex.: a etiqueta da comanda que este gráfico prova. */
+  note?: ReactNode;
 }
 
-export function Panel({ title, hint, actions, children, className = "", busy }: PanelProps) {
+export function Panel({ title, hint, actions, children, className = "", busy, note }: PanelProps) {
   return (
     <section className={`panel flex min-w-0 flex-col p-4 ${className}`}>
       <header className="mb-3 flex flex-wrap items-start justify-between gap-2">
@@ -21,6 +23,7 @@ export function Panel({ title, hint, actions, children, className = "", busy }: 
             {busy && <LoaderCircle aria-label="Atualizando" className="size-3.5 animate-spin text-muted motion-reduce:animate-none" />}
           </h2>
           {hint && <p className="label mt-0.5 text-pretty">{hint}</p>}
+          {note && <div className="mt-1.5 flex min-w-0">{note}</div>}
         </div>
         {actions && <div className="flex flex-wrap items-center gap-1.5">{actions}</div>}
       </header>

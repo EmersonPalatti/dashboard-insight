@@ -358,7 +358,7 @@ export function AgentConversation({ visible, onClose }: ConversationProps) {
             <ActiveChips chips={chips} />
           )}
           <p className="text-[0.8rem] text-pretty text-muted">
-            Responde só sobre {active ? `estes ${active === 1 ? "filtro" : `${active} filtros`}` : "este recorte"}.{" "}
+            Responde só sobre {active ? (active === 1 ? "este filtro" : `estes ${active} filtros`) : "este recorte"}.{" "}
             {meta ? (meta.llm_enabled ? "LLM com ferramentas, regras locais de reserva." : "Modo local: regras e estatísticas, sem API key.") : ""}
           </p>
         </div>

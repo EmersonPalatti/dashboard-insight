@@ -1,8 +1,9 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { fmt, WEEKDAYS } from "@/lib/format";
 import { island, useRecorteQuery } from "@/lib/query";
 import { EChart, type Tokens } from "./charts/EChart";
 import { AskAgentButton } from "./ui/AskAgentButton";
+import { EvidenceTag, useEvidence } from "./ui/EvidenceTag";
 import { Empty, ErrorState, Panel, Segmented, Skeleton } from "./ui/Panel";
 
 type Metric = "orders" | "sla_rate" | "cancel_rate" | "cycle_p50";
@@ -26,9 +27,18 @@ const HOURS = Array.from({ length: 24 }, (_, h) => `${String(h).padStart(2, "0")
 const MIN_ORDERS = 20; // células com pouco pedido viram ruído em taxas
 const CHART_H = 300;
 
+
 function HeatmapChartInner() {
   const [metric, setMetric] = useState<Metric>("orders");
   const { data, error, isPending, refetch, isPlaceholderData } = useRecorteQuery("/api/heatmap");
+  // comanda aberta que aponta para horas: o mapa passa para a métrica dela, as horas ficam cheias e o resto recua
+  const focus = useEvidence("heatmap");
+  const focusMetric = focus?.evidence.metric;
+  const focusId = focus?.alertId;
+  useEffect(() => {
+    if (focusMetric) setMetric(focusMetric);
+  }, [focusId, focusMetric]);
+  const peak = useMemo(() => new Set(focus?.evidence.hours ?? []), [focus]);
   const cells = data ?? [];
   // Células que entram no mapa para a métrica atual: taxas só com MIN_ORDERS pedidos e valor presente.
   const usable = useMemo(
@@ -50,9 +60,23 @@ function HeatmapChartInner() {
           formatter: (p: { value: [number, number, number, number] }) =>
             `${WEEKDAYS[p.value[1]]} ${HOURS[p.value[0]]}<br/>${m.label}: <b>${m.format(p.value[2])}</b><br/>${fmt.int(p.value[3])} pedidos`,
         },
-        xAxis: { type: "category", data: HOURS, splitArea: { show: false }, axisLabel: { interval: 1 } },
+        xAxis: {
+          type: "category",
+          data: HOURS,
+          splitArea: { show: false },
+          axisLabel: peak.size
+            ? {
+                interval: 0,
+                // com horas marcadas, todas aparecem: as da comanda em tinta, as outras só nas pares
+                formatter: (v: string, i: number) => (peak.has(i) ? `{hl|${v}}` : i % 2 === 0 ? v : ""),
+                rich: { hl: { color: t.ink, fontWeight: "bold" } },
+              }
+            : { interval: 1 },
+        },
         yAxis: { type: "category", data: WEEKDAYS, inverse: true, splitLine: { show: false }, axisLine: { show: false } },
         visualMap: {
+          // a cor vem da métrica (coluna 2); sem isto o ECharts usa a última coluna, que é a contagem de pedidos
+          dimension: 2,
           min: lo,
           max: hi === lo ? lo + 1 : hi,
           calculable: false,
@@ -69,18 +93,19 @@ function HeatmapChartInner() {
         series: [
           {
             type: "heatmap",
-            data: values,
+            data: peak.size ? values.map((v) => ({ value: v, itemStyle: { opacity: peak.has(v[0]) ? 1 : 0.22 } })) : values,
             itemStyle: { borderColor: t.surface, borderWidth: 1 },
             emphasis: { itemStyle: { borderColor: t.ink, borderWidth: 1 } },
           },
         ],
       };
     },
-    [usable, metric],
+    [usable, metric, peak],
   );
 
   return (
     <Panel
+      note={focus && <EvidenceTag focus={focus} />}
       title="Dia × hora"
       hint={metric === "orders" ? "Volume por faixa (horário de Brasília)." : `Taxas só em faixas com ${MIN_ORDERS}+ pedidos.`}
       busy={isPlaceholderData}

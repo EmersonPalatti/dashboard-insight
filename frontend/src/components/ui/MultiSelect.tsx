@@ -243,15 +243,15 @@ export function MultiSelect<V extends string | number>({
         aria-labelledby={`${labelId} ${summaryId}`}
         onClick={() => (open ? setOpen(false) : openAt(0))}
         onKeyDown={onTriggerKeyDown}
-        className={`flex w-full min-w-0 items-center justify-between gap-2 rounded-card border px-2.5 py-1.5 text-left text-[0.92rem] transition-colors duration-(--duration-quick) disabled:opacity-50 ${
+        className={`flex h-10 w-full min-w-0 items-center justify-between gap-2 rounded-card border px-3 text-left text-[0.92rem] max-lg:h-auto max-lg:min-h-11 transition-colors duration-(--duration-quick) disabled:opacity-50 ${
           value.length ? "border-ink bg-surface" : "border-rule bg-surface hover:border-muted"
         }`}
       >
-        <span className="min-w-0">
-          <span id={labelId} className="block text-[0.72rem] leading-none text-muted">
+        <span className="flex min-w-0 flex-1 items-baseline gap-1.5">
+          <span id={labelId} className="shrink-0 text-muted">
             {label}
           </span>
-          <span id={summaryId} className="mt-0.5 block truncate">
+          <span id={summaryId} className="min-w-0 flex-1 truncate text-left text-ink">
             {summary}
           </span>
         </span>
@@ -272,9 +272,9 @@ export function MultiSelect<V extends string | number>({
           }}
           onKeyDown={onPanelKeyDown}
           onMouseDown={onPanelMouseDown}
-          className={`absolute left-0 z-30 mt-1 w-72 max-w-[calc(100vw-2rem)] origin-top-left rounded-card border border-rule bg-surface p-1.5 transition-[opacity,scale,translate] duration-(--duration-fast) ease-(--ease-smooth-out) ${
+          className={`absolute left-0 z-30 mt-1 w-72 max-w-[calc(100vw-2rem)] origin-top-left rounded-card border border-rule bg-surface p-1.5 transition-[opacity,scale] duration-(--duration-fast) ease-(--ease-smooth-out) ${
             open
-              ? "starting:opacity-0 motion-safe:starting:translate-y-[calc(var(--distance-micro)*-1)] motion-safe:starting:scale-(--scale-medium) motion-reduce:duration-(--duration-quick)"
+              ? "starting:opacity-0 motion-safe:starting:scale-(--scale-medium) motion-reduce:duration-(--duration-quick)"
               : "pointer-events-none opacity-0 duration-(--duration-quick) motion-safe:scale-(--scale-tiny)"
           }`}
         >
@@ -335,7 +335,7 @@ export function MultiSelect<V extends string | number>({
                   >
                     {on && (
                       <Check
-                        className="size-3 transition-[opacity,scale] duration-(--duration-quick) ease-(--ease-smooth-out) starting:opacity-0 motion-safe:starting:scale-[0.8] motion-reduce:transition-none"
+                        className="size-3 transition-[opacity,scale] duration-(--duration-quick) ease-(--ease-smooth-out) starting:opacity-0 motion-safe:starting:scale-(--scale-medium) motion-reduce:transition-none"
                         strokeWidth={3}
                         aria-hidden
                       />

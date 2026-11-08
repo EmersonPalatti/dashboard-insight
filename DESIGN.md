@@ -104,7 +104,17 @@ components:
     backgroundColor: "{colors.ink}"
     textColor: "{colors.surface}"
     rounded: "{rounded.card}"
-    padding: "12px 14px"
+    padding: "14px 16px"
+  ticket-stub:
+    backgroundColor: "{colors.surface}"
+    textColor: "{colors.ink}"
+    rounded: "{rounded.card}"
+    padding: "16px 16px 14px"
+  evidence-tag:
+    backgroundColor: "{colors.sunken}"
+    textColor: "{colors.ink}"
+    rounded: "{rounded.tick}"
+    padding: "2px 8px"
   panel:
     backgroundColor: "{colors.surface}"
     textColor: "{colors.ink}"
@@ -127,6 +137,23 @@ components:
     rounded: "{rounded.card}"
     padding: "4px 8px"
     typography: "{typography.label}"
+  filter-bar:
+    backgroundColor: "{colors.surface}"
+    textColor: "{colors.ink}"
+    height: "80px"
+  agent-ask-field:
+    backgroundColor: "{colors.surface}"
+    textColor: "{colors.ink}"
+    rounded: "{rounded.card}"
+    height: "40px"
+    padding: "0 12px"
+    typography: "{typography.label}"
+  share-menu:
+    backgroundColor: "{colors.surface}"
+    textColor: "{colors.ink}"
+    rounded: "{rounded.card}"
+    width: "20rem"
+    padding: "6px"
 ---
 
 # Design System: Central de Operações
@@ -135,7 +162,7 @@ components:
 
 **Creative North Star: "A comanda na fila"**
 
-The console borrows the grammar of the delivery apps its operators already use every day: cool neutral greys, firm sans type, 8px corners, one red that means something. It adds a world of its own taken from the restaurant counter: the thermal **comanda** a store prints when an order arrives. Every alert in the current recorte is a comanda in a queue, numbered, tagged by category and severity, with the action printed at its foot. One comanda is open at a time; the rest wait, summarised.
+The console borrows the grammar of the delivery apps its operators already use every day: cool neutral greys, firm sans type, 8px corners, one red that means something. It adds a world of its own taken from the restaurant counter: the thermal **comanda** a store prints when an order arrives. Every alert in the current recorte is a comanda hung on a rail, numbered, tagged by category and severity, with the action printed on it. One comanda is open at a time, in a wide band under the rail; the open one also marks its evidence on the KPI or chart that proves it.
 
 The shell is a wine band, not red: it gives the product a recognisable colour field without borrowing any delivery brand's identity, and keeps red free to mean "critical". Data series are drawn in a wine ramp, so the charts belong to the same world as the shell.
 
@@ -183,11 +210,11 @@ One family, **Archivo** (Google Fonts, `wdth` 62–125, `wght` 400–800).
 
 ## Layout
 
-Max width 1440px, 24px side padding (16px under `sm`), 20px gutters. From `lg` the top grid has two columns: KPIs in row 1, the trend chart in row 2 on the left, and the comanda queue (`minmax(340px, min(440px, 34%))`) on the right spanning both rows. The queue takes the height of KPIs plus trend and scrolls inside its own column, with its header pinned, so it never leaves a gap beside the trend. Under `lg` the order is KPIs → comandas → trend. Charts and tables follow full width or in pairs. The agent is not a grid track: it is one fixed panel outside `main` (see Agent panel). Every grid track is `minmax(0, 1fr)` so truncated text never widens the page.
+Max width 1440px, 24px side padding (16px under `sm`), 20px gutters. The page reads top-down at full width: comanda rail → KPIs → trend → stages | heatmap → stores | ranking → orders. The rail sits first because the action is the product; KPIs follow as the context the comandas cite. From `lg` the KPI block is two tracks (`minmax(0,3fr) minmax(15rem,1fr)`): the three operation heroes on the left, the three volume figures stacked in one column on the right at the same height. Charts and tables follow full width or in pairs. The agent is not a grid track: it is one fixed panel outside `main` (see Agent panel). Every grid track is `minmax(0, 1fr)` so truncated text never widens the page.
 
 ## Elevation & Depth
 
-Flat. Depth comes from layer tone: open comanda is pure surface, queued comandas are surface at 70% over the field. The filter bar is the only sticky layer, at every width, separated by a hairline. The agent panel floats over the page only in its float mode (1024–1279px), outlined in ink instead of shadowed.
+Flat. Depth comes from layer tone: the open comanda and its rail ticket are pure surface, the other rail tickets are surface at 60% over the field. The filter bar is the only sticky layer, at every width, separated by a hairline. The agent panel floats over the page only in its float mode (1024–1279px), outlined in ink instead of shadowed.
 
 ### Named Rules
 **The No Shadow Rule.** No box-shadows anywhere, including tooltips and dialogs.
@@ -200,12 +227,22 @@ Flat. Depth comes from layer tone: open comanda is pure surface, queued comandas
 
 ### Buttons
 - **Primary** (`btn-primary`): crit fill, white text. One on the page: the open comanda's drill-down.
-- **Ink** (`btn-ink`): ink fill; secondary commitments such as Exportar, the agent's Enviar, Filtrar estas lojas and the trend zoom.
-- **Ghost** (`btn-ghost`): surface with rule border; everything else, including the filter bar's Agente, each Perguntar and Nova conversa.
+- **Ink** (`btn-ink`): ink fill; secondary commitments such as the agent's Enviar, Filtrar estas lojas and the trend zoom.
+- **Ghost** (`btn-ghost`): surface with rule border; everything else, including Mais filtros, Compartilhar, the mobile sheet's Exportar, each Perguntar and Nova conversa.
 - **Wine FAB** (`agent-fab`): the only wine-filled button. It is the agent's opener below `lg`, in the thumb zone; it hides while the sheet is open.
 
+### Filter bar
+The desktop bar (`lg` and up) has two rows with separate jobs. Row 1 defines the recorte: its controls are 40px tall, with `card` corners and a 1px border. Row 2 shows the recorte itself and is 32px tall, growing only if the chips wrap. The bar is 80px in all: row 1, 8px, row 2. Controls in one group sit 8px apart, and groups sit 16px apart.
+- **Período**: one segmented control, "Tudo | 30 dias | 7 dias | Datas", with one sliding indicator. **Datas**, its fourth segment, opens a popover with the same component and motion as Mais filtros, anchored left. The popover holds Início and Fim as two 40px fields, each opening the pt-BR calendar. Once a range is chosen, the segment shows it ("01/03 – 15/03", "desde 01/03", "até 15/03") and the indicator sits on it. In the mobile sheet, Datas expands the two fields inline below the control instead, at 44px each.
+- **Cidade**, **Hub** and **Loja**: equal-width selects with the label inline and muted inside the box ("Cidade  Curitiba ▾"). An active select takes an ink border.
+- **Mais filtros**: sized to its text, with the active count after it ("Mais filtros · 2"). It takes an ink border when any extra filter is active.
+- After a 1px vertical rule at the right end of row 1: the agent's ask field (see Agent panel).
+- **Row 2**: the chips of the active filters, or one line saying the recorte is complete when there are none; a quiet "Limpar recorte" text button; and, at the right, the ghost **Compartilhar ▾** menu. Its items are Copiar link, Pedidos em CSV, Copiar briefing (Markdown) and PDF da tela, each with a series-coloured icon and a one-line muted description. The copy actions confirm in place: the icon cross-fades to a check in `good`, the label changes, and the menu stays open.
+
+Exportar is no longer on the desktop bar. The Export dialog opens only from the mobile sheet's footer, and CSV is in Compartilhar.
+
 ### Inputs / Fields
-Filter selects are surface boxes with a small label over the value; an active filter gets an ink border. Selected options use an ink checkbox. From `lg` up, Período, Cidade, Hub and Loja stay visible; Segmento, Canal and Modal live in the "Mais filtros" popover, which floats over the page instead of pushing it down. Below `lg` the bar collapses to one recorte summary ("Recorte · N / Rio de Janeiro · Editar") that opens a bottom sheet with every control, plus a "Comandas · N / X críticas" shortcut to the queue. Every active value also shows as a removable chip.
+Filter selects are 40px surface boxes (44px below `lg`) with the label inline and muted before the value; an active filter gets an ink border. Selected options use an ink checkbox. From `lg` up, Período, Cidade, Hub and Loja stay visible; Segmento, Canal and Modal live in the "Mais filtros" popover, which floats over the page instead of pushing it down. Below `lg` the bar collapses to one recorte summary ("Recorte · N / Rio de Janeiro · Editar") that opens a bottom sheet with every control, plus a "Comandas · N / X críticas" shortcut to the queue. Every active value also shows as a removable chip.
 
 No native dropdown or calendar ships: their open state is the operating system's, with square corners and no tokens. Single choices (Quebrar por) use `Select`, dates use `DatePicker`; both open the same floating panel as the filter menus (`card` corners, rule border, surface, no shadow, same open/close motion). The calendar is pt-BR (dd/mm/aaaa, week from Sunday), day cells are `tick`, the chosen day is ink and the rest of the range a sunken tint. Below `lg` it opens in flow instead of floating, so the bottom sheet never clips it.
 
@@ -215,7 +252,12 @@ Table outliers (No prazo abaixo do recorte, cancelamento acima, ciclo fora do SL
 The wine band holds product name, subtitle, the API (Swagger) link, API status dot and the theme toggle. The agent does not live here: it opens from the filter bar, the mobile FAB or Ctrl K. Below `sm` the band is one 56px row: name, status dot (label kept for screen readers) and theme toggle; subtitle and API link hide. Below `lg` every control in the page is at least 44px tall.
 
 ### Comanda (signature component)
-The alert queue. Header: severity mark + `Nº 01 · CATEGORIA` in cond caps, severity word on the right in its state colour. Body: title, detail, then the **Ação** block in inverted ink. Footer: drill-down (primary) and Perguntar ao agente (ghost). Severity is a shape as well as a colour: filled dot (crítico), hollow ring (atenção), dash (observar). Motion: each new recorte reprints the queue, comandas unfolding top-down in order (40ms stagger, six steps max, 280ms each); opening one unfolds it over 280ms (`cubic-bezier(0.16, 1, 0.3, 1)`); collapsing folds it up in 160ms (`cubic-bezier(0.7, 0, 0.84, 0)`). All of it is skipped under reduced motion.
+The alert rail. **Rail tickets** hang side by side (`auto-cols minmax(12rem,1fr)`, 15rem under `sm`), scrolling sideways with snap when they don't fit: severity mark + `Nº 01 · CATEGORIA` in cond caps, then the title in two lines. The severity word is left to the open band; on the rail the mark carries it. An ink bar under the rail marks the open ticket and slides between tickets (`--duration-fast`, `--ease-smooth-out`, symmetric like tabs). Clicking the open ticket again collapses it.
+The **open band** is a full-width comanda under the rail, never a popover: header with severity word and Recolher, then two columns from `lg` — title, detail and the actions (drill-down primary, Ver no gráfico and Perguntar ao agente ghost) on the left, the **Ação** block in inverted ink on the right. Under `lg` the Ação block comes first. Severity is a shape as well as a colour: filled dot (crítico), hollow ring (atenção), dash (observar). Printed, every rail ticket carries its action.
+Motion: each new recorte reprints the rail, tickets unfolding in order (40ms stagger, six steps max, 280ms each) and the band last; switching comanda reprints the band (280ms, `cubic-bezier(0.16, 1, 0.3, 1)`); collapsing folds it up in 160ms (`cubic-bezier(0.7, 0, 0.84, 0)`). All of it is skipped under reduced motion.
+
+### Evidence mark
+Each alert names its evidence (backend `Evidence`: a KPI card, the stages chart by hub, the heatmap by hours, the store scatter by store or hub). While the comanda is open, that view marks it without touching the recorte: a KPI card gets a 2px inset ink outline; charts keep the evidence at full strength and drop everything else to ~20–30% opacity, with axis labels of the evidence in bold ink; the heatmap and scatter switch to the alert's metric. The view also shows a tag — severity mark + `Comanda Nº 02` in cond caps + the title, on sunken — that enters with `--duration-fast` and `--distance-micro`. Ver no gráfico scrolls to the chart's anchor in the static shell (the islands hydrate on view) and corrects the landing once scrolling ends.
 
 ### Agent panel
 One panel node (`#agente`, `AgentDock`) holds the conversation at every width. It is the same node across modes, so a question in progress survives a resize. The mode follows the viewport:
@@ -224,7 +266,7 @@ One panel node (`#agente`, `AgentDock`) holds the conversation at every width. I
 - **Sheet** (< 1024px): full-screen modal. The rest of the page is inert and does not scroll.
 
 Openers. Every opener prefills the question and never sends it; the operator reviews and presses Enviar.
-- **Agente** (`btn-ghost`) at the end of the filter bar's action row, with a `Ctrl K` / `⌘K` hint. The shortcut works from anywhere and is ignored while another dialog is open.
+- **Agent ask field** (`AgentAskButton`) at the right end of the filter bar's first row, after a 1px rule. It is styled like a question field: wine (`series`) border, Bot icon, "Pergunte sobre este recorte…" in muted text and a `Ctrl K` / `⌘K` hint. Clicking it or pressing the shortcut toggles the panel. Typing a character while it is focused opens the panel with that character already in the input. Where the bar is narrower than 72rem (dock open, or windows under about 1200px) it shrinks to "Agente" and drops the hint. With the panel open it reads "Conversa aberta" and is filled `sunken`. Its status dot sits inside it. The shortcut works from anywhere and is ignored while another dialog is open.
 - **Perguntar** (`AskAgentButton`, ghost) as the last action of each chart and table panel, and in each comanda's footer beside the drill-down.
 - **Wine FAB** on mobile (see Buttons).
 
@@ -234,10 +276,10 @@ The header names the panel and shows the live recorte as removable chips, becaus
 
 ### Motion
 Tokens live in `:root` (`--duration-*`, `--ease-*`, `--distance-*`, `--scale-*`, `--blur-*`, the transitions.dev scale); pick by usage, not by the nearest number. Closing is faster than opening, never delayed, and drops distance and blur. Only transform, opacity, filter and clip-path animate, and every motion has a reduced-motion path (instant or opacity only). The comanda reprint is the one authored moment; everything else is quiet and functional:
-- Menus (MultiSelect, Mais filtros): open 250ms from scale 0.97, close 150ms to 0.99, `--ease-smooth-out`.
+- Menus (MultiSelect, Mais filtros, Datas, Compartilhar): open 250ms from scale 0.97, close 150ms to 0.99, `--ease-smooth-out`. The popovers scale from their trigger's corner: top right for Mais filtros and Compartilhar, top left for Datas.
 - Agent panel: dock reveals from 12px right with opacity (no blur: a full-height column would repaint too much), 400ms open, 350ms close. Float opens like Mais filtros, from 0.97 over 250ms, and closes to 0.99 over 150ms. Sheet rises in 400ms and drops in 350ms. The opener's status dot pops in over 500ms on `--ease-bounce` (entrances only) and pulses linearly while the agent consults.
 - Export dialog: open 250ms from scale 0.96, close 150ms; backdrop fades with it. Mobile recorte sheet: rises in 400ms, drops in 350ms.
-- Segmented controls and the period presets: one indicator slides between options in 250ms.
+- Segmented controls and the period presets: one indicator slides between options in 250ms, and on the period control it also slides onto Datas once a range is chosen.
 - Values that change with the recorte (KPI figures, comanda counts) cross-fade only the changed digits, rising or falling with the value; never on first paint.
 - Content replacing a skeleton fades in from a 2px blur over 400ms, once. Icon swaps (theme, copy link) cross-fade with blur in 250ms.
 - The agent's wait is a shimmer over "Consultando o recorte…"; its answer rises 4px into place in 250ms.

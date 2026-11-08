@@ -149,6 +149,22 @@ class DrillDown(BaseModel):
     filters: dict[str, list[str | int]]
 
 
+class Evidence(BaseModel):
+    """Onde a comanda se prova na tela. Enquanto ela está aberta, o painel destaca isto (sem mudar o recorte)."""
+
+    view: Literal["kpi", "stages", "heatmap", "scatter"]
+    kpi: Literal["sla_rate", "cycle_p50", "cancel_rate", "orders", "gmv", "ticket"] | None = Field(
+        default=None, description="Cartão de KPI que sustenta a comanda (view=kpi)."
+    )
+    metric: Literal["orders", "sla_rate", "cancel_rate", "cycle_p50"] | None = Field(
+        default=None, description="Métrica que o gráfico deve mostrar para a evidência aparecer (heatmap, scatter)."
+    )
+    hubs: list[int] = Field(default_factory=list, description="Hubs a destacar (stages).")
+    hub_label: str | None = Field(default=None, description="Hub cujas lojas se destacam no gráfico de lojas (scatter).")
+    stores: list[int] = Field(default_factory=list, description="Lojas a destacar (scatter).")
+    hours: list[int] = Field(default_factory=list, description="Horas a destacar (heatmap).")
+
+
 class Alert(BaseModel):
     id: str
     severity: Literal["high", "medium", "low"]
@@ -157,6 +173,7 @@ class Alert(BaseModel):
     detail: str
     action: str
     drilldown: DrillDown | None = None
+    evidence: Evidence | None = None
 
 
 class AlertsResponse(BaseModel):

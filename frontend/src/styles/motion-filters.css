@@ -69,6 +69,11 @@
     transform var(--duration-quick) var(--ease-smooth-out);
 }
 
+/* Datas abre à esquerda (sob o período): a escala parte do canto do botão. */
+.recorte-popover[data-align="left"] {
+  transform-origin: top left;
+}
+
 .recorte-popover[data-state="open"] {
   opacity: 1;
   transform: scale(1);
@@ -139,14 +144,14 @@
   .recorte-sheet[open] {
     transform: none;
     transition:
-      opacity var(--duration-quick) linear,
+      opacity var(--duration-quick) var(--ease-linear),
       display var(--duration-quick) allow-discrete,
       overlay var(--duration-quick) allow-discrete;
   }
 
   .recorte-sheet::backdrop,
   .recorte-sheet[open]::backdrop {
-    transition: opacity var(--duration-quick) linear;
+    transition: opacity var(--duration-quick) var(--ease-linear);
   }
 
   @starting-style {
@@ -155,11 +160,12 @@
     }
   }
 
-  /* popover: troca instantânea, sem escala */
+  /* popover: só opacidade, rápida, como os menus; sem escala. Fechar é instantâneo (o componente pula o closing) */
   .recorte-popover,
   .recorte-popover[data-state="open"],
   .recorte-popover[data-state="closing"] {
-    transition: none;
+    transform: none;
+    transition: opacity var(--duration-quick) var(--ease-linear);
   }
 
   /* dígitos: sem animação; o número novo aparece direto */
