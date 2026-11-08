@@ -8,77 +8,72 @@ web
 
 ## Users
 
-The primary visitor is an **iFood internship recruiter** evaluating a deployed (or locally run) internal tool as a portfolio piece. They are not operating a real praça; they need to understand, in a few minutes, that this is a working dashboard + insights agent — not a chart gallery.
+The primary visitor is an **iFood internship recruiter** (AI Builder track) evaluating a deployed internal tool as a portfolio piece. They are not operating a real praça; they need to understand, in a few minutes, that this is a working dashboard + insights agent on real data — not a chart gallery.
 
-The in-product persona is a **praça operator** on a Brazilian food-delivery marketplace: they have already applied a recorte (period, city, cuisine, restaurant, customer type, status) and need to know whether delivery SLA, partner rating, or cancellation is off in *this* slice, then leave with an action for today (fleet at dinner, call the restaurant, review radius).
+The in-product persona is a **hub/praça operator** on a Brazilian delivery platform: they have already applied a recorte (period, city, hub, store, segment, channel, courier modal) and need to know whether delivery SLA, store prep time, or cancellation is off in *this* slice, then leave with an action for today (call the store, reinforce fleet before dinner, take a broken store offline, review radius).
 
 Design the UI as that operator’s tool. Success is the recruiter being able to perform that job and see the differentiator.
 
 ## Product Purpose
 
-**Central de Operações** is an internal food-delivery operations console. It shows KPIs, Plotly views, proactive alerts, and a chat agent on the **same filtered DataFrame** (the recorte), so the visitor exits with **alert + action**, not only a ranking.
+**Central de Operações** is an internal delivery operations console. KPIs, ECharts views, proactive alerts with drill-down, raw order tables and a chat agent all run on the **same recorte**, so the visitor exits with **alert + action**, not only a ranking.
 
-It exists to cover the internship portfolio requirement for a deployed internal tool (dashboard or agent), with a food-delivery theme aligned to iFood’s domain — without being an iFood product.
+It covers the portfolio requirement for a deployed internal tool (dashboard and agent), with a delivery theme aligned to iFood’s domain — without being an iFood product.
 
-Success: a recruiter can filter a slice, read whether SLA / note / cancelamento is off, and get a concrete operational action from alerts or the agent.
+Success: a recruiter filters a slice, reads whether SLA / prep / cancelamento is off and where, clicks an alert to drill into the hub or store, and gets a concrete operational action from alerts or the agent.
 
 ## Positioning
 
-Neighboring Streamlit dashboards have charts. Neighboring agents chat over a whole CSV. This product’s claim is that **KPIs, charts, alerts, and the agent all run on the current recorte** and **close with a concrete operational action** (who talks to whom, in which time band, toward which threshold) — not “top restaurants” or generic engagement advice.
+Neighboring dashboards have charts. Neighboring agents chat over a whole CSV. This product’s claim is that **KPIs, charts, alerts, and the agent all run on the current recorte** — the agent’s tools are locked to it on the server — and **close with a concrete operational action** (who talks to whom, in which hub, in which time band, toward which threshold).
 
 ## Operating Context
 
-- Single Streamlit page (`streamlit run app.py`). Intended deploy is Streamlit Cloud; the live URL is not published yet.
-- Sidebar **Recorte** drives everything below: KPIs, alert strip, Tendência / Ranking / Operação tabs, and the footer agent. Empty recorte shows a warning and stops the rest of the page.
-- Mock orders: 12 000 rows, last 90 days, ten Brazilian cities, ten cuisines, restaurant quality variation, lunch/dinner peaks. Not live marketplace data.
-- Agent: local rules + statistics without an API key; optional OpenRouter LLM (`OPENROUTER_API_KEY`) for freer prose on the same numbers. Chat history in `st.session_state.messages`.
-- Recruiter / operator language of the product is **Brazilian Portuguese**. Currency and number formats are pt-BR (R$, comma decimals).
-- Portfolio artifact: README should eventually hold deploy link, screenshots, and usage metrics — those are absent today.
+- Static Astro shell + React islands (frontend, Vercel) talking to a FastAPI + DuckDB API (backend, Render free tier — cold start ~40 s, surfaced in the UI).
+- Recorte lives in a Nanostores atom synced to the URL query string; the same keys are the API’s query params, so links are shareable.
+- Data: **Delivery Center (Kaggle)** — 368,990 real orders, 01/01–30/04/2021, 32 hubs in São Paulo, Rio de Janeiro, Curitiba and Porto Alegre, ~950 stores (names anonymized by the dataset), segments food/goods. Built into `backend/data/orders.parquet` by `backend/scripts/build_parquet.py`.
+- Cleaning decisions that change numbers (keep them visible in the footer/README): timestamps converted UTC→Brasília; SLA by segment (food ≤ 60 min, goods ≤ 120 min); cycle > 4h = "preso" and excluded from medians and SLA; amount > R$ 5,000 excluded from GMV/ticket.
+- Agent: local rules + statistics without an API key; with `OPENROUTER_API_KEY`, an LLM with tool calling (KPIs, breakdowns, alerts, time series) — falls back to a single context prompt, then to local rules.
+- Product language is **Brazilian Portuguese**; pt-BR currency and number formats.
 
 ## Capabilities and Constraints
 
 **In the product today**
 
-- Filters: period, city, cuisine, restaurant (scoped by city/cuisine), customer type (Novo, Recorrente, VIP), status (Entregue, Cancelado). Empty multi-select = all.
-- KPIs on the recorte: pedidos, GMV (delivered only), ticket médio, tempo de entrega, nota média, cancelamento; promo rate as supporting caption.
-- Proactive alerts (SLA, rating, cancellation, city/restaurant outliers) with suggested action; high vs warning severity.
-- Charts: orders/GMV over time, weekday×hour heatmap, restaurant ranking, cuisine mix, delivery by city, rating distribution, cancel by customer type.
-- Insights agent on the recorte summary (not the raw full dataset); suggested prompts; “Nova conversa”.
-- Dual mode: must remain useful with **no API key**.
+- Filters: period (presets + dates + zoom-to-period from the trend chart), city, hub (scoped by city), store (searchable, scoped by hub), segment, channel type, courier modal. Empty multi-select = all.
+- KPIs with delta vs. previous period of equal length: SLA, median cycle, cancelamento (hero row); pedidos, GMV, ticket (volume row).
+- Alerts: recorte SLA, slowest hub with the stage that explains it, cancel outliers by hub and store, broken stores (~100% canceled), SLA drop at peak, stuck orders (data), weekly volume drop, freight subsidy. Each has an action and, when scoped, a drill-down filter.
+- Charts: trend (volume / SLA+cycle / cancel; hour/day/week), cycle stages per hub, weekday × hour heatmap, store scatter with brush-to-filter.
+- Tables: ranking by dimension (client sort) and raw orders (server paging/sort, virtualized).
+- Export: orders CSV, Markdown briefing to clipboard, print-to-PDF.
 
 **Must preserve**
 
 - Recorte is the unit of truth. Never answer or chart the unfiltered dataset when filters are on.
-- Mock-only: no CSV upload or live API in current product truth.
-- Independent of iFood trademarks, logos, and official identity. Domain (pedidos, praças, restaurantes, cidades BR) is in-theme; the brand is not iFood.
-- Do not hardcode restaurant or city names into chart titles; they come from the data.
-- Business logic stays in `data/`, `dashboard/`, `agent/` — not piled into `app.py`.
-- Thresholds used by the local agent: delivery warn/high ~42/48 min, rating warn/low ~4.20/4.00, cancel warn/high ~7%/10%, with minimum volume before calling out a restaurant or city.
+- App works with **no API key**.
+- Independent of iFood trademarks, logos, and official identity.
+- No hardcoded hub, store or city names in UI or alert logic; they come from the data.
+- Business logic in `backend/app/` (repository, alerts, agent), not in components or endpoints.
 
 **Undecided / out of scope for now**
 
-- Heatmap map, PDF export, real-data ingest, multi-page navigation (listed as later ideas in AGENTS.md, not product commitments).
-- Accessibility standard beyond ordinary web UI (none specified).
+- Hub map (lat/long exists in the raw dataset), CSV upload, auth, multi-page navigation.
 
 ## Brand Commitments
 
-- **Name:** Central de Operações (page: “Central de Operações · Delivery”; README: “Central de Operações — Food Delivery Insights”).
-- **Voice:** Direct Brazilian Portuguese, like an internal ops briefing. No marketing fluff. No emojis. Prefer 1–3 short paragraphs or a short list. Cite concrete numbers and the recorte; finish with an action when something is off.
-- **Independence:** No iFood wordmark, logo, or official visual identity. Do not imply this is an iFood product or that the recruiter is using production iFood data.
-- Repo folder `dashboard-insight` is not a customer-facing name.
+- **Name:** Central de Operações.
+- **Voice:** Direct Brazilian Portuguese, like an internal ops briefing. No marketing fluff. No emojis. Cite concrete numbers and the recorte; finish with an action when something is off.
+- **Independence:** No iFood wordmark, logo, or official visual identity. Do not imply this is an iFood product or iFood data.
 
 ## Evidence on Hand
 
-- Synthetic orders from `data/generator.py` (seeded mock). Cities, restaurants, tickets, times, and ratings are generated — not production.
-- No screenshots in `assets/` yet. README placeholders must not be treated as real captures.
-- No Streamlit Cloud URL. Do not invent a deploy link.
-- No usage metrics (visits, agent questions, feedback). Do not invent them.
-- No testimonials, customers, benchmarks, pricing, or press. Do not fabricate recruiter or operator quotes.
+- Real public dataset (Delivery Center, Kaggle), 2021. Not iFood data. Store names are anonymized strings.
+- No screenshots in `assets/` yet, no deploy URL yet, no usage metrics yet. Do not invent them.
+- No testimonials, customers, benchmarks or press.
 
 ## Product Principles
 
 1. **Recorte first.** Every number, chart, alert, and agent reply is about the slice on screen.
 2. **Action, not ranking.** A useful output names the problem in this slice and what to do today.
-3. **Honest without a key.** The console works on rules and statistics; an LLM may only rephrase the same recorte facts.
-4. **Mock is labeled by absence of claims.** Never present generated orders, missing screenshots, or unpublished deploys as real marketplace evidence.
+3. **Honest without a key.** The console works on rules and statistics; the LLM only queries the same recorte through tools.
+4. **Say what was cleaned.** Timezone, SLA targets, stuck orders and outliers are disclosed where the numbers appear.
 5. **Recruiter can do the operator’s job in minutes.** Filters, KPIs, alerts, and agent have to be scannable without a walkthrough.

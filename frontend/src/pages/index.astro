@@ -1,0 +1,100 @@
+---
+/**
+ * Casca estática (zero JS): cabeçalho, seções, rodapé e metodologia.
+ * Só o que reage ao recorte vira ilha React:
+ *  - client:load    → filtros, KPIs, alertas (acima da dobra)
+ *  - client:visible → gráficos, tabelas e agente (hidratam ao rolar)
+ */
+import Base from "@/layouts/Base.astro";
+import AgentChat from "@/components/AgentChat";
+import AlertsPanel from "@/components/AlertsPanel";
+import BreakdownTable from "@/components/BreakdownTable";
+import FilterBar from "@/components/FilterBar";
+import HeatmapChart from "@/components/HeatmapChart";
+import KpiStrip from "@/components/KpiStrip";
+import OrdersTable from "@/components/OrdersTable";
+import StagesChart from "@/components/StagesChart";
+import StoreScatter from "@/components/StoreScatter";
+import TopBarStatus from "@/components/TopBarStatus";
+import TrendChart from "@/components/TrendChart";
+
+const apiUrl = (import.meta.env.PUBLIC_API_URL ?? "http://localhost:8000").replace(/\/$/, "");
+const repoUrl = "https://github.com/EmersonPalatti/dashboard-insight";
+---
+
+<Base
+  title="Central de Operações"
+  description="Painel de operação de delivery com alertas e agente de insights sobre o recorte filtrado. 369 mil pedidos reais do Delivery Center."
+>
+  <header class="border-b border-rule">
+    <div class="mx-auto flex max-w-[1400px] flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
+      <div class="min-w-0">
+        <h1 class="text-[1.55rem] leading-tight font-bold tracking-[-0.02em]">Central de Operações</h1>
+        <p class="label">
+          Delivery Center · jan–abr 2021 · 369 mil pedidos em 4 cidades. Filtre, veja o que está fora da curva e saia com uma ação.
+        </p>
+      </div>
+      <div class="no-print flex items-center gap-3">
+        <a class="label underline decoration-rule underline-offset-4 hover:text-ink" href="#agente">Perguntar ao agente</a>
+        <a class="label underline decoration-rule underline-offset-4 hover:text-ink" href={`${apiUrl}/docs`} target="_blank" rel="noopener">API (Swagger)</a>
+        <TopBarStatus client:load />
+      </div>
+    </div>
+  </header>
+
+  <div class="no-print z-20 border-b border-rule bg-paper/95 backdrop-blur-[2px] lg:sticky lg:top-0">
+    <div class="mx-auto max-w-[1400px] px-4 py-2.5 sm:px-6">
+      <FilterBar client:load />
+    </div>
+  </div>
+
+  <main class="mx-auto grid max-w-[1400px] gap-4 px-4 pt-4 pb-16 sm:px-6">
+    <KpiStrip client:load />
+
+    <div class="grid gap-4 lg:grid-cols-12">
+      <div class="lg:col-span-7">
+        <AlertsPanel client:load />
+      </div>
+      <div id="agente" class="scroll-mt-40 lg:col-span-5">
+        <AgentChat client:visible />
+      </div>
+    </div>
+
+    <TrendChart client:visible />
+
+    <div class="grid gap-4 lg:grid-cols-2">
+      <StagesChart client:visible />
+      <HeatmapChart client:visible />
+    </div>
+
+    <div class="grid gap-4 xl:grid-cols-2">
+      <StoreScatter client:visible />
+      <BreakdownTable client:visible />
+    </div>
+
+    <OrdersTable client:visible />
+  </main>
+
+  <footer class="border-t border-rule">
+    <div class="mx-auto grid max-w-[1400px] gap-4 px-4 py-6 text-[0.88rem] text-muted sm:px-6 md:grid-cols-3">
+      <div>
+        <p class="font-semibold text-ink">Dados</p>
+        <p>
+          <a class="underline decoration-rule underline-offset-4" href="https://www.kaggle.com/datasets/nosbielcs/brazilian-delivery-center" target="_blank" rel="noopener">Delivery Center: Food &amp; Goods orders in Brazil</a> (Kaggle). Nomes de lojas vêm anonimizados no dataset.
+        </p>
+      </div>
+      <div>
+        <p class="font-semibold text-ink">Como os números são calculados</p>
+        <p>
+          Horários convertidos de UTC para Brasília. SLA: food ≤ 60 min, goods ≤ 120 min. Pedidos com ciclo &gt; 4h contam como
+          "presos" e ficam fora de medianas e SLA. Valores &gt; R$ 5 mil ficam fora do GMV.
+        </p>
+      </div>
+      <div>
+        <p class="font-semibold text-ink">Stack</p>
+        <p>Astro + ilhas React, ECharts, Nanostores, TanStack Query/Table/Virtual · FastAPI, Pydantic, DuckDB sobre Parquet.</p>
+        <p class="mt-1"><a class="underline decoration-rule underline-offset-4" href={repoUrl} target="_blank" rel="noopener">Código</a></p>
+      </div>
+    </div>
+  </footer>
+</Base>

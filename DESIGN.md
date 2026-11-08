@@ -64,6 +64,8 @@ components:
 
 # Design System: Central de Operações
 
+> **Implementação atual (v2):** os tokens abaixo vivem em `frontend/src/styles/global.css` como variáveis CSS mapeadas para o Tailwind (`bg-paper`, `bg-kraft`, `border-rule`, `text-ink`, `text-muted`, `text-chili`…), com um tema escuro equivalente (`[data-theme="dark"]`). Gráficos são ECharts e leem os mesmos tokens. Menções a Streamlit e Plotly neste documento descrevem a v1 e valem como intenção visual: trocar "Plotly" por "ECharts", "sidebar" por "barra de recorte" e `st.dialog` pela seção do agente.
+
 ## Overview
 
 **Creative North Star: "The Praça Briefing Desk"**

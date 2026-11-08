@@ -1,0 +1,2684 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Central de Operações — API",
+    "description": "KPIs, quebras, alertas e agente sobre o recorte filtrado do Delivery Center.",
+    "version": "2.0.0"
+  },
+  "paths": {
+    "/api/health": {
+      "get": {
+        "tags": [
+          "infra"
+        ],
+        "summary": "Health",
+        "operationId": "health_api_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/meta": {
+      "get": {
+        "tags": [
+          "recorte"
+        ],
+        "summary": "Meta",
+        "operationId": "meta_api_meta_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Meta"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/kpis": {
+      "get": {
+        "tags": [
+          "analytics"
+        ],
+        "summary": "Kpis",
+        "operationId": "kpis_api_kpis_get",
+        "parameters": [
+          {
+            "name": "start",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Data inicial (inclusiva, horário de Brasília)",
+              "title": "Start"
+            },
+            "description": "Data inicial (inclusiva, horário de Brasília)"
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Data final (inclusiva)",
+              "title": "End"
+            },
+            "description": "Data final (inclusiva)"
+          },
+          {
+            "name": "city",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 200,
+              "title": "City"
+            }
+          },
+          {
+            "name": "hub",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "integer"
+              },
+              "maxItems": 200,
+              "title": "Hub"
+            }
+          },
+          {
+            "name": "store",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "integer"
+              },
+              "maxItems": 200,
+              "title": "Store"
+            }
+          },
+          {
+            "name": "segment",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "food",
+                  "good"
+                ],
+                "type": "string"
+              },
+              "title": "Segment"
+            }
+          },
+          {
+            "name": "channel_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "marketplace",
+                  "own"
+                ],
+                "type": "string"
+              },
+              "title": "Channel Type"
+            }
+          },
+          {
+            "name": "modal",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "moto",
+                  "bike"
+                ],
+                "type": "string"
+              },
+              "description": "Pedidos sem entregador saem do recorte",
+              "title": "Modal"
+            },
+            "description": "Pedidos sem entregador saem do recorte"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KpiResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/timeseries": {
+      "get": {
+        "tags": [
+          "analytics"
+        ],
+        "summary": "Timeseries",
+        "operationId": "timeseries_api_timeseries_get",
+        "parameters": [
+          {
+            "name": "start",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Data inicial (inclusiva, horário de Brasília)",
+              "title": "Start"
+            },
+            "description": "Data inicial (inclusiva, horário de Brasília)"
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Data final (inclusiva)",
+              "title": "End"
+            },
+            "description": "Data final (inclusiva)"
+          },
+          {
+            "name": "city",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 200,
+              "title": "City"
+            }
+          },
+          {
+            "name": "hub",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "integer"
+              },
+              "maxItems": 200,
+              "title": "Hub"
+            }
+          },
+          {
+            "name": "store",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "integer"
+              },
+              "maxItems": 200,
+              "title": "Store"
+            }
+          },
+          {
+            "name": "segment",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "food",
+                  "good"
+                ],
+                "type": "string"
+              },
+              "title": "Segment"
+            }
+          },
+          {
+            "name": "channel_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "marketplace",
+                  "own"
+                ],
+                "type": "string"
+              },
+              "title": "Channel Type"
+            }
+          },
+          {
+            "name": "modal",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "moto",
+                  "bike"
+                ],
+                "type": "string"
+              },
+              "description": "Pedidos sem entregador saem do recorte",
+              "title": "Modal"
+            },
+            "description": "Pedidos sem entregador saem do recorte"
+          },
+          {
+            "name": "grain",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "hour",
+                "day",
+                "week"
+              ],
+              "type": "string",
+              "default": "day",
+              "title": "Grain"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TimePoint"
+                  },
+                  "title": "Response Timeseries Api Timeseries Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/heatmap": {
+      "get": {
+        "tags": [
+          "analytics"
+        ],
+        "summary": "Heatmap",
+        "operationId": "heatmap_api_heatmap_get",
+        "parameters": [
+          {
+            "name": "start",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Data inicial (inclusiva, horário de Brasília)",
+              "title": "Start"
+            },
+            "description": "Data inicial (inclusiva, horário de Brasília)"
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Data final (inclusiva)",
+              "title": "End"
+            },
+            "description": "Data final (inclusiva)"
+          },
+          {
+            "name": "city",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 200,
+              "title": "City"
+            }
+          },
+          {
+            "name": "hub",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "integer"
+              },
+              "maxItems": 200,
+              "title": "Hub"
+            }
+          },
+          {
+            "name": "store",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "integer"
+              },
+              "maxItems": 200,
+              "title": "Store"
+            }
+          },
+          {
+            "name": "segment",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "food",
+                  "good"
+                ],
+                "type": "string"
+              },
+              "title": "Segment"
+            }
+          },
+          {
+            "name": "channel_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "marketplace",
+                  "own"
+                ],
+                "type": "string"
+              },
+              "title": "Channel Type"
+            }
+          },
+          {
+            "name": "modal",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "moto",
+                  "bike"
+                ],
+                "type": "string"
+              },
+              "description": "Pedidos sem entregador saem do recorte",
+              "title": "Modal"
+            },
+            "description": "Pedidos sem entregador saem do recorte"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/HeatCell"
+                  },
+                  "title": "Response Heatmap Api Heatmap Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/breakdown": {
+      "get": {
+        "tags": [
+          "analytics"
+        ],
+        "summary": "Breakdown",
+        "operationId": "breakdown_api_breakdown_get",
+        "parameters": [
+          {
+            "name": "start",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Data inicial (inclusiva, horário de Brasília)",
+              "title": "Start"
+            },
+            "description": "Data inicial (inclusiva, horário de Brasília)"
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Data final (inclusiva)",
+              "title": "End"
+            },
+            "description": "Data final (inclusiva)"
+          },
+          {
+            "name": "city",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 200,
+              "title": "City"
+            }
+          },
+          {
+            "name": "hub",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "integer"
+              },
+              "maxItems": 200,
+              "title": "Hub"
+            }
+          },
+          {
+            "name": "store",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "integer"
+              },
+              "maxItems": 200,
+              "title": "Store"
+            }
+          },
+          {
+            "name": "segment",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "food",
+                  "good"
+                ],
+                "type": "string"
+              },
+              "title": "Segment"
+            }
+          },
+          {
+            "name": "channel_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "marketplace",
+                  "own"
+                ],
+                "type": "string"
+              },
+              "title": "Channel Type"
+            }
+          },
+          {
+            "name": "modal",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "moto",
+                  "bike"
+                ],
+                "type": "string"
+              },
+              "description": "Pedidos sem entregador saem do recorte",
+              "title": "Modal"
+            },
+            "description": "Pedidos sem entregador saem do recorte"
+          },
+          {
+            "name": "by",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "city",
+                "hub",
+                "store",
+                "channel",
+                "channel_type",
+                "segment",
+                "modal",
+                "driver_type",
+                "payment_method",
+                "hour",
+                "weekday"
+              ],
+              "type": "string",
+              "default": "hub",
+              "title": "By"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "orders",
+                "gmv",
+                "ticket",
+                "cancel_rate",
+                "cycle_p50",
+                "sla_rate",
+                "stuck_rate",
+                "subsidy"
+              ],
+              "type": "string",
+              "default": "orders",
+              "title": "Sort"
+            }
+          },
+          {
+            "name": "desc",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": true,
+              "title": "Desc"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "min_orders",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Min Orders"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BreakdownResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/alerts": {
+      "get": {
+        "tags": [
+          "insights"
+        ],
+        "summary": "Alerts",
+        "operationId": "alerts_api_alerts_get",
+        "parameters": [
+          {
+            "name": "start",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Data inicial (inclusiva, horário de Brasília)",
+              "title": "Start"
+            },
+            "description": "Data inicial (inclusiva, horário de Brasília)"
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Data final (inclusiva)",
+              "title": "End"
+            },
+            "description": "Data final (inclusiva)"
+          },
+          {
+            "name": "city",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 200,
+              "title": "City"
+            }
+          },
+          {
+            "name": "hub",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "integer"
+              },
+              "maxItems": 200,
+              "title": "Hub"
+            }
+          },
+          {
+            "name": "store",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "integer"
+              },
+              "maxItems": 200,
+              "title": "Store"
+            }
+          },
+          {
+            "name": "segment",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "food",
+                  "good"
+                ],
+                "type": "string"
+              },
+              "title": "Segment"
+            }
+          },
+          {
+            "name": "channel_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "marketplace",
+                  "own"
+                ],
+                "type": "string"
+              },
+              "title": "Channel Type"
+            }
+          },
+          {
+            "name": "modal",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "moto",
+                  "bike"
+                ],
+                "type": "string"
+              },
+              "description": "Pedidos sem entregador saem do recorte",
+              "title": "Modal"
+            },
+            "description": "Pedidos sem entregador saem do recorte"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlertsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/orders": {
+      "get": {
+        "tags": [
+          "pedidos"
+        ],
+        "summary": "Orders",
+        "operationId": "orders_api_orders_get",
+        "parameters": [
+          {
+            "name": "start",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Data inicial (inclusiva, horário de Brasília)",
+              "title": "Start"
+            },
+            "description": "Data inicial (inclusiva, horário de Brasília)"
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Data final (inclusiva)",
+              "title": "End"
+            },
+            "description": "Data final (inclusiva)"
+          },
+          {
+            "name": "city",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 200,
+              "title": "City"
+            }
+          },
+          {
+            "name": "hub",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "integer"
+              },
+              "maxItems": 200,
+              "title": "Hub"
+            }
+          },
+          {
+            "name": "store",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "integer"
+              },
+              "maxItems": 200,
+              "title": "Store"
+            }
+          },
+          {
+            "name": "segment",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "food",
+                  "good"
+                ],
+                "type": "string"
+              },
+              "title": "Segment"
+            }
+          },
+          {
+            "name": "channel_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "marketplace",
+                  "own"
+                ],
+                "type": "string"
+              },
+              "title": "Channel Type"
+            }
+          },
+          {
+            "name": "modal",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "moto",
+                  "bike"
+                ],
+                "type": "string"
+              },
+              "description": "Pedidos sem entregador saem do recorte",
+              "title": "Modal"
+            },
+            "description": "Pedidos sem entregador saem do recorte"
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 500,
+              "minimum": 1,
+              "default": 100,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "created_at",
+              "title": "Sort"
+            }
+          },
+          {
+            "name": "desc",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": true,
+              "title": "Desc"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrdersPage"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/orders.csv": {
+      "get": {
+        "tags": [
+          "pedidos"
+        ],
+        "summary": "Export Orders",
+        "operationId": "export_orders_api_orders_csv_get",
+        "parameters": [
+          {
+            "name": "start",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Data inicial (inclusiva, horário de Brasília)",
+              "title": "Start"
+            },
+            "description": "Data inicial (inclusiva, horário de Brasília)"
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Data final (inclusiva)",
+              "title": "End"
+            },
+            "description": "Data final (inclusiva)"
+          },
+          {
+            "name": "city",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 200,
+              "title": "City"
+            }
+          },
+          {
+            "name": "hub",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "integer"
+              },
+              "maxItems": 200,
+              "title": "Hub"
+            }
+          },
+          {
+            "name": "store",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "integer"
+              },
+              "maxItems": 200,
+              "title": "Store"
+            }
+          },
+          {
+            "name": "segment",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "food",
+                  "good"
+                ],
+                "type": "string"
+              },
+              "title": "Segment"
+            }
+          },
+          {
+            "name": "channel_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "marketplace",
+                  "own"
+                ],
+                "type": "string"
+              },
+              "title": "Channel Type"
+            }
+          },
+          {
+            "name": "modal",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "moto",
+                  "bike"
+                ],
+                "type": "string"
+              },
+              "description": "Pedidos sem entregador saem do recorte",
+              "title": "Modal"
+            },
+            "description": "Pedidos sem entregador saem do recorte"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agent/chat": {
+      "post": {
+        "tags": [
+          "insights"
+        ],
+        "summary": "Chat",
+        "operationId": "chat_api_agent_chat_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Alert": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "high",
+              "medium",
+              "low"
+            ],
+            "title": "Severity"
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "sla",
+              "cancelamento",
+              "loja",
+              "frota",
+              "dados",
+              "volume",
+              "custo"
+            ],
+            "title": "Category"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail"
+          },
+          "action": {
+            "type": "string",
+            "title": "Action"
+          },
+          "drilldown": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DrillDown"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "severity",
+          "category",
+          "title",
+          "detail",
+          "action"
+        ],
+        "title": "Alert"
+      },
+      "AlertsResponse": {
+        "properties": {
+          "alerts": {
+            "items": {
+              "$ref": "#/components/schemas/Alert"
+            },
+            "type": "array",
+            "title": "Alerts"
+          }
+        },
+        "type": "object",
+        "required": [
+          "alerts"
+        ],
+        "title": "AlertsResponse"
+      },
+      "BreakdownResponse": {
+        "properties": {
+          "by": {
+            "type": "string",
+            "enum": [
+              "city",
+              "hub",
+              "store",
+              "channel",
+              "channel_type",
+              "segment",
+              "modal",
+              "driver_type",
+              "payment_method",
+              "hour",
+              "weekday"
+            ],
+            "title": "By"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/BreakdownRow"
+            },
+            "type": "array",
+            "title": "Rows"
+          }
+        },
+        "type": "object",
+        "required": [
+          "by",
+          "rows"
+        ],
+        "title": "BreakdownResponse"
+      },
+      "BreakdownRow": {
+        "properties": {
+          "orders": {
+            "type": "integer",
+            "title": "Orders"
+          },
+          "delivered": {
+            "type": "integer",
+            "title": "Delivered"
+          },
+          "canceled": {
+            "type": "integer",
+            "title": "Canceled"
+          },
+          "gmv": {
+            "type": "number",
+            "title": "Gmv"
+          },
+          "ticket": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ticket"
+          },
+          "cancel_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cancel Rate"
+          },
+          "cycle_p50": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cycle P50",
+            "description": "Mediana do ciclo (min), sem pedidos presos"
+          },
+          "cycle_p90": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cycle P90"
+          },
+          "sla_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sla Rate",
+            "description": "Entregues dentro do SLA do segmento (sem pedidos presos)"
+          },
+          "stuck_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stuck Rate",
+            "description": "Entregues com ciclo > 4h (presos no fluxo)"
+          },
+          "production_p50": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Production P50"
+          },
+          "collected_p50": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Collected P50"
+          },
+          "expedition_p50": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expedition P50"
+          },
+          "transit_p50": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Transit P50"
+          },
+          "distance_p50_km": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Distance P50 Km"
+          },
+          "fee_avg": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fee Avg"
+          },
+          "cost_avg": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost Avg"
+          },
+          "subsidy": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subsidy",
+            "description": "Custo logístico menos frete cobrado, por pedido entregue"
+          },
+          "key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "title": "Key"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "parent": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent"
+          }
+        },
+        "type": "object",
+        "required": [
+          "orders",
+          "delivered",
+          "canceled",
+          "gmv",
+          "ticket",
+          "cancel_rate",
+          "cycle_p50",
+          "cycle_p90",
+          "sla_rate",
+          "stuck_rate",
+          "production_p50",
+          "collected_p50",
+          "expedition_p50",
+          "transit_p50",
+          "distance_p50_km",
+          "fee_avg",
+          "cost_avg",
+          "subsidy",
+          "key",
+          "label",
+          "parent"
+        ],
+        "title": "BreakdownRow"
+      },
+      "ChatRequest": {
+        "properties": {
+          "question": {
+            "type": "string",
+            "maxLength": 800,
+            "minLength": 1,
+            "title": "Question"
+          },
+          "filters": {
+            "$ref": "#/components/schemas/Filters"
+          },
+          "history": {
+            "items": {
+              "$ref": "#/components/schemas/ChatTurn"
+            },
+            "type": "array",
+            "maxItems": 12,
+            "title": "History"
+          }
+        },
+        "type": "object",
+        "required": [
+          "question"
+        ],
+        "title": "ChatRequest"
+      },
+      "ChatResponse": {
+        "properties": {
+          "answer": {
+            "type": "string",
+            "title": "Answer"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "llm-tools",
+              "llm-context",
+              "local"
+            ],
+            "title": "Mode"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "tools_used": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Tools Used"
+          }
+        },
+        "type": "object",
+        "required": [
+          "answer",
+          "mode",
+          "model",
+          "tools_used"
+        ],
+        "title": "ChatResponse"
+      },
+      "ChatTurn": {
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "user",
+              "assistant"
+            ],
+            "title": "Role"
+          },
+          "content": {
+            "type": "string",
+            "maxLength": 6000,
+            "title": "Content"
+          }
+        },
+        "type": "object",
+        "required": [
+          "role",
+          "content"
+        ],
+        "title": "ChatTurn"
+      },
+      "DrillDown": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "filters": {
+            "additionalProperties": {
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "integer"
+                  }
+                ]
+              },
+              "type": "array"
+            },
+            "type": "object",
+            "title": "Filters"
+          }
+        },
+        "type": "object",
+        "required": [
+          "label",
+          "filters"
+        ],
+        "title": "DrillDown"
+      },
+      "Filters": {
+        "properties": {
+          "start": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start",
+            "description": "Data inicial (inclusiva, horário de Brasília)"
+          },
+          "end": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End",
+            "description": "Data final (inclusiva)"
+          },
+          "city": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 200,
+            "title": "City"
+          },
+          "hub": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "maxItems": 200,
+            "title": "Hub"
+          },
+          "store": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "maxItems": 200,
+            "title": "Store"
+          },
+          "segment": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "food",
+                "good"
+              ]
+            },
+            "type": "array",
+            "title": "Segment"
+          },
+          "channel_type": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "marketplace",
+                "own"
+              ]
+            },
+            "type": "array",
+            "title": "Channel Type"
+          },
+          "modal": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "moto",
+                "bike"
+              ]
+            },
+            "type": "array",
+            "title": "Modal",
+            "description": "Pedidos sem entregador saem do recorte"
+          }
+        },
+        "type": "object",
+        "title": "Filters"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "Health": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "ok",
+            "title": "Status"
+          },
+          "orders": {
+            "type": "integer",
+            "title": "Orders"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "orders"
+        ],
+        "title": "Health"
+      },
+      "HeatCell": {
+        "properties": {
+          "weekday": {
+            "type": "integer",
+            "title": "Weekday",
+            "description": "0 = segunda"
+          },
+          "hour": {
+            "type": "integer",
+            "title": "Hour"
+          },
+          "orders": {
+            "type": "integer",
+            "title": "Orders"
+          },
+          "cancel_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cancel Rate"
+          },
+          "cycle_p50": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cycle P50"
+          },
+          "sla_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sla Rate"
+          }
+        },
+        "type": "object",
+        "required": [
+          "weekday",
+          "hour",
+          "orders",
+          "cancel_rate",
+          "cycle_p50",
+          "sla_rate"
+        ],
+        "title": "HeatCell"
+      },
+      "KpiResponse": {
+        "properties": {
+          "period": {
+            "$ref": "#/components/schemas/Period"
+          },
+          "current": {
+            "$ref": "#/components/schemas/Metrics"
+          },
+          "previous_period": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Period"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "previous": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Metrics"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "period",
+          "current",
+          "previous_period",
+          "previous"
+        ],
+        "title": "KpiResponse"
+      },
+      "Meta": {
+        "properties": {
+          "min_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Min Date"
+          },
+          "max_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Max Date"
+          },
+          "total_orders": {
+            "type": "integer",
+            "title": "Total Orders"
+          },
+          "sla_food_min": {
+            "type": "integer",
+            "title": "Sla Food Min"
+          },
+          "sla_good_min": {
+            "type": "integer",
+            "title": "Sla Good Min"
+          },
+          "cities": {
+            "items": {
+              "$ref": "#/components/schemas/Option"
+            },
+            "type": "array",
+            "title": "Cities"
+          },
+          "hubs": {
+            "items": {
+              "$ref": "#/components/schemas/Option"
+            },
+            "type": "array",
+            "title": "Hubs"
+          },
+          "stores": {
+            "items": {
+              "$ref": "#/components/schemas/Option"
+            },
+            "type": "array",
+            "title": "Stores"
+          },
+          "segments": {
+            "items": {
+              "$ref": "#/components/schemas/Option"
+            },
+            "type": "array",
+            "title": "Segments"
+          },
+          "channel_types": {
+            "items": {
+              "$ref": "#/components/schemas/Option"
+            },
+            "type": "array",
+            "title": "Channel Types"
+          },
+          "modals": {
+            "items": {
+              "$ref": "#/components/schemas/Option"
+            },
+            "type": "array",
+            "title": "Modals"
+          },
+          "llm_enabled": {
+            "type": "boolean",
+            "title": "Llm Enabled"
+          },
+          "llm_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Llm Model"
+          }
+        },
+        "type": "object",
+        "required": [
+          "min_date",
+          "max_date",
+          "total_orders",
+          "sla_food_min",
+          "sla_good_min",
+          "cities",
+          "hubs",
+          "stores",
+          "segments",
+          "channel_types",
+          "modals",
+          "llm_enabled",
+          "llm_model"
+        ],
+        "title": "Meta"
+      },
+      "Metrics": {
+        "properties": {
+          "orders": {
+            "type": "integer",
+            "title": "Orders"
+          },
+          "delivered": {
+            "type": "integer",
+            "title": "Delivered"
+          },
+          "canceled": {
+            "type": "integer",
+            "title": "Canceled"
+          },
+          "gmv": {
+            "type": "number",
+            "title": "Gmv"
+          },
+          "ticket": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ticket"
+          },
+          "cancel_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cancel Rate"
+          },
+          "cycle_p50": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cycle P50",
+            "description": "Mediana do ciclo (min), sem pedidos presos"
+          },
+          "cycle_p90": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cycle P90"
+          },
+          "sla_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sla Rate",
+            "description": "Entregues dentro do SLA do segmento (sem pedidos presos)"
+          },
+          "stuck_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stuck Rate",
+            "description": "Entregues com ciclo > 4h (presos no fluxo)"
+          },
+          "production_p50": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Production P50"
+          },
+          "collected_p50": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Collected P50"
+          },
+          "expedition_p50": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expedition P50"
+          },
+          "transit_p50": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Transit P50"
+          },
+          "distance_p50_km": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Distance P50 Km"
+          },
+          "fee_avg": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fee Avg"
+          },
+          "cost_avg": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost Avg"
+          },
+          "subsidy": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subsidy",
+            "description": "Custo logístico menos frete cobrado, por pedido entregue"
+          }
+        },
+        "type": "object",
+        "required": [
+          "orders",
+          "delivered",
+          "canceled",
+          "gmv",
+          "ticket",
+          "cancel_rate",
+          "cycle_p50",
+          "cycle_p90",
+          "sla_rate",
+          "stuck_rate",
+          "production_p50",
+          "collected_p50",
+          "expedition_p50",
+          "transit_p50",
+          "distance_p50_km",
+          "fee_avg",
+          "cost_avg",
+          "subsidy"
+        ],
+        "title": "Metrics",
+        "description": "Agregados de um recorte. Campos ficam nulos quando não há pedido elegível."
+      },
+      "Option": {
+        "properties": {
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "title": "Value"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "parent": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent"
+          },
+          "orders": {
+            "type": "integer",
+            "title": "Orders"
+          }
+        },
+        "type": "object",
+        "required": [
+          "value",
+          "label",
+          "orders"
+        ],
+        "title": "Option"
+      },
+      "OrderRow": {
+        "properties": {
+          "order_id": {
+            "type": "integer",
+            "title": "Order Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "delivered",
+              "canceled"
+            ],
+            "title": "Status"
+          },
+          "city": {
+            "type": "string",
+            "title": "City"
+          },
+          "hub_name": {
+            "type": "string",
+            "title": "Hub Name"
+          },
+          "store_name": {
+            "type": "string",
+            "title": "Store Name"
+          },
+          "segment": {
+            "type": "string",
+            "title": "Segment"
+          },
+          "channel": {
+            "type": "string",
+            "title": "Channel"
+          },
+          "modal": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Modal"
+          },
+          "payment_method": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payment Method"
+          },
+          "amount": {
+            "type": "number",
+            "title": "Amount"
+          },
+          "delivery_fee": {
+            "type": "number",
+            "title": "Delivery Fee"
+          },
+          "cycle_min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cycle Min"
+          },
+          "production_min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Production Min"
+          },
+          "transit_min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Transit Min"
+          },
+          "distance_m": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Distance M"
+          },
+          "on_time": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "On Time"
+          }
+        },
+        "type": "object",
+        "required": [
+          "order_id",
+          "created_at",
+          "status",
+          "city",
+          "hub_name",
+          "store_name",
+          "segment",
+          "channel",
+          "modal",
+          "payment_method",
+          "amount",
+          "delivery_fee",
+          "cycle_min",
+          "production_min",
+          "transit_min",
+          "distance_m",
+          "on_time"
+        ],
+        "title": "OrderRow"
+      },
+      "OrdersPage": {
+        "properties": {
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "offset": {
+            "type": "integer",
+            "title": "Offset"
+          },
+          "limit": {
+            "type": "integer",
+            "title": "Limit"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/OrderRow"
+            },
+            "type": "array",
+            "title": "Rows"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total",
+          "offset",
+          "limit",
+          "rows"
+        ],
+        "title": "OrdersPage"
+      },
+      "Period": {
+        "properties": {
+          "start": {
+            "type": "string",
+            "format": "date",
+            "title": "Start"
+          },
+          "end": {
+            "type": "string",
+            "format": "date",
+            "title": "End"
+          }
+        },
+        "type": "object",
+        "required": [
+          "start",
+          "end"
+        ],
+        "title": "Period"
+      },
+      "TimePoint": {
+        "properties": {
+          "t": {
+            "type": "string",
+            "format": "date-time",
+            "title": "T"
+          },
+          "orders": {
+            "type": "integer",
+            "title": "Orders"
+          },
+          "delivered": {
+            "type": "integer",
+            "title": "Delivered"
+          },
+          "gmv": {
+            "type": "number",
+            "title": "Gmv"
+          },
+          "cancel_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cancel Rate"
+          },
+          "cycle_p50": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cycle P50"
+          },
+          "sla_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sla Rate"
+          }
+        },
+        "type": "object",
+        "required": [
+          "t",
+          "orders",
+          "delivered",
+          "gmv",
+          "cancel_rate",
+          "cycle_p50",
+          "sla_rate"
+        ],
+        "title": "TimePoint"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    }
+  }
+}

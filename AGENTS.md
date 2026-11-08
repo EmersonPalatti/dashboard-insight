@@ -1,124 +1,58 @@
-# AGENTS.md — Dashboard + Agente de Insights (Food Delivery Analytics)
+# AGENTS.md — Central de Operações (delivery analytics)
 
-Este arquivo define as regras, stack, estrutura e convenções para o projeto **dashboard-insights-ia** (ou nome temático como `food-delivery-insights`).
+Painel interno de operação de delivery com **alertas acionáveis** e **agente de insights**, tudo sobre o recorte filtrado. Peça de portfólio para o estágio iFood (trilha AI Builder): ferramenta interna deployada, dashboard funcional e agente que resolve problema de negócio.
 
-O objetivo é construir um **dashboard interativo deployado** com gráficos Plotly/Streamlit e um **agente de insights integrado** que responde perguntas sobre os dados filtrados, gera alertas e sugere ações. O projeto cobre o requisito de “ferramentas internas deployadas, dashboards ou agentes” do portfólio do estágio iFood.
+Leia também `PRODUCT.md` (público, princípios, o que não inventar) e `DESIGN.md` (tokens visuais).
 
-Tema preferencial: **food delivery analytics** (mock de pedidos, restaurantes, cidades brasileiras) para ficar alinhado ao iFood.
-
-## Contexto e Diferencial
-
-Projetos similares existentes (referência de pesquisa):
-
-| Projeto / Tipo | Stack principal | O que faz bem | O que falta (oportunidade) |
-|----------------|------------------|---------------|----------------------------|
-| Vários e-commerce Streamlit (RFM, cohorts) | Streamlit + Plotly + pandas | Dashboards limpos e KPIs | Pouco ou nenhum agente de insights integrado |
-| munas-git/AI-powered-sales-dashboard | Streamlit + LangChain + OpenAI | Chat agent sobre dados de vendas | Tema genérico, menos foco em alertas/ações |
-| syedsaadali11/Ai-Data-Analyst-Agent | Streamlit + LangGraph | Upload CSV → perguntas + visualizações | Não é um dashboard temático fixo com filtros ricos |
-| Food delivery analysis projects (Swiggy/Zomato style) | Streamlit + Plotly | Tema delivery, KPIs operacionais | Quase nenhum tem agente de chat + alertas |
-| Dashboards Olist / marketplace BR | Streamlit + DuckDB | Dados reais brasileiros | Geralmente sem agente conversacional |
-
-**Nosso diferencial para o portfólio:**
-- Tema food delivery (pedidos, restaurantes, tempo de entrega, nota, promo, cidades BR).
-- Dashboard com filtros ricos + agente que **analisa o estado filtrado** (não o dataset inteiro).
-- Agente gera **alertas** e **sugestões de ação** concretas (não só responde “qual é o top”).
-- Deploy real no Streamlit Cloud + README com prints, link e métricas de uso.
-- Código limpo e modular para que agentes de coding possam iterar facilmente.
-
-## Stack Recomendada
-
-| Camada | Tecnologia | Motivo |
-|--------|------------|--------|
-| Linguagem | Python 3.11+ | Padrão |
-| Interface | **Streamlit** | Deploy gratuito e rápido no Streamlit Cloud |
-| Visualização | **Plotly** (plotly.express) | Interativo, bonito, nativo no Streamlit |
-| Dados | **pandas** (ou Polars se quiser performance) | Suficiente para mock + filtros |
-| Dados mock | Gerador próprio (numpy + pandas) | Controle total, sem depender de datasets externos |
-| Agente | Tool calling simples ou LangGraph leve | Respostas sobre o DataFrame filtrado |
-| LLM | LiteLLM ou OpenAI / Groq / Gemini | Flexibilidade; modo local como fallback |
-| Structured | Pydantic (opcional) | Se quiser structured insights/alertas |
-| Config | python-dotenv + Streamlit Secrets | API keys no Cloud |
-| Testes | pytest (opcional) | Validar gerador de dados e funções de insight |
-
-**Recomendação prática:**
-- Começar com agente **local** (regras + estatísticas) + fallback LLM.
-- Usar `st.session_state` para o histórico do chat.
-- Cachear o dataset com `@st.cache_data`.
-
-## Estrutura de Pastas Sugerida
+## Arquitetura
 
 ```
-dashboard-insights-ia/
-├── AGENTS.md                  # Este arquivo
-├── README.md                  # Overview + link do deploy + prints + métricas de uso
-├── requirements.txt
-├── .env.example
-├── .gitignore
-├── .streamlit/
-│   └── config.toml            # (opcional) tema, layout
-├── app.py                     # Entrada principal do Streamlit
-├── data/
-│   └── generator.py           # Geração de dados mock food delivery
-├── dashboard/
-│   ├── __init__.py
-│   ├── filters.py             # Lógica de filtros
-│   ├── metrics.py             # Cálculo de KPIs
-│   └── charts.py              # Funções que retornam figuras Plotly
-├── agent/
-│   ├── __init__.py
-│   ├── insights.py            # Agente local + integração LLM
-│   └── prompts.md             # System prompt do agente (versionado)
-├── assets/                    # (opcional) logos, screenshots para o README
-└── tests/
-    └── test_generator.py
+frontend/  Astro (casca estática) + ilhas React ──HTTP──▶ backend/  FastAPI + DuckDB
+           ECharts, Nanostores, TanStack Query/Table/Virtual         sobre backend/data/orders.parquet
+           deploy: Vercel                                             deploy: Render (render.yaml)
 ```
 
-## Convenções e Regras para Agentes
+- **Dados:** Delivery Center (Kaggle), 368.990 pedidos reais, jan–abr/2021. `backend/scripts/build_parquet.py` lê os 7 CSVs de `backend/data/raw/` (gitignored) e gera `backend/data/orders.parquet` (versionado). Não existe banco: o DuckDB carrega o parquet em memória na subida da API.
+- **Recorte:** `backend/app/filters.py` (`Filters`, Pydantic) é o contrato único. As mesmas chaves são query params da API e da URL do frontend (`?city=Curitiba&hub=8&hub=13`). `Filters.where()` gera SQL só com parâmetros `?`.
+- **Consultas:** `backend/app/repository.py`. Colunas, dimensões e ordenações vêm de listas fixas (`DIMENSIONS`, `SORTS`, `ORDER_SORTS`); nunca interpole texto do usuário em SQL.
+- **Alertas:** `backend/app/alerts.py`. Cada alerta = problema + número + **ação operacional** + drill-down opcional.
+- **Agente:** `backend/app/agent/`. `service.py` tenta LLM com tools → LLM com contexto → regras locais (`local.py`). As tools (`llm.py`) recebem o recorte do servidor; o modelo escolhe o que consultar, nunca sobre quais dados. Prompt em `prompts.md`.
+- **Frontend:** `frontend/src/pages/index.astro` é a casca sem JS. Cada componente em `src/components/` é uma ilha exportada via `island(Componente, alturaDoSkeleton)` de `src/lib/query.tsx`, que monta o `QueryClient` compartilhado e evita hydration mismatch.
+- **Estado global:** `src/lib/filters.ts` (`$filters`, átomo Nanostores ligado à URL). Ilhas leem com `useStore($filters)` e buscam com `useRecorteQuery(path, extra)`.
+- **Tipos:** `src/lib/api/schema.d.ts` é **gerado** do OpenAPI. Mudou schema Pydantic? Rode o fluxo da seção Comandos; não edite o `.d.ts` à mão.
 
-### O que os agentes devem fazer
-1. **Dados mock realistas**: Gerar pedidos com cidades brasileiras, culinárias, tempo de entrega, nota, promo, tipo de cliente, status. Usar distribuições realistas (lognormal para valor, gamma para tempo).
-2. **Filtros afetam tudo**: KPIs, gráficos e agente devem operar sobre o DataFrame filtrado.
-3. **Agente consciente do contexto**: O agente recebe um resumo estatístico do estado filtrado atual (não o dataset bruto inteiro).
-4. **Alertas e ações**: Além de responder perguntas, o agente deve identificar problemas (tempo alto, nota baixa, cancelamento alto) e sugerir ações.
-5. **Modo dual**: Funcionar sem API key (regras locais) e melhorar com LLM quando houver chave.
-6. **Session state**: Manter histórico do chat com `st.session_state.messages`.
-7. **Deploy-ready**: Código deve rodar limpo no Streamlit Cloud (sem arquivos locais obrigatórios, secrets via painel).
-8. **README completo**: Incluir link do app deployado, prints, e métricas de uso (mesmo que sejam do próprio uso).
+## Comandos
 
-### O que os agentes NÃO devem fazer
-- Hardcodar nomes de restaurantes ou cidades nos gráficos (usar os dados dinâmicos).
-- Fazer o agente responder sobre dados não filtrados quando o usuário aplicou filtros.
-- Depender de API key para o app funcionar (modo local obrigatório).
-- Gerar gráficos que não respeitem o filtro atual.
-- Colocar lógica de negócio pesada dentro do `app.py` (separar em módulos).
+```bash
+# backend (Python 3.11+)
+cd backend
+pip install -r requirements-dev.txt
+python scripts/build_parquet.py          # só se mudar o ETL; precisa dos CSVs em data/raw/
+uvicorn app.main:app --reload            # http://localhost:8000/docs
+pytest                                   # usa parquet sintético, não precisa do Kaggle
 
-## Métricas e Documentação para o Portfólio
+# tipos do frontend a partir do backend
+python scripts/export_openapi.py && (cd ../frontend && npm run gen:api)
 
-No README incluir:
+# frontend (Node 20+)
+cd frontend
+npm install
+npm run dev                              # http://localhost:4321 (PUBLIC_API_URL, padrão localhost:8000)
+npm run build                            # astro check + build estático
+```
 
-- Link do app no Streamlit Cloud
-- 2–4 screenshots (KPIs + gráficos + chat do agente)
-- Seção “Métricas de uso” (acessos, perguntas feitas ao agente, feedback)
-- Descrição clara do problema que o dashboard resolve (“operador de food delivery precisa de visão rápida + insights acionáveis”)
+## Regras
 
-## Fluxo Mínimo Viável (MVP)
+1. **Recorte em tudo.** KPIs, gráficos, tabelas, exportação, alertas e agente usam o mesmo `Filters`. Nada responde sobre o dataset inteiro quando há filtro.
+2. **Funciona sem API key.** O agente local é obrigatório; LLM é melhoria.
+3. **Ação, não ranking.** Alerta e resposta do agente fecham com quem faz o quê, onde e quando.
+4. **Sem nomes fixos.** Hubs, lojas e cidades vêm dos dados, nunca do código.
+5. **Lógica de negócio no backend** (`repository`, `alerts`, `agent`). Componentes só exibem e filtram.
+6. **Ilhas só onde há interação.** Conteúdo estático fica no `.astro`. `client:load` acima da dobra, `client:visible` no resto.
+7. **Decisões de limpeza visíveis.** Fuso UTC→Brasília, SLA por segmento (food 60 / goods 120 min), pedido "preso" (ciclo > 4h) fora de medianas e SLA, valor > R$ 5 mil fora do GMV. Se mudar, atualize rodapé, README e testes.
+8. **Design:** só tokens semânticos (`bg-paper`, `bg-kraft`, `text-chili`…) de `src/styles/global.css`; chili é o único acento; sem sombras; cantos 2px/6px; tema claro e escuro.
+9. **Testes:** toda regra de alerta nova ganha um cenário plantado em `backend/tests/conftest.py`.
 
-1. Gerar dados mock de pedidos (últimos 90 dias).
-2. Sidebar com filtros (período, cidade, culinária, restaurante, tipo de cliente).
-3. KPIs principais no topo.
-4. Abas ou seções com gráficos Plotly (tendência, ranking, operação).
-5. Chat do agente no final da página que responde sobre o estado filtrado.
-6. Deploy no Streamlit Cloud.
-7. README com prints e link.
+## Português
 
-## Melhorias Futuras (opcional)
-
-- Mapa de calor por cidade (plotly mapbox ou folium).
-- Alertas proativos no topo do dashboard (não só no chat).
-- Export de relatório PDF do estado atual.
-- Integração com dados reais (CSV upload ou API mock).
-- Modo multi-página (st.navigation ou multipage).
-
----
-
-**Última atualização:** 2026-10-27. Foco em diferencial de portfólio: dashboard temático food delivery deployado + agente que gera alertas e ações sobre dados filtrados.
+Interface, alertas e agente em português do Brasil, formato pt-BR (R$ 1.234,56; 4,6%). Código e nomes de variáveis em inglês.

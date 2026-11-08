@@ -1,0 +1,117 @@
+@import "tailwindcss";
+
+/* Dark mode por atributo: o script inline do layout resolve preferência do SO + escolha salva. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/*
+ * Tokens "Praça Briefing Desk" (ver DESIGN.md): papel quente, kraft, régua de areia
+ * e um único sinal cromático, o chili. Componentes usam só os nomes semânticos.
+ */
+:root {
+  --paper: #fffbf7;
+  --kraft: #f3ebe3;
+  --kraft-strong: #ebe0d5;
+  --rule: #e7d8c9;
+  --ink: #1c1917;
+  --muted: #78716c;
+  --chili: #c2410c;
+  --chili-deep: #7c2d12;
+  --chili-soft: #fed7aa;
+  --amber: #b45309;
+  --good: #3f6212;
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  --paper: #161311;
+  --kraft: #211c19;
+  --kraft-strong: #2b2420;
+  --rule: #3a312b;
+  --ink: #f5efe9;
+  --muted: #a8a29e;
+  --chili: #f07a43;
+  --chili-deep: #fdba74;
+  --chili-soft: #4a2414;
+  --amber: #f59e0b;
+  --good: #a3c76b;
+  color-scheme: dark;
+}
+
+@theme inline {
+  --font-sans: "Source Sans 3", ui-sans-serif, system-ui, sans-serif;
+  --color-paper: var(--paper);
+  --color-kraft: var(--kraft);
+  --color-kraft-strong: var(--kraft-strong);
+  --color-rule: var(--rule);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-chili: var(--chili);
+  --color-chili-deep: var(--chili-deep);
+  --color-chili-soft: var(--chili-soft);
+  --color-amber: var(--amber);
+  --color-good: var(--good);
+  --radius-clip: 2px;
+  --radius-fold: 6px;
+}
+
+@layer base {
+  html {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+  body {
+    background: var(--paper);
+    min-height: 100dvh;
+  }
+  :focus-visible {
+    outline: 2px solid var(--chili);
+    outline-offset: 2px;
+  }
+  ::selection {
+    background: var(--chili-soft);
+  }
+}
+
+@utility slip {
+  @apply rounded-clip border border-rule bg-kraft;
+}
+
+@utility panel {
+  @apply rounded-fold border border-rule bg-paper;
+}
+
+@utility btn {
+  @apply inline-flex items-center gap-1.5 rounded-fold px-3 py-1.5 text-[0.92rem] leading-tight transition-colors disabled:opacity-50;
+}
+
+@utility btn-primary {
+  @apply btn bg-chili text-paper hover:bg-chili-deep dark:text-[#161311];
+}
+
+@utility btn-ghost {
+  @apply btn border border-rule bg-kraft text-ink hover:bg-kraft-strong;
+}
+
+@utility label {
+  @apply text-[0.92rem] text-muted;
+}
+
+@utility section-title {
+  @apply text-[15px] font-semibold text-ink;
+}
+
+@utility skeleton {
+  @apply animate-pulse rounded-clip bg-kraft;
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  .panel,
+  .slip {
+    break-inside: avoid;
+  }
+}

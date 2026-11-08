@@ -1,15 +1,28 @@
+# Python
 .env
 .venv/
 venv/
 __pycache__/
 *.py[cod]
-*$py.class
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
 .coverage
 htmlcov/
-.streamlit/secrets.toml
+
+# Dados brutos do Kaggle (o parquet processado em backend/data/ é versionado)
+backend/data/raw/
+
+# Frontend
+node_modules/
+frontend/dist/
+frontend/.astro/
+frontend/.env
+frontend/.env.*
+!frontend/.env.example
+.vercel/
+
+# SO / editores
 .DS_Store
 Thumbs.db
 *.log
@@ -24,3 +37,6 @@ Thumbs.db
 .impeccable/review/
 .impeccable/questions/
 .impeccable/live/
+
+# Spill do DuckDB (nunca versionar)
+.tmp/
