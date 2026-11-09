@@ -51,7 +51,7 @@ npm run build                            # astro check + build estático
 5. **Lógica de negócio no backend** (`repository`, `alerts`, `agent`). Componentes só exibem e filtram.
 6. **Ilhas só onde há interação ou dado do recorte.** Texto que não depende de estado (títulos, dicas fixas, rodapé) fica no `.astro`. `client:load` acima da dobra e para gatilhos globais (agente), `client:visible` no resto. O que só abre por clique (diálogos, folhas, conversa do agente) entra com `React.lazy`.
 7. **Decisões de limpeza visíveis.** Fuso UTC→Brasília, SLA por segmento (food 60 / goods 120 min), pedido "preso" (ciclo > 4h) fora de medianas e SLA, valor > R$ 5 mil fora do GMV. Se mudar, atualize rodapé, README e testes.
-8. **Design (mundo "Comanda", ver `DESIGN.md`):** só tokens semânticos (`bg-field`, `bg-surface`, `bg-wine`, `text-crit`, `text-series`…) de `src/styles/global.css`. Vermelho (`crit`) só para crítico e ação principal; série de dados em vinho (`series`); severidade também por forma (cheia, vazada, traço). Picote (`ticket`) só em comandas de alerta. Sem sombras; cantos 4px/8px; Archivo, condensada só em rótulos; tema claro e escuro.
+8. **Design (mundo "Comanda", ver `DESIGN.md`):** só tokens semânticos (`bg-field`, `bg-surface`, `bg-wine`, `text-crit`, `text-series`…) de `src/styles/global.css`. Vermelho (`crit`) só para crítico e ação principal; série de dados em vinho (`series`); severidade também por forma (cheia, vazada, traço). Picote (`ticket`) só em comandas de alerta. Sem sombras; cantos 4px/8px; Libre Franklin no texto; Zilla Slab só em números, Nº da comanda e nome do produto; tema claro e escuro.
 9. **Testes:** toda regra de alerta nova ganha um cenário plantado em `backend/tests/conftest.py`.
 
 ## Português

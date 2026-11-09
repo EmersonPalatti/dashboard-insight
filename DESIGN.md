@@ -25,43 +25,43 @@ colors:
   shell-warn: "#F0A93B"
 typography:
   title:
-    fontFamily: "Archivo, ui-sans-serif, system-ui, sans-serif"
+    fontFamily: "Zilla Slab, ui-serif, Georgia, serif"
     fontSize: "1.5rem"
-    fontWeight: 600
+    fontWeight: 700
     lineHeight: 1
   figure-hero:
-    fontFamily: "Archivo, ui-sans-serif, system-ui, sans-serif"
+    fontFamily: "Zilla Slab, ui-serif, Georgia, serif"
     fontSize: "2.5rem"
-    fontWeight: 700
+    fontWeight: 600
     lineHeight: 1.05
     letterSpacing: "-0.01em"
   figure:
-    fontFamily: "Archivo, ui-sans-serif, system-ui, sans-serif"
+    fontFamily: "Zilla Slab, ui-serif, Georgia, serif"
     fontSize: "1.5rem"
-    fontWeight: 700
+    fontWeight: 600
     lineHeight: 1.05
   section:
-    fontFamily: "Archivo, ui-sans-serif, system-ui, sans-serif"
+    fontFamily: "Libre Franklin, ui-sans-serif, system-ui, sans-serif"
     fontSize: "1rem"
     fontWeight: 600
   body:
-    fontFamily: "Archivo, ui-sans-serif, system-ui, sans-serif"
+    fontFamily: "Libre Franklin, ui-sans-serif, system-ui, sans-serif"
     fontSize: "0.95rem"
     fontWeight: 400
     lineHeight: 1.6
   label:
-    fontFamily: "Archivo, ui-sans-serif, system-ui, sans-serif"
+    fontFamily: "Libre Franklin, ui-sans-serif, system-ui, sans-serif"
     fontSize: "0.85rem"
     fontWeight: 600
   meta:
-    fontFamily: "Archivo, ui-sans-serif, system-ui, sans-serif"
+    fontFamily: "Libre Franklin, ui-sans-serif, system-ui, sans-serif"
     fontSize: "0.75rem"
     fontWeight: 400
   cond-label:
-    fontFamily: "Archivo, ui-sans-serif, system-ui, sans-serif"
+    fontFamily: "Zilla Slab, ui-serif, Georgia, serif"
     fontSize: "0.75rem"
     fontWeight: 700
-    letterSpacing: "0.02em"
+    letterSpacing: "0.03em"
 rounded:
   tick: "4px"
   card: "8px"
@@ -173,8 +173,8 @@ The shell is a wine band, not red: it gives the product a recognisable colour fi
 **Key Characteristics:**
 - Cool grey field (`field`) with white surfaces; layers separate by tone and hairline, never by shadow.
 - Wine shell band on every theme; signals on the band use their own `shell-*` tokens.
-- Archivo with a width axis: normal width for reading; condensed caps only for the comanda's identity (`Nº 01 · SLA`, the rail title, the evidence tag).
-- Tabular figures on numbers that align or change (figures, deltas, table cells), not on prose; headline numbers in a narrow bold cut (`figure`).
+- Libre Franklin for reading; Zilla Slab only as the stamp voice: caps for the comanda's identity (`Nº 01 · SLA`, the rail title, the evidence tag), headline figures and the product name.
+- Tabular figures on numbers that align or change (figures, deltas, table cells), not on prose; headline numbers in Zilla Slab (`figure`).
 - Red (`crit`) reserved for critical severity and the one primary action in view.
 
 ## Colors
@@ -197,26 +197,26 @@ The shell is a wine band, not red: it gives the product a recognisable colour fi
 
 ## Typography
 
-One family, **Archivo** (Google Fonts, `wdth` 62–125, `wght` 400–800).
+Two families, both from Google Fonts. **Libre Franklin** (`wght` 400–700) sets all reading text, labels, controls and charts. **Zilla Slab** (500, 600, 700) is the stamp voice, used only on headline figures (`figure`), the comanda identity (`cond`) and the product name in the band (`font-slab`). Never on running text, labels or tables. `cond` keeps its name for compatibility; it now means the stamp voice (Zilla Slab caps), not a narrow cut.
 
 ### Scale
 Six steps, as `@theme` tokens in `global.css`; no `text-[x.xxrem]` outside them: `text-meta` 0.75 · `text-aux` 0.85 · `text-body` 0.95 · `text-lead` 1.125 · `text-figure` 1.5 · `text-hero` 2.5rem. Panel titles use `text-base`.
 
 ### Hierarchy
-- **Title** `text-figure`/600 at 90% width, normal tracking: product name in the band.
-- **Figure hero** `text-hero`/700 at 88% width: the three operation KPIs.
-- **Figure** `text-figure`/700 at 88% width: volume KPIs inline with their label.
+- **Title** `text-figure`/700 in Zilla Slab, normal tracking: product name in the band.
+- **Figure hero** `text-hero`/600 in Zilla Slab (`figure`): the three operation KPIs.
+- **Figure** `text-figure`/600 in Zilla Slab (`figure`): volume KPIs inline with their label.
 - **Section** 1rem/600: panel titles; ticket titles `text-lead`/600.
 - **Body** `text-body`/400, 1.6 line height; **Label** `text-aux`/600, sentence case: KPI labels, table headers, "Ação", footer headings.
-- **Cond** `text-meta`/700, uppercase, 80% width, 0.02em tracking: comanda identity only.
+- **Cond** `text-meta`/700 in Zilla Slab, uppercase, 0.03em tracking, lining figures: comanda identity only.
 
 ### Weights
-400 text · 500 controls only (buttons, tabs, chips, inputs) · 600 titles and labels · 700 figures and the cond comanda head.
+400 text · 500 controls only (buttons, tabs, chips, inputs) · 600 panel titles, labels and headline figures · 700 the product name and the cond comanda head.
 
 ### Named Rules
 **The One Body Rule.** Tables use one text size; header rank comes from weight and colour, never from a bigger size.
 
-**The Comanda Caps Rule.** Condensed caps belong to the comanda's identity. A KPI, a table header or a footer heading is a label in sentence case; caps everywhere is the generic dashboard voice this world refuses.
+**The Comanda Caps Rule.** Stamp-voice caps (`cond`, Zilla Slab) belong to the comanda's identity. A KPI, a table header or a footer heading is a label in sentence case; caps everywhere is the generic dashboard voice this world refuses.
 
 ## Layout
 
@@ -234,6 +234,9 @@ Flat. Depth comes from layer tone: the open comanda and its rail ticket are pure
 `tick` 4px for inner controls (segmented items, checkboxes, table frames); `card` 8px for panels, tiles, buttons and the comanda body. The comanda's top edge is a row of 5px half-holes (CSS mask), its header sits over a 1.5px dashed rule.
 
 ## Components
+
+### Mark
+The mark is "Carimbo Nº": the `Nº` drawn in one stroke inside a receipt whose bottom edge is perforated. It draws in `currentColor` on the wine band, beside the product name, and its favicon is `#F2E6EA` on a wine square (`#3D0B1F`, 6px corners). Keep it still: no animation, no pulse. Don't put it on a coloured rounded tile in the header, and don't bring back the radar or orbit mark.
 
 ### Buttons
 - **Primary** (`btn-primary`): crit fill, white text. One on the page: the open comanda's drill-down.
@@ -307,7 +310,8 @@ Three operation cells joined by 1px rule gaps, each with a sentence-case label, 
 
 ### Don't:
 - Don't use red for selection, focus, filters or decorative icons.
-- Don't put the comanda picket or condensed caps on anything that isn't the comanda itself.
+- Don't put the comanda's perforated edge or stamp-voice caps on anything that isn't the comanda itself.
+- Don't set running text, labels or tables in Zilla Slab, and don't bring back a condensed cut: Libre Franklin has one width.
 - Don't add shadows, coloured side stripes on cards, or eyebrow labels above headings.
 - Don't use any delivery company's wordmark, logo, brand red or proprietary typeface.
 - Don't put the agent panel back in the grid, or give its float mode a shadow.

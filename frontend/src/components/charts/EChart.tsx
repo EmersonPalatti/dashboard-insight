@@ -109,7 +109,7 @@ function baseTheme(t: Tokens) {
   return {
     color: [t.series, t.ink, t.muted, t.seriesDeep, t.warn],
     backgroundColor: "transparent",
-    textStyle: { color: t.ink, fontFamily: "Archivo, ui-sans-serif, system-ui, sans-serif", fontSize: 12 },
+    textStyle: { color: t.ink, fontFamily: "Libre Franklin, ui-sans-serif, system-ui, sans-serif", fontSize: 12 },
     tooltip: {
       backgroundColor: t.surface,
       borderColor: t.rule,

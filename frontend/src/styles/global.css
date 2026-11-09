@@ -90,7 +90,9 @@
 }
 
 @theme inline {
-  --font-sans: "Archivo", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Libre Franklin", ui-sans-serif, system-ui, sans-serif;
+  /* Voz de cupom impresso: números, Nº da comanda e nome do produto. Nunca em texto corrido. */
+  --font-slab: "Zilla Slab", ui-serif, Georgia, serif;
   /* Escala única: seis degraus. Nada de text-[x.xxrem] fora dela. */
   --text-meta: 0.75rem;
   --text-aux: 0.85rem;
@@ -151,18 +153,20 @@
   }
 }
 
-/* Voz condensada: só a identidade da comanda (Nº, categoria, fila). Rótulo comum é caixa normal. */
+/* Voz de carimbo: só a identidade da comanda (Nº, categoria, fila). Rótulo comum é caixa normal. */
 @utility cond {
-  font-stretch: 80%;
+  font-family: var(--font-slab);
+  font-weight: 700;
+  font-variant-numeric: lining-nums tabular-nums;
   text-transform: uppercase;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.03em;
 }
 
-/* Número de destaque: largura estreita para caber em colunas sem perder corpo. */
+/* Número de destaque: serifa quadrada de cupom, algarismos alinhados e de largura fixa. */
 @utility figure {
-  font-stretch: 88%;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
+  font-family: var(--font-slab);
+  font-weight: 600;
+  font-variant-numeric: lining-nums tabular-nums;
   letter-spacing: -0.01em;
   line-height: 1.05;
 }
