@@ -132,7 +132,7 @@ function Markdown({ text }: { text: string }) {
     const [head, ...body] = table;
     blocks.push(
       <div key={`t-${blocks.length}`} className="overflow-x-auto">
-        <table className="w-full text-[0.85rem] tabular-nums">
+        <table className="w-full text-aux tabular-nums">
           <thead>
             <tr>
               {head.map((c, i) => (
@@ -189,13 +189,13 @@ function Markdown({ text }: { text: string }) {
 function ModeTag({ meta }: { meta: NonNullable<Message["meta"]> }) {
   if (meta.mode === "local") {
     return (
-      <span className="inline-flex items-center gap-1 text-[0.75rem] text-muted">
+      <span className="inline-flex items-center gap-1 text-meta text-muted">
         <Cpu className="size-3" aria-hidden /> regras locais
       </span>
     );
   }
   return (
-    <span className="inline-flex flex-wrap items-center gap-1 text-[0.75rem] text-muted" title={meta.model ?? ""}>
+    <span className="inline-flex flex-wrap items-center gap-1 text-meta text-muted" title={meta.model ?? ""}>
       <Wrench className="size-3" aria-hidden />
       {meta.mode === "llm-tools" ? `LLM consultou: ${meta.tools_used.join(", ") || "nenhuma ferramenta"}` : "LLM com contexto do recorte"}
     </span>
@@ -336,7 +336,7 @@ export function AgentConversation({ visible, onClose }: ConversationProps) {
           </h2>
           <div className="flex items-center gap-1">
             {messages.length > 0 && (
-              <button type="button" className="btn-ghost px-2 py-1 text-[0.8rem] max-lg:min-h-11" onClick={() => $messages.set([])}>
+              <button type="button" className="btn-ghost px-2 py-1 text-meta max-lg:min-h-11" onClick={() => $messages.set([])}>
                 <RotateCcw className="size-3.5" aria-hidden /> Nova conversa
               </button>
             )}
@@ -358,7 +358,7 @@ export function AgentConversation({ visible, onClose }: ConversationProps) {
           ) : (
             <ActiveChips chips={chips} />
           )}
-          <p className="text-[0.8rem] text-pretty text-muted">
+          <p className="text-meta text-pretty text-muted">
             Responde só sobre {active ? (active === 1 ? "este filtro" : `estes ${active} filtros`) : "este recorte"}.{" "}
             {meta ? (meta.llm_enabled ? "LLM com ferramentas, regras locais de reserva." : "Modo local: regras e estatísticas, sem API key.") : ""}
           </p>
@@ -379,7 +379,7 @@ export function AgentConversation({ visible, onClose }: ConversationProps) {
             {SUGGESTIONS.length > SUGGESTIONS_SHOWN && (
               <button
                 type="button"
-                className="btn-ghost px-2 py-1 text-[0.8rem] max-lg:min-h-11"
+                className="btn-ghost px-2 py-1 text-meta max-lg:min-h-11"
                 aria-expanded={moreSuggestions}
                 onClick={() => setMoreSuggestions((v) => !v)}
               >
@@ -394,18 +394,18 @@ export function AgentConversation({ visible, onClose }: ConversationProps) {
           return (
             <Fragment key={m.id}>
               {prev && m.role === "user" && prev.scope !== m.scope && (
-                <p className="border-t border-dashed border-rule pt-2 text-center text-[0.75rem] text-muted">
+                <p className="border-t border-dashed border-rule pt-2 text-center text-meta text-muted">
                   recorte mudou: as respostas abaixo usam os filtros novos
                 </p>
               )}
               {m.role === "user" ? (
-                <div className="ml-8 rounded-card bg-sunken px-3 py-2 text-[0.95rem]">
+                <div className="ml-8 rounded-card bg-sunken px-3 py-2 text-body">
                   {m.content}
                 </div>
               ) : (
                 // Chegada discreta: a resposta entra com fade, 4px de subida e um desfoque leve. Reduzido, aparece direto.
                 <div
-                  className={`mr-2 rounded-card border bg-surface px-3 py-2.5 text-[0.95rem] transition-[opacity,translate,filter] duration-(--duration-fast) ease-(--ease-smooth-out) starting:translate-y-(--distance-micro) starting:opacity-0 starting:blur-(--blur-small) motion-reduce:transition-none ${m.error ? "border-warn" : "border-rule"}`}
+                  className={`mr-2 rounded-card border bg-surface px-3 py-2.5 text-body transition-[opacity,translate,filter] duration-(--duration-fast) ease-(--ease-smooth-out) starting:translate-y-(--distance-micro) starting:opacity-0 starting:blur-(--blur-small) motion-reduce:transition-none ${m.error ? "border-warn" : "border-rule"}`}
                 >
                   <Markdown text={m.content} />
                   {m.meta && (
@@ -420,7 +420,7 @@ export function AgentConversation({ visible, onClose }: ConversationProps) {
         })}
         {mutation.isPending && (
           <div role="status" className="mr-2 px-3 text-muted">
-            <div className="text-[0.85rem]">
+            <div className="text-aux">
               <p className="tabular-nums">
                 {/* Brilho sem JS; o texto real fica no DOM uma vez (o pseudo-elemento não é lido). */}
                 <span className="shimmer-text" data-text="Consultando o recorte…">
@@ -428,7 +428,7 @@ export function AgentConversation({ visible, onClose }: ConversationProps) {
                 </span>
                 {elapsed >= 5 && <span aria-hidden> {elapsed} s</span>}
               </p>
-              {elapsed >= 5 && <p className="text-[0.75rem]">Se o servidor estava dormindo, a primeira resposta leva até ~40 s.</p>}
+              {elapsed >= 5 && <p className="text-meta">Se o servidor estava dormindo, a primeira resposta leva até ~40 s.</p>}
             </div>
           </div>
         )}
@@ -439,7 +439,7 @@ export function AgentConversation({ visible, onClose }: ConversationProps) {
       </p>
 
       {scopeChanged && !mutation.isPending && (
-        <p className="mx-4 mb-2 rounded-card bg-sunken px-3 py-1.5 text-[0.8rem] text-muted">
+        <p className="mx-4 mb-2 rounded-card bg-sunken px-3 py-1.5 text-meta text-muted">
           Os filtros mudaram desde a última resposta. A próxima pergunta já usa o recorte novo.
         </p>
       )}
@@ -461,7 +461,7 @@ export function AgentConversation({ visible, onClose }: ConversationProps) {
           maxLength={800}
           onChange={(e) => setInput(e.target.value)}
           placeholder="Pergunte sobre este recorte…"
-          className="min-w-0 flex-1 rounded-card border border-rule bg-surface px-3 py-2 text-[0.95rem] outline-none placeholder:text-muted focus:border-ink max-lg:min-h-11"
+          className="min-w-0 flex-1 rounded-card border border-rule bg-surface px-3 py-2 text-body outline-none placeholder:text-muted focus:border-ink max-lg:min-h-11"
         />
         <button type="submit" className="btn-ink max-lg:min-h-11 max-lg:min-w-11 max-lg:justify-center" disabled={!input.trim() || mutation.isPending} aria-label="Enviar">
           <SendHorizontal className="size-4" aria-hidden />

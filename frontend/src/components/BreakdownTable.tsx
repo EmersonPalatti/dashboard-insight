@@ -89,7 +89,7 @@ function BreakdownTableInner() {
           <span className="block max-w-56 truncate">
             {tab === "weekday" ? WEEKDAYS[Number(c.row.original.key)] : label(c.getValue())}
             {c.row.original.parent && tab !== "channel" && (
-              <span className="ml-1.5 text-[0.8rem] text-muted">{label(c.row.original.parent)}</span>
+              <span className="ml-1.5 text-meta text-muted">{label(c.row.original.parent)}</span>
             )}
           </span>
         ),
@@ -153,7 +153,7 @@ function BreakdownTableInner() {
         <Empty />
       ) : (
         <div className="content-reveal relative max-h-[420px] min-w-0 overflow-auto rounded-tick border border-rule">
-          <table className="w-full border-collapse text-[0.88rem] tabular-nums">
+          <table className="w-full border-collapse text-aux tabular-nums">
             <thead className="sticky top-0 z-10 bg-sunken">
               {table.getHeaderGroups().map((hg) => (
                 <tr key={hg.id}>
@@ -165,7 +165,7 @@ function BreakdownTableInner() {
                         key={h.id}
                         scope="col"
                         aria-sort={dir === "asc" ? "ascending" : dir === "desc" ? "descending" : "none"}
-                        className={`cond border-b border-rule px-2.5 py-2 font-bold whitespace-nowrap ${i === 0 ? "text-left" : "text-right"}`}
+                        className={`border-b border-rule px-2.5 py-2 text-aux font-semibold whitespace-nowrap ${i === 0 ? "text-left" : "text-right tabular-nums"}`}
                       >
                         <button
                           type="button"

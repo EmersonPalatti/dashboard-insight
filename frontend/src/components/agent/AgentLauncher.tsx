@@ -66,7 +66,7 @@ export function AgentAskButton() {
       onKeyDown={onKeyDown}
       onPointerEnter={prefetchAgentChat}
       onFocus={prefetchAgentChat}
-      className={`agent-ask flex h-10 min-w-0 items-center gap-2 rounded-card border px-3 text-left text-[0.92rem] whitespace-nowrap transition-colors duration-(--duration-quick) @6xl:w-[19rem] ${
+      className={`agent-ask flex h-10 min-w-0 items-center gap-2 rounded-card border px-3 text-left text-body whitespace-nowrap transition-colors duration-(--duration-quick) @6xl:w-[19rem] ${
         open ? "border-series bg-sunken" : "border-series bg-surface hover:bg-sunken"
       }`}
     >
@@ -78,7 +78,7 @@ export function AgentAskButton() {
       </span>
       <ActivityDot activity={activity} />
       {activity !== "idle" && <span className="sr-only">: {ACTIVITY_TEXT[activity]}</span>}
-      <kbd aria-hidden className="hidden shrink-0 rounded-tick border border-rule px-1 font-sans text-[0.72rem] text-muted @6xl:inline">
+      <kbd aria-hidden className="hidden shrink-0 rounded-tick border border-rule px-1 font-sans text-meta text-muted @6xl:inline">
         {shortcutLabel()}
       </kbd>
     </button>

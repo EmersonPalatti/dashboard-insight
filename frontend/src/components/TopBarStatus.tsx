@@ -44,7 +44,7 @@ function TopBarStatusInner() {
   return (
     <div className="flex items-center gap-2">
       {/* Uma só região viva: o texto troca dentro dela, então a leitura de tela anuncia uma vez. */}
-      <span className="inline-flex items-center gap-1.5 text-[0.82rem] text-on-wine" role="status">
+      <span className="inline-flex items-center gap-1.5 text-aux text-on-wine" role="status">
         <span
           className={`size-2 rounded-full transition-colors duration-(--duration-fast) motion-reduce:transition-none ${
             status === "ok"
@@ -81,7 +81,7 @@ function TopBarStatusInner() {
 function TopBarStatusFallback() {
   return (
     <div className="flex items-center gap-2" aria-hidden="true">
-      <span className="inline-flex items-center gap-1.5 text-[0.82rem] text-on-wine">
+      <span className="inline-flex items-center gap-1.5 text-aux text-on-wine">
         <span className="size-2 rounded-full bg-shell-warn/40 animate-pulse motion-reduce:animate-none" />
         <span className="sr-only sm:not-sr-only sm:inline-block h-3.5 w-16 rounded-[4px] bg-on-wine/15 animate-pulse motion-reduce:animate-none" />
       </span>

@@ -167,7 +167,7 @@ function StoreScatterInner() {
           />
           {picked.length > 0 && (
             <div className="mt-2 flex flex-wrap items-center gap-2 rounded-card bg-sunken px-3 py-2">
-              <p className="mr-auto text-pretty text-[0.9rem]">
+              <p className="mr-auto text-pretty text-body">
                 {picked.length} loja(s) selecionada(s):{" "}
                 <span className="text-muted">
                   {picked

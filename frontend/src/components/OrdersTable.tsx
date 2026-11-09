@@ -35,6 +35,7 @@ const PAGE = 200;
 const ROW_H = 34;
 const col = createColumnHelper<OrderRow>();
 const SORTABLE = new Set(["created_at", "amount", "delivery_fee", "cycle_min", "production_min", "transit_min", "distance_m", "store_name", "hub_name", "city", "status"]);
+const NUMERIC_COLS = new Set(["amount", "cycle_min", "production_min", "transit_min", "distance_m"]);
 
 const columns = [
   col.accessor("created_at", { header: "Criado em", cell: (c) => fmt.dateTime(c.getValue()), size: 110 }),
@@ -166,19 +167,19 @@ function ColumnFilterPopover<V extends string | number>({
           aria-label={`Filtro de ${title}`}
           data-state="open"
           data-align={align}
-          className={`recorte-popover absolute top-full z-40 mt-1.5 min-w-[14rem] rounded-card border border-rule bg-surface p-3 shadow-lg normal-case tracking-normal ${
+          className={`recorte-popover absolute top-full z-40 mt-1.5 min-w-[14rem] rounded-card border border-rule bg-surface p-3 shadow-lg ${
             align === "right" ? "right-0" : "left-0"
           }`}
           onMouseDown={(e) => e.stopPropagation()}
           onClick={(e) => e.stopPropagation()}
         >
           <div className="mb-2 flex items-center justify-between border-b border-rule pb-1.5">
-            <span className="cond text-[0.75rem] font-bold text-muted">Filtrar {title}</span>
+            <span className="text-aux font-semibold text-muted">Filtrar {title}</span>
             {hasFilter && (
               <button
                 type="button"
                 onClick={onClear}
-                className="text-[0.75rem] font-medium text-ink underline hover:opacity-70"
+                className="text-meta font-medium text-ink underline hover:opacity-70"
               >
                 Limpar
               </button>
@@ -194,21 +195,21 @@ function ColumnFilterPopover<V extends string | number>({
                 placeholder="Buscar…"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                className="w-full rounded-tick border border-rule bg-sunken/40 py-1 pr-2 pl-6.5 text-[0.8rem] text-ink placeholder:text-muted focus:border-ink focus:outline-none"
+                className="w-full rounded-tick border border-rule bg-sunken/40 py-1 pr-2 pl-6.5 text-meta text-ink placeholder:text-muted focus:border-ink focus:outline-none"
               />
             </div>
           )}
 
           <div className="max-h-52 overflow-y-auto pr-1">
             {filteredOptions.length === 0 ? (
-              <p className="px-2 py-3 text-center text-[0.75rem] text-muted">Nenhuma opção encontrada</p>
+              <p className="px-2 py-3 text-center text-meta text-muted">Nenhuma opção encontrada</p>
             ) : (
               filteredOptions.map((opt) => {
                 const checked = selected.includes(opt.value);
                 return (
                   <label
                     key={String(opt.value)}
-                    className="flex cursor-pointer items-center justify-between gap-2 rounded-tick px-2 py-1.5 text-[0.84rem] text-ink transition-colors hover:bg-sunken"
+                    className="flex cursor-pointer items-center justify-between gap-2 rounded-tick px-2 py-1.5 text-aux font-medium text-ink transition-colors hover:bg-sunken"
                   >
                     <span className="truncate">{opt.label}</span>
                     <input
@@ -223,8 +224,8 @@ function ColumnFilterPopover<V extends string | number>({
             )}
           </div>
           <div className="mt-2.5 border-t border-rule pt-2">
-            <p className="text-[0.72rem] text-muted">
-              Aplica ao <strong className="text-ink">recorte inteiro</strong> do painel.
+            <p className="text-meta text-muted">
+              Aplica ao <strong className="font-semibold text-ink">recorte inteiro</strong> do painel.
             </p>
           </div>
         </div>
@@ -332,14 +333,22 @@ function OrdersTableInner() {
         <ErrorState error={query.error} onRetry={() => query.refetch()} />
       ) : (
         <div ref={scroller} className="content-reveal relative h-[460px] min-w-0 overflow-auto rounded-tick border border-rule" role="region" aria-label="Tabela de pedidos" tabIndex={0}>
-          <div style={{ width, minWidth: "100%" }} className="text-[0.85rem] tabular-nums" role="table" aria-rowcount={total}>
+          <div style={{ width, minWidth: "100%" }} className="text-aux tabular-nums" role="table" aria-rowcount={total}>
             <div className="sticky top-0 z-10 flex border-b border-rule bg-sunken" role="row">
               {table.getFlatHeaders().map((h) => {
                 const active = sort.id === h.id;
                 const sortable = SORTABLE.has(h.id);
+                const isNumeric = NUMERIC_COLS.has(h.id);
 
                 return (
-                  <div key={h.id} role="columnheader" style={{ width: h.getSize() }} className="cond flex shrink-0 items-center justify-between gap-1 px-2 py-2 font-bold">
+                  <div
+                    key={h.id}
+                    role="columnheader"
+                    style={{ width: h.getSize() }}
+                    className={`flex shrink-0 items-center justify-between gap-1 px-2 py-2 text-aux font-semibold ${
+                      isNumeric ? "tabular-nums" : ""
+                    }`}
+                  >
                     {sortable ? (
                       <button
                         type="button"

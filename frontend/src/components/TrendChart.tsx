@@ -174,7 +174,7 @@ function TrendChartInner() {
       actions={
         <>
           {zoom && (
-            <button type="button" className="btn-ink py-1 text-[0.85rem]" onClick={applyZoom}>
+            <button type="button" className="btn-ink py-1 text-aux" onClick={applyZoom}>
               <CalendarCheck className="size-3.5" aria-hidden /> Usar como período
             </button>
           )}

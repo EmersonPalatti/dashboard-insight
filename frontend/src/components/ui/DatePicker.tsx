@@ -227,7 +227,7 @@ export function DatePicker({ label, value, min, max, rangeOther = null, onChange
     const other = iso === rangeOther && iso !== value;
     const between = lo !== null && hi !== null && iso > lo && iso < hi;
     return [
-      "flex size-10 lg:size-9 items-center justify-center rounded-tick text-[0.9rem] tabular-nums transition-colors duration-(--duration-quick) disabled:cursor-default disabled:text-muted disabled:opacity-40 disabled:hover:bg-transparent",
+      "flex size-10 lg:size-9 items-center justify-center rounded-tick text-body tabular-nums transition-colors duration-(--duration-quick) disabled:cursor-default disabled:text-muted disabled:opacity-40 disabled:hover:bg-transparent",
       selected
         ? "bg-ink font-semibold text-surface"
         : other
@@ -252,7 +252,7 @@ export function DatePicker({ label, value, min, max, rangeOther = null, onChange
         aria-label={`${label}, ${selectedText ?? "sem data"}`}
         onClick={() => (open ? close(true) : openPicker())}
         onKeyDown={onTriggerKeyDown}
-        className={`flex h-10 w-full min-w-0 items-center gap-2 rounded-card border bg-surface px-3 text-left text-[0.92rem] transition-colors duration-(--duration-quick) max-lg:h-auto max-lg:min-h-11 ${
+        className={`flex h-10 w-full min-w-0 items-center gap-2 rounded-card border bg-surface px-3 text-left text-body transition-colors duration-(--duration-quick) max-lg:h-auto max-lg:min-h-11 ${
           value ? "border-ink" : "border-rule hover:border-muted"
         }`}
       >
@@ -289,7 +289,7 @@ export function DatePicker({ label, value, min, max, rangeOther = null, onChange
             >
               <ChevronLeft className="size-4" aria-hidden />
             </button>
-            <p id={titleId} className="min-w-0 truncate text-center text-[0.95rem] font-semibold text-ink">
+            <p id={titleId} className="min-w-0 truncate text-center text-body font-semibold text-ink">
               {monthTitle(cursor)}
             </p>
             <button
@@ -313,7 +313,7 @@ export function DatePicker({ label, value, min, max, rangeOther = null, onChange
             <thead>
               <tr>
                 {WEEKDAYS.map((w) => (
-                  <th key={w.name} scope="col" className="pb-1 text-[0.78rem] font-semibold text-muted">
+                  <th key={w.name} scope="col" className="pb-1 text-meta font-semibold text-muted">
                     <abbr title={w.name} className="no-underline">
                       {w.letter}
                     </abbr>
@@ -352,7 +352,7 @@ export function DatePicker({ label, value, min, max, rangeOther = null, onChange
               type="button"
               disabled={value === null}
               onClick={() => choose(null)}
-              className="rounded-tick px-2 py-1 text-[0.9rem] text-muted transition-colors duration-(--duration-quick) hover:bg-sunken hover:text-ink disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted"
+              className="rounded-tick px-2 py-1 text-body font-medium text-muted transition-colors duration-(--duration-quick) hover:bg-sunken hover:text-ink disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted"
             >
               Limpar
             </button>

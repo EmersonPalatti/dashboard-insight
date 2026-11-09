@@ -63,7 +63,7 @@ function TicketHead({
 }) {
   const s = SEVERITY[alert.severity];
   return (
-    <span className="cond flex items-center justify-between gap-3 text-[0.8rem] font-bold">
+    <span className="cond flex items-center justify-between gap-3 text-meta font-bold">
       <span className="flex min-w-0 items-center gap-2">
         <span className={`inline-block shrink-0 ${s.mark}`} aria-hidden />
         <span className="truncate">
@@ -135,14 +135,14 @@ function Stub({
       >
         <TicketHead alert={alert} index={index} compact selected={selected} />
         <span
-          className={`mt-1.5 line-clamp-2 text-[0.95rem] leading-snug font-semibold text-pretty transition-colors duration-(--duration-quick) ease-(--ease-smooth-out) ${
+          className={`mt-1.5 line-clamp-2 text-body leading-snug font-semibold text-pretty transition-colors duration-(--duration-quick) ease-(--ease-smooth-out) ${
             selected ? "" : "text-ink/85 group-hover:text-ink"
           }`}
         >
           {alert.title}
         </span>
-        <span className="mt-1 hidden text-[0.85rem] text-pretty print:block">
-          <span className="cond mr-1.5 text-[0.72rem] font-bold">Ação</span>
+        <span className="mt-1 hidden text-aux text-pretty print:block">
+          <span className="mr-1.5 text-aux font-semibold">Ação</span>
           {alert.action}
         </span>
       </button>
@@ -188,7 +188,7 @@ function OpenBand({
               aria-expanded={true}
               aria-controls={BAND_ID}
               onClick={onCollapse}
-              className="no-print -my-1 -mr-1.5 inline-flex min-h-6 items-center gap-1 rounded-tick px-1.5 font-bold text-muted transition-colors duration-(--duration-quick) hover:text-ink max-lg:min-h-11"
+              className="no-print -my-1 -mr-1.5 inline-flex min-h-6 items-center gap-1 rounded-tick px-1.5 font-medium text-muted transition-colors duration-(--duration-quick) hover:text-ink max-lg:min-h-11"
             >
               <ChevronUp className="size-3.5" aria-hidden /> Recolher
             </button>
@@ -197,10 +197,10 @@ function OpenBand({
       </div>
       <div className="mt-3 grid gap-x-8 gap-y-3.5 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
         <div className="min-w-0">
-          <h3 id={`${BAND_ID}-title`} ref={titleRef} tabIndex={-1} className="text-[1.08rem] leading-snug font-semibold text-balance">
+          <h3 id={`${BAND_ID}-title`} ref={titleRef} tabIndex={-1} className="text-lead leading-snug font-semibold text-balance">
             {alert.title}
           </h3>
-          <p className="mt-1.5 max-w-[68ch] text-[0.95rem] leading-relaxed text-pretty text-ink/85">{alert.detail}</p>
+          <p className="mt-1.5 max-w-[68ch] text-body leading-relaxed text-pretty text-ink/85">{alert.detail}</p>
           <div className="no-print mt-3 flex flex-wrap gap-2">
             {alert.drilldown && (
               <button type="button" className="btn-primary max-lg:min-h-11 lg:min-h-9" onClick={() => applyDrilldown(alert.drilldown!.filters)}>
@@ -228,8 +228,8 @@ function OpenBand({
           </div>
         </div>
         <div className="self-start rounded-card bg-ink px-4 py-3.5 text-surface max-lg:order-first lg:mt-0.5">
-          <p className="cond text-[0.72rem] font-bold opacity-70">Ação</p>
-          <p className="mt-1 text-[0.98rem] leading-snug text-pretty">{alert.action}</p>
+          <p className="text-aux font-semibold opacity-70">Ação</p>
+          <p className="mt-1 text-body leading-snug text-pretty">{alert.action}</p>
         </div>
       </div>
     </article>
@@ -333,7 +333,7 @@ function AlertsSkeleton() {
   return (
     <section aria-labelledby="comandas-title" aria-hidden="true">
       <header className="mb-2 flex items-baseline justify-between gap-2 px-0.5">
-        <h2 id="comandas-title" className="cond text-[0.9rem] font-bold text-ink">
+        <h2 id="comandas-title" className="cond text-body font-semibold text-ink tabular-nums">
           Comandas abertas
         </h2>
         <div className="skeleton h-3.5 w-28 max-sm:hidden" />
@@ -468,11 +468,11 @@ function AlertsPanelInner() {
   return (
     <section ref={sectionRef} aria-labelledby="comandas-title" className={`transition-opacity ${isPlaceholderData ? "opacity-60" : ""}`}>
       <header className="mb-2 flex items-baseline justify-between gap-2 px-0.5">
-        <h2 id="comandas-title" className="cond text-[0.9rem] font-bold text-ink">
+        <h2 id="comandas-title" className="cond text-body font-semibold text-ink tabular-nums">
           Comandas abertas{data ? ` · ${alerts.length}` : ""}
         </h2>
         {data && alerts.length > 0 ? (
-          <p className="text-[0.82rem] text-muted">
+          <p className="text-aux text-muted">
             {highText}
             {mediumText}
           </p>

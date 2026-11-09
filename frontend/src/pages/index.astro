@@ -41,14 +41,14 @@ const repoUrl = "https://github.com/EmersonPalatti/dashboard-insight";
         <div class="flex min-w-0 flex-col justify-center gap-1 sm:gap-1.5 lg:flex-1">
           <div class="flex items-center gap-2.5">
             <OpsLogo size={28} class="text-on-wine" />
-            <h1 class="header-reveal-title shrink-0 text-[1.35rem] leading-none font-bold tracking-tight text-white [font-stretch:90%] sm:text-[1.45rem]">
+            <h1 class="header-reveal-title shrink-0 text-figure leading-none font-semibold text-white [font-stretch:90%]">
               Central de Operações
             </h1>
           </div>
           <!-- Subtítulo e telemetria do recorte com stagger reveal suave -->
-          <div class="header-reveal-sub max-sm:hidden flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[0.82rem] text-on-wine/90">
+          <div class="header-reveal-sub max-sm:hidden flex flex-wrap items-center gap-x-3 gap-y-1.5 text-aux text-on-wine/90">
             <span class="truncate">Alertas e agente sobre o recorte filtrado</span>
-            <span class="inline-flex items-center gap-1.5 rounded-full border border-on-wine/15 bg-wine-raised/60 px-2.5 py-0.5 text-[0.76rem] font-medium text-on-wine dark:bg-white/10">
+            <span class="inline-flex items-center gap-1.5 rounded-full border border-on-wine/15 bg-wine-raised/60 px-2.5 py-0.5 text-meta font-medium text-on-wine dark:bg-white/10">
               <span>Delivery Center</span>
               <span class="opacity-50">·</span>
               <span class="tabular-nums">jan–abr 2021</span>
@@ -58,7 +58,7 @@ const repoUrl = "https://github.com/EmersonPalatti/dashboard-insight";
           </div>
         </div>
         <div class="no-print flex shrink-0 flex-wrap items-center gap-1.5">
-          <a class="max-sm:hidden rounded-card px-3 py-1.5 text-[0.88rem] text-on-wine transition-colors duration-(--duration-quick) ease-(--ease-smooth-out) hover:bg-wine-raised hover:text-white" href={`${apiUrl}/docs`} target="_blank" rel="noopener">API (Swagger)</a>
+          <a class="max-sm:hidden rounded-card px-3 py-1.5 text-aux text-on-wine transition-colors duration-(--duration-quick) ease-(--ease-smooth-out) hover:bg-wine-raised hover:text-white" href={`${apiUrl}/docs`} target="_blank" rel="noopener">API (Swagger)</a>
           <span class="ml-1"><TopBarStatus client:load /></span>
         </div>
       </div>
@@ -111,22 +111,22 @@ const repoUrl = "https://github.com/EmersonPalatti/dashboard-insight";
     </main>
 
     <footer class="border-t border-rule bg-surface">
-      <div class="mx-auto grid max-w-[1440px] gap-6 px-4 py-7 text-[0.88rem] text-muted sm:px-6 md:grid-cols-3">
+      <div class="mx-auto grid max-w-[1440px] gap-6 px-4 py-7 text-aux text-muted sm:px-6 md:grid-cols-3">
         <div>
-          <p class="text-pretty cond text-[0.8rem] font-bold text-ink">Dados</p>
+          <p class="text-pretty font-semibold text-ink">Dados</p>
           <p class="text-pretty">
             <a class="underline decoration-rule underline-offset-4" href="https://www.kaggle.com/datasets/nosbielcs/brazilian-delivery-center" target="_blank" rel="noopener">Delivery Center: Food &amp; Goods orders in Brazil</a> (Kaggle). Nomes de lojas vêm anonimizados no dataset.
           </p>
         </div>
         <div>
-          <p class="text-pretty cond text-[0.8rem] font-bold text-ink">Como os números são calculados</p>
+          <p class="text-pretty font-semibold text-ink">Como os números são calculados</p>
           <p class="text-pretty">
             Horários convertidos de UTC para Brasília. SLA: food ≤ 60 min, goods ≤ 120 min. Pedidos com ciclo &gt; 4h contam como
             "presos" e ficam fora de medianas e SLA. Valores &gt; R$ 5 mil ficam fora do GMV.
           </p>
         </div>
         <div>
-          <p class="text-pretty cond text-[0.8rem] font-bold text-ink">Stack</p>
+          <p class="text-pretty font-semibold text-ink">Stack</p>
           <p class="text-pretty">Astro + ilhas React, ECharts, Nanostores, TanStack Query/Table/Virtual · FastAPI, Pydantic, DuckDB sobre Parquet.</p>
           <p class="text-pretty mt-1"><a class="underline decoration-rule underline-offset-4" href={repoUrl} target="_blank" rel="noopener">Código</a></p>
         </div>

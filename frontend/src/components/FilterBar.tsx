@@ -56,7 +56,7 @@ function DesktopBar({ m }: { m: FilterModel }) {
         {m.active > 0 && (
           <button
             type="button"
-            className="inline-flex h-8 items-center gap-1.5 rounded-tick px-1.5 text-[0.88rem] text-muted transition-colors duration-(--duration-quick) hover:bg-sunken hover:text-ink"
+            className="inline-flex h-8 items-center gap-1.5 rounded-tick px-1.5 text-aux font-medium text-muted transition-colors duration-(--duration-quick) hover:bg-sunken hover:text-ink"
             onClick={resetFilters}
           >
             <RotateCcw className="size-3.5" aria-hidden /> Limpar recorte
@@ -123,7 +123,7 @@ function FilterBarInner() {
             >
               <div className="grid gap-5">
                 <div className="grid gap-2">
-                  <p className="cond text-[0.8rem] font-bold text-ink">Período</p>
+                  <p className="text-aux font-semibold text-ink">Período</p>
                   <PeriodFields m={m} variant="sheet" />
                 </div>
                 <div className="grid gap-1.5">

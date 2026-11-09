@@ -91,6 +91,13 @@
 
 @theme inline {
   --font-sans: "Archivo", ui-sans-serif, system-ui, sans-serif;
+  /* Escala única: seis degraus. Nada de text-[x.xxrem] fora dela. */
+  --text-meta: 0.75rem;
+  --text-aux: 0.85rem;
+  --text-body: 0.95rem;
+  --text-lead: 1.125rem;
+  --text-figure: 1.5rem;
+  --text-hero: 2.5rem;
   --color-field: var(--field);
   --color-surface: var(--surface);
   --color-sunken: var(--sunken);
@@ -119,7 +126,6 @@
     background: var(--field);
     color: var(--ink);
     font-family: var(--font-sans);
-    font-variant-numeric: tabular-nums;
     -webkit-font-smoothing: antialiased;
     scrollbar-color: var(--rule) transparent;
   }
@@ -145,17 +151,18 @@
   }
 }
 
-/* Voz condensada: só rótulos curtos e cabeçalhos de comanda. */
+/* Voz condensada: só a identidade da comanda (Nº, categoria, fila). Rótulo comum é caixa normal. */
 @utility cond {
-  font-stretch: 72%;
+  font-stretch: 80%;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.02em;
 }
 
 /* Número de destaque: largura estreita para caber em colunas sem perder corpo. */
 @utility figure {
-  font-stretch: 80%;
+  font-stretch: 88%;
   font-weight: 700;
+  font-variant-numeric: tabular-nums;
   letter-spacing: -0.01em;
   line-height: 1.05;
 }
@@ -310,7 +317,7 @@ button.ticket:focus-visible {
 }
 
 @utility btn {
-  @apply inline-flex items-center gap-1.5 rounded-card px-3 py-1.5 text-[0.92rem] leading-tight font-medium transition-colors duration-(--duration-quick) disabled:opacity-50;
+  @apply inline-flex items-center gap-1.5 rounded-card px-3 py-1.5 text-body leading-tight font-medium transition-colors duration-(--duration-quick) disabled:opacity-50;
 }
 
 /* Ação principal: vermelho só onde a tela pede para agir. */
@@ -327,7 +334,7 @@ button.ticket:focus-visible {
 }
 
 @utility label {
-  @apply text-[0.9rem] text-muted;
+  @apply text-aux text-muted;
 }
 
 @utility section-title {

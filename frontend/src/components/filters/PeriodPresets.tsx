@@ -26,7 +26,7 @@ interface Props {
 
 /** Classe de um segmento; exportada para o botão Datas, que vive fora deste componente. */
 export const presetClass = (on: boolean) =>
-  `relative flex items-center gap-1.5 rounded-t-[4px] border-b-2 border-transparent px-2.5 text-[0.88rem] whitespace-nowrap transition-colors duration-(--duration-quick) disabled:cursor-not-allowed disabled:opacity-50 ${
+  `relative flex items-center gap-1.5 rounded-t-[4px] border-b-2 border-transparent px-2.5 text-aux font-medium whitespace-nowrap transition-colors duration-(--duration-quick) disabled:cursor-not-allowed disabled:opacity-50 ${
     on ? "text-ink" : "text-muted hover:text-ink disabled:hover:text-muted"
   }`;
 

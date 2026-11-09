@@ -175,7 +175,7 @@ export function Select<V extends string | number>({ label, options, value, onCha
 
   return (
     <div className="inline-flex items-center gap-2">
-      <label id={labelId} htmlFor={triggerId} className="text-[0.85rem] text-muted">
+      <label id={labelId} htmlFor={triggerId} className="text-aux text-muted">
         {label}
       </label>
       <div ref={root} className="relative" onBlur={onRootBlur}>
@@ -236,7 +236,7 @@ export function Select<V extends string | number>({ label, options, value, onCha
                     role="option"
                     aria-selected={on}
                     onClick={() => choose(i)}
-                    className={`flex w-full items-center gap-2 rounded-[4px] px-2 py-1.5 text-[0.9rem] transition-colors duration-(--duration-quick) hover:bg-sunken ${
+                    className={`flex w-full items-center gap-2 rounded-[4px] px-2 py-1.5 text-body font-medium transition-colors duration-(--duration-quick) hover:bg-sunken ${
                       isActive ? "bg-sunken outline outline-1 -outline-offset-1 outline-ink" : ""
                     }`}
                   >

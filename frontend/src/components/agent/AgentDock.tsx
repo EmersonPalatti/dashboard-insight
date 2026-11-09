@@ -53,7 +53,7 @@ function AgentLoadingState({ onClose }: { onClose: () => void }) {
           </div>
         </div>
         <div className="flex items-center justify-center py-6 text-muted">
-          <span className="shimmer-text text-[0.88rem]" data-text="Carregando agente…">
+          <span className="shimmer-text text-aux" data-text="Carregando agente…">
             Carregando agente…
           </span>
         </div>

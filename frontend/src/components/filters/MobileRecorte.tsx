@@ -38,13 +38,13 @@ export function MobileRecorte({ summary, activeCount, onOpen, buttonRef }: Props
       >
         <SlidersHorizontal className="size-4 shrink-0" aria-hidden />
         <span className="flex min-w-0 flex-1 flex-col leading-tight" aria-hidden>
-          <span className="cond text-[0.7rem] leading-none font-bold text-muted">
+          <span className="text-aux leading-none font-semibold text-muted tabular-nums">
             Recorte{activeCount > 0 ? ` · ${activeCount}` : ""}
           </span>
-          <span className="mt-0.5 truncate text-[0.92rem] font-medium">{summary}</span>
+          <span className="mt-0.5 truncate text-body font-medium">{summary}</span>
         </span>
         {/* o verbo da linha: ink, negrito e sublinhado, para ler como ação e não como rótulo */}
-        <span aria-hidden className="shrink-0 text-[0.85rem] font-semibold text-ink underline decoration-muted underline-offset-4">
+        <span aria-hidden className="shrink-0 text-aux font-semibold text-ink underline decoration-muted underline-offset-4">
           Editar
         </span>
       </button>
@@ -54,7 +54,7 @@ export function MobileRecorte({ summary, activeCount, onOpen, buttonRef }: Props
         href="#comandas"
         className="flex min-h-11 shrink-0 flex-col justify-center rounded-card border border-rule bg-surface px-3 py-1 leading-tight whitespace-nowrap"
       >
-        <span className="text-[0.92rem]">
+        <span className="text-body">
           Comandas
           {total !== null && (
             <>
@@ -64,7 +64,7 @@ export function MobileRecorte({ summary, activeCount, onOpen, buttonRef }: Props
           )}
         </span>
         {critical > 0 && (
-          <span className="text-[0.78rem] font-medium text-crit">
+          <span className="text-meta font-semibold text-crit tabular-nums">
             <SubtleNumber value={critical} /> {critical === 1 ? "crítica" : "críticas"}
           </span>
         )}

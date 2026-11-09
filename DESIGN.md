@@ -26,18 +26,18 @@ colors:
 typography:
   title:
     fontFamily: "Archivo, ui-sans-serif, system-ui, sans-serif"
-    fontSize: "1.4rem"
-    fontWeight: 700
-    lineHeight: 1.2
+    fontSize: "1.5rem"
+    fontWeight: 600
+    lineHeight: 1
   figure-hero:
     fontFamily: "Archivo, ui-sans-serif, system-ui, sans-serif"
-    fontSize: "2.6rem"
+    fontSize: "2.5rem"
     fontWeight: 700
     lineHeight: 1.05
     letterSpacing: "-0.01em"
   figure:
     fontFamily: "Archivo, ui-sans-serif, system-ui, sans-serif"
-    fontSize: "1.45rem"
+    fontSize: "1.5rem"
     fontWeight: 700
     lineHeight: 1.05
   section:
@@ -51,13 +51,17 @@ typography:
     lineHeight: 1.6
   label:
     fontFamily: "Archivo, ui-sans-serif, system-ui, sans-serif"
-    fontSize: "0.9rem"
+    fontSize: "0.85rem"
+    fontWeight: 600
+  meta:
+    fontFamily: "Archivo, ui-sans-serif, system-ui, sans-serif"
+    fontSize: "0.75rem"
     fontWeight: 400
   cond-label:
     fontFamily: "Archivo, ui-sans-serif, system-ui, sans-serif"
-    fontSize: "0.78rem"
+    fontSize: "0.75rem"
     fontWeight: 700
-    letterSpacing: "0.04em"
+    letterSpacing: "0.02em"
 rounded:
   tick: "4px"
   card: "8px"
@@ -169,8 +173,8 @@ The shell is a wine band, not red: it gives the product a recognisable colour fi
 **Key Characteristics:**
 - Cool grey field (`field`) with white surfaces; layers separate by tone and hairline, never by shadow.
 - Wine shell band on every theme; signals on the band use their own `shell-*` tokens.
-- Archivo with a width axis: normal width for reading, condensed caps only for short labels and comanda headers.
-- Tabular figures everywhere; headline numbers in a narrow bold cut (`figure`).
+- Archivo with a width axis: normal width for reading; condensed caps only for the comanda's identity (`Nº 01 · SLA`, the rail title, the evidence tag).
+- Tabular figures on numbers that align or change (figures, deltas, table cells), not on prose; headline numbers in a narrow bold cut (`figure`).
 - Red (`crit`) reserved for critical severity and the one primary action in view.
 
 ## Colors
@@ -195,18 +199,24 @@ The shell is a wine band, not red: it gives the product a recognisable colour fi
 
 One family, **Archivo** (Google Fonts, `wdth` 62–125, `wght` 400–800).
 
+### Scale
+Six steps, as `@theme` tokens in `global.css`; no `text-[x.xxrem]` outside them: `text-meta` 0.75 · `text-aux` 0.85 · `text-body` 0.95 · `text-lead` 1.125 · `text-figure` 1.5 · `text-hero` 2.5rem. Panel titles use `text-base`.
+
 ### Hierarchy
-- **Title** 1.4rem/700 at 88% width: product name in the band.
-- **Figure hero** 2.6rem/700 at 80% width: the three operation KPIs.
-- **Figure** 1.45rem/700 at 80% width: volume KPIs inline with their label.
-- **Section** 1rem/600: panel titles; ticket titles at 1.08rem/600.
-- **Body** 0.95rem/400, 1.6 line height; **Label** 0.9rem muted.
-- **Cond label** 0.78rem/700, uppercase, 72% width, 0.04em tracking: KPI labels, comanda headers, table headers, footer headings.
+- **Title** `text-figure`/600 at 90% width, normal tracking: product name in the band.
+- **Figure hero** `text-hero`/700 at 88% width: the three operation KPIs.
+- **Figure** `text-figure`/700 at 88% width: volume KPIs inline with their label.
+- **Section** 1rem/600: panel titles; ticket titles `text-lead`/600.
+- **Body** `text-body`/400, 1.6 line height; **Label** `text-aux`/600, sentence case: KPI labels, table headers, "Ação", footer headings.
+- **Cond** `text-meta`/700, uppercase, 80% width, 0.02em tracking: comanda identity only.
+
+### Weights
+400 text · 500 controls only (buttons, tabs, chips, inputs) · 600 titles and labels · 700 figures and the cond comanda head.
 
 ### Named Rules
-**The One Body Rule.** Tables use one text size; header rank comes from condensed caps and weight, never from a bigger size.
+**The One Body Rule.** Tables use one text size; header rank comes from weight and colour, never from a bigger size.
 
-**The Short Caps Rule.** Condensed caps only on labels of a few words. Sentences are never set condensed.
+**The Comanda Caps Rule.** Condensed caps belong to the comanda's identity. A KPI, a table header or a footer heading is a label in sentence case; caps everywhere is the generic dashboard voice this world refuses.
 
 ## Layout
 
@@ -285,19 +295,19 @@ Tokens live in `:root` (`--duration-*`, `--ease-*`, `--distance-*`, `--scale-*`,
 - The agent's wait is a shimmer over "Consultando o recorte…"; its answer rises 4px into place in 250ms.
 
 ### KPI grid
-Three operation cells joined by 1px rule gaps, each with cond label, figure, delta, a daily trail drawn in ink from the recorte's own time series, and a muted footnote that wraps, never truncates. When the backend flags the measured base as small (`low_sample`), SLA and ciclo keep their figure and swap the delta for a `warn` note ("base: 20 entregas · amostra pequena"). Volume KPIs sit in one tile below, inline.
+Three operation cells joined by 1px rule gaps, each with a sentence-case label, figure, delta, a daily trail drawn in ink from the recorte's own time series, and a muted footnote that wraps, never truncates. When the backend flags the measured base as small (`low_sample`), SLA and ciclo keep their figure and swap the delta for a `warn` note ("base: 20 entregas · amostra pequena"). Volume KPIs sit in one tile below, inline.
 
 ## Do's and Don'ts
 
 ### Do:
-- Do keep every number tabular and every alert closed by an action.
+- Do keep every aligned or changing number tabular and every alert closed by an action.
 - Do use the wine ramp for data and ink for neutral emphasis.
 - Do encode severity by shape and colour together.
 - Do prefill the agent's question from a chart or comanda and leave sending to the operator.
 
 ### Don't:
 - Don't use red for selection, focus, filters or decorative icons.
-- Don't put the comanda picket or condensed caps on anything that isn't an alert ticket or a short label.
+- Don't put the comanda picket or condensed caps on anything that isn't the comanda itself.
 - Don't add shadows, coloured side stripes on cards, or eyebrow labels above headings.
 - Don't use any delivery company's wordmark, logo, brand red or proprietary typeface.
 - Don't put the agent panel back in the grid, or give its float mode a shadow.

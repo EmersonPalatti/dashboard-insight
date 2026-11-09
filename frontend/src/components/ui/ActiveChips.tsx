@@ -8,7 +8,7 @@ export function ActiveChips({ chips }: { chips: Chip[] }) {
       {chips.map((c) => (
         <li
           key={c.key}
-          className="inline-flex max-w-full items-center gap-1 rounded-[4px] border border-ink bg-surface pl-2 pr-0.5 text-[0.85rem] text-ink transition-[opacity,scale] duration-(--duration-fast) ease-(--ease-smooth-out) starting:scale-(--scale-medium) starting:opacity-0 motion-reduce:transition-none"
+          className="inline-flex max-w-full items-center gap-1 rounded-[4px] border border-ink bg-surface pl-2 pr-0.5 text-aux font-medium text-ink transition-[opacity,scale] duration-(--duration-fast) ease-(--ease-smooth-out) starting:scale-(--scale-medium) starting:opacity-0 motion-reduce:transition-none"
         >
           <span className="text-muted">{c.dim}</span>
           <span className="max-w-[16rem] truncate" title={c.value}>

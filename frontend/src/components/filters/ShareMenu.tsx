@@ -18,8 +18,8 @@ function menuItems(panel: HTMLElement | null): HTMLElement[] {
 function ItemText({ title, detail }: { title: string; detail: string }) {
   return (
     <span className="grid min-w-0 gap-0.5">
-      <span className="text-[0.92rem] font-medium text-ink">{title}</span>
-      <span className="text-[0.82rem] text-muted">{detail}</span>
+      <span className="text-body font-medium text-ink">{title}</span>
+      <span className="text-aux text-muted">{detail}</span>
     </span>
   );
 }

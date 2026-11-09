@@ -68,12 +68,12 @@ function Delta({ def, current, previous }: { def: KpiDef; current: Metrics; prev
   const a = current[def.key] as number | null;
   const b = previous?.[def.key] as number | null | undefined;
   // Recorte inteiro sem período anterior: a linha do topo já diz isso uma vez; aqui só se guarda a altura.
-  if (!previous) return <span className="invisible text-[0.82rem]" aria-hidden>·</span>;
+  if (!previous) return <span className="invisible text-aux" aria-hidden>·</span>;
   // Há período anterior, mas este KPI não tem base para a variação: aí sim o aviso é deste tile.
   // Base pequena no período anterior: a variação não tem o que sustentar, então não aparece.
   const thinBase = def.measured && previous.low_sample;
   if (thinBase || a === null || b === null || b === undefined || (def.kind === "value" && b === 0)) {
-    return <span className="text-[0.82rem] text-muted">sem comparação</span>;
+    return <span className="text-aux text-muted">sem comparação</span>;
   }
   const delta = def.kind === "rate" ? a - b : a / b - 1;
   const flat = Math.abs(delta) < (def.kind === "rate" ? 0.001 : 0.005);
@@ -85,7 +85,7 @@ function Delta({ def, current, previous }: { def: KpiDef; current: Metrics; prev
       : `${delta > 0 ? "+" : "−"}${fmt.num1(Math.abs(delta) * 100)}%`;
   return (
     <span
-      className={`inline-flex items-center gap-0.5 text-[0.82rem] font-semibold ${
+      className={`inline-flex items-center gap-0.5 text-aux font-semibold tabular-nums ${
         good === null ? "text-muted" : good ? "text-good" : "text-crit"
       }`}
       title="Contra o período anterior de mesmo tamanho"
@@ -180,7 +180,7 @@ function KpiFigure({ value, format, className }: { value: number | null | undefi
 function SampleNote({ measured }: { measured: number }) {
   const unit = measured === 1 ? "entrega" : "entregas";
   return (
-    <span className="whitespace-nowrap text-[0.82rem] font-medium text-warn">
+    <span className="whitespace-nowrap text-aux text-warn">
       base: {fmt.int(measured)} {unit} · amostra pequena
     </span>
   );
@@ -212,15 +212,15 @@ function Hero({
   return (
     <div className={`min-w-0 bg-surface px-4 pt-3.5 pb-3 ${markClass(!!focus)}`}>
       <p className="flex min-w-0 items-center justify-between gap-2">
-        <span className="cond shrink-0 text-[0.78rem] font-bold text-muted">{def.label}</span>
+        <span className="shrink-0 text-aux font-semibold text-muted">{def.label}</span>
         {focus && <EvidenceTag focus={focus} note="" className="-my-0.5" />}
       </p>
-      <KpiFigure className="figure mt-1.5 block text-[2.6rem]" value={current[def.key] as number | null} format={def.format} />
+      <KpiFigure className="figure mt-1.5 block text-hero" value={current[def.key] as number | null} format={def.format} />
       <div className="mt-1">
         {thinBase ? <SampleNote measured={current.measured} /> : <Delta def={def} current={current} previous={previous} />}
       </div>
       {trail && <Trail values={trail} label={`${def.label} por dia no recorte`} />}
-      {def.sub && <p className="mt-1.5 text-pretty text-[0.8rem] text-muted">{def.sub(current)}</p>}
+      {def.sub && <p className="mt-1.5 text-pretty text-meta text-muted">{def.sub(current)}</p>}
     </div>
   );
 }
@@ -229,12 +229,12 @@ function Volume({ def, current, previous, focus }: { def: KpiDef; current: Metri
   return (
     <div className={`flex min-w-0 flex-col justify-center px-4 py-2.5 ${markClass(!!focus)}`}>
       <p className="flex flex-wrap items-baseline gap-x-2">
-        <span className="text-[0.88rem] text-muted">{def.label}</span>
-        <KpiFigure className="figure text-[1.45rem]" value={current[def.key] as number | null} format={def.format} />
+        <span className="text-aux font-semibold text-muted">{def.label}</span>
+        <KpiFigure className="figure text-figure" value={current[def.key] as number | null} format={def.format} />
         <Delta def={def} current={current} previous={previous} />
         {focus && <EvidenceTag focus={focus} note="" className="ml-auto self-center" />}
       </p>
-      {def.sub && <p className="mt-0.5 text-pretty text-[0.8rem] text-muted">{def.sub(current)}</p>}
+      {def.sub && <p className="mt-0.5 text-pretty text-meta text-muted">{def.sub(current)}</p>}
     </div>
   );
 }
@@ -311,14 +311,14 @@ function KpiStripInner() {
         {isPlaceholderData ? "" : summary}
       </p>
       <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 px-0.5">
-        <p className="text-[0.88rem] text-muted">
+        <p className="text-aux text-muted">
           {fmt.date(period.start)} a {fmt.date(period.end)}
           {previous_period && previous
             ? ` · comparado com ${fmt.date(previous_period.start)} a ${fmt.date(previous_period.end)}`
             : " · sem período anterior para comparar"}
         </p>
         {meta && (
-          <p className="text-[0.8rem] text-muted">
+          <p className="text-meta text-muted">
             SLA: food ≤ {meta.sla_food_min} min · goods ≤ {meta.sla_good_min} min
           </p>
         )}

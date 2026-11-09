@@ -7,7 +7,7 @@ export function AskAgentButton({ question, subject }: { question: string; subjec
   return (
     <button
       type="button"
-      className="btn-ghost px-2 py-1 text-[0.8rem] max-lg:min-h-11"
+      className="btn-ghost px-2 py-1 text-meta max-lg:min-h-11"
       aria-label={name}
       title={name}
       onClick={() => askAgentAbout(question)}

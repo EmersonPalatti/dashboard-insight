@@ -243,7 +243,7 @@ export function MultiSelect<V extends string | number>({
         aria-labelledby={`${labelId} ${summaryId}`}
         onClick={() => (open ? setOpen(false) : openAt(0))}
         onKeyDown={onTriggerKeyDown}
-        className={`flex h-10 w-full min-w-0 items-center justify-between gap-2 rounded-card border px-3 text-left text-[0.92rem] max-lg:h-auto max-lg:min-h-11 transition-colors duration-(--duration-quick) disabled:opacity-50 ${
+        className={`flex h-10 w-full min-w-0 items-center justify-between gap-2 rounded-card border px-3 text-left text-body max-lg:h-auto max-lg:min-h-11 transition-colors duration-(--duration-quick) disabled:opacity-50 ${
           value.length ? "border-ink bg-surface" : "border-rule bg-surface hover:border-muted"
         }`}
       >
@@ -296,7 +296,7 @@ export function MultiSelect<V extends string | number>({
                   setActiveKey(null);
                 }}
                 placeholder={`Buscar ${label.toLowerCase()}`}
-                className="w-full bg-transparent text-[0.9rem] outline-none placeholder:text-muted"
+                className="w-full bg-transparent text-body outline-none placeholder:text-muted"
               />
             </div>
           )}
@@ -323,7 +323,7 @@ export function MultiSelect<V extends string | number>({
                     setActiveKey(String(o.value));
                     toggle(o.value);
                   }}
-                  className={`flex w-full items-center gap-2 rounded-[4px] px-2 py-1.5 text-[0.9rem] transition-colors duration-(--duration-quick) hover:bg-sunken ${
+                  className={`flex w-full items-center gap-2 rounded-[4px] px-2 py-1.5 text-body font-medium transition-colors duration-(--duration-quick) hover:bg-sunken ${
                     active ? "bg-sunken outline outline-1 -outline-offset-1 outline-ink" : ""
                   }`}
                 >
@@ -342,7 +342,7 @@ export function MultiSelect<V extends string | number>({
                     )}
                   </span>
                   <span className="min-w-0 flex-1 truncate">{o.label}</span>
-                  {o.hint && <span className="shrink-0 text-[0.78rem] text-muted">{o.hint}</span>}
+                  {o.hint && <span className="shrink-0 text-meta text-muted">{o.hint}</span>}
                 </li>
               );
             })}
@@ -353,7 +353,7 @@ export function MultiSelect<V extends string | number>({
             </p>
           )}
           {ordered.length > maxVisible && (
-            <p className="px-2 py-1.5 text-pretty text-[0.78rem] text-muted">+{ordered.length - maxVisible} opções. Refine a busca.</p>
+            <p className="px-2 py-1.5 text-pretty text-meta text-muted">+{ordered.length - maxVisible} opções. Refine a busca.</p>
           )}
           {value.length > 0 && (
             <button type="button" onClick={clear} className="btn mt-1 w-full justify-center text-muted hover:text-ink">

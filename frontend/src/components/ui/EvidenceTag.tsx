@@ -29,7 +29,7 @@ function Tag({ focus, note, className = "" }: TagProps) {
   const s = SEVERITY[focus.severity];
   return (
     <span
-      className={`inline-flex max-w-full min-w-0 items-center gap-1.5 rounded-tick bg-sunken px-2 py-0.5 text-[0.8rem] leading-snug transition-[opacity,translate] duration-(--duration-fast) ease-(--ease-smooth-out) starting:translate-y-(--distance-micro) starting:opacity-0 motion-reduce:transition-none ${className}`}
+      className={`inline-flex max-w-full min-w-0 items-center gap-1.5 rounded-tick bg-sunken px-2 py-0.5 text-meta leading-snug transition-[opacity,translate] duration-(--duration-fast) ease-(--ease-smooth-out) starting:translate-y-(--distance-micro) starting:opacity-0 motion-reduce:transition-none ${className}`}
     >
       <span className={`inline-block shrink-0 ${s.mark}`} aria-hidden />
       <span className="cond shrink-0 font-bold whitespace-nowrap">Comanda {focus.number}</span>
