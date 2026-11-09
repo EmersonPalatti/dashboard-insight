@@ -227,14 +227,25 @@ function Hero({
 
 function Volume({ def, current, previous, focus }: { def: KpiDef; current: Metrics; previous?: Metrics | null; focus: FocusedEvidence | null }) {
   return (
-    <div className={`flex min-w-0 flex-col justify-center px-4 py-2.5 ${markClass(!!focus)}`}>
-      <p className="flex flex-wrap items-baseline gap-x-2">
-        <span className="text-aux font-semibold text-muted">{def.label}</span>
-        <KpiFigure className="figure text-figure" value={current[def.key] as number | null} format={def.format} />
-        <Delta def={def} current={current} previous={previous} />
-        {focus && <EvidenceTag focus={focus} note="" className="ml-auto self-center" />}
-      </p>
-      {def.sub && <p className="mt-0.5 text-pretty text-meta text-muted">{def.sub(current)}</p>}
+    <div className={`@container flex min-w-0 flex-col justify-center px-4 py-2.5 ${markClass(!!focus)}`}>
+      <div className="flex items-baseline justify-between gap-x-3">
+        <span className="min-w-0 truncate text-aux font-semibold text-muted" title={def.label}>{def.label}</span>
+        <span className="flex shrink-0 items-baseline gap-2">
+          {/* Etiqueta só onde cabe sem cortar o rótulo; na célula estreita o contorno já marca a comanda. */}
+          {focus && (
+            <span className="hidden self-center @min-[18rem]:inline-flex">
+              <EvidenceTag focus={focus} compact />
+            </span>
+          )}
+          <KpiFigure className="figure text-right text-figure" value={current[def.key] as number | null} format={def.format} />
+        </span>
+      </div>
+      <div className="mt-0.5 flex items-baseline justify-between gap-x-3">
+        {def.sub && <p className="min-w-0 text-pretty text-meta text-muted">{def.sub(current)}</p>}
+        <span className="ml-auto shrink-0">
+          <Delta def={def} current={current} previous={previous} />
+        </span>
+      </div>
     </div>
   );
 }
