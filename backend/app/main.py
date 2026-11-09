@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import math
 import os
 import tempfile
+import threading
+import time
+from collections import deque
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated
@@ -11,7 +15,7 @@ from typing import Annotated
 from fastapi import BackgroundTasks, Depends, FastAPI, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 
 from app.agent import service as agent
 from app.alerts import detect_alerts
@@ -49,6 +53,21 @@ def create_app() -> FastAPI:
     )
 
     @app.middleware("http")
+    async def limit_body_size(request: Request, call_next):
+        if request.method == "POST":
+            content_length = request.headers.get("content-length")
+            if content_length:
+                try:
+                    if int(content_length) > 64 * 1024:
+                        return JSONResponse(
+                            status_code=413,
+                            content={"detail": "Corpo da requisição excede o limite de 64 KB."},
+                        )
+                except ValueError:
+                    pass
+        return await call_next(request)
+
+    @app.middleware("http")
     async def cache_headers(request: Request, call_next):
         response = await call_next(request)
         # Dados estáticos: GETs analíticos podem ficar 10 min no cache do navegador/CDN.
@@ -58,6 +77,72 @@ def create_app() -> FastAPI:
 
     register_routes(app)
     return app
+
+
+class SlidingWindowLimiter:
+    """Rate limiter em memória por cliente com janela deslizante (thread-safe e memória limitada)."""
+
+    def __init__(self, window_s: float = 60.0, max_clients: int = 10_000):
+        self.window_s = window_s
+        self.max_clients = max_clients
+        self._lock = threading.Lock()
+        self._clients: dict[str, deque[float]] = {}
+
+    def reset(self) -> None:
+        with self._lock:
+            self._clients.clear()
+
+    def check(self, key: str, limit: int) -> tuple[bool, int]:
+        now = time.monotonic()
+        cutoff = now - self.window_s
+        with self._lock:
+            if len(self._clients) > self.max_clients:
+                self._prune_expired(cutoff)
+                if len(self._clients) > self.max_clients:
+                    to_remove = list(self._clients.keys())[:len(self._clients) - self.max_clients]
+                    for k in to_remove:
+                        self._clients.pop(k, None)
+
+            dq = self._clients.setdefault(key, deque())
+            while dq and dq[0] <= cutoff:
+                dq.popleft()
+
+            if len(dq) >= limit:
+                wait_s = max(1, math.ceil(dq[0] + self.window_s - now))
+                return False, int(wait_s)
+
+            dq.append(now)
+            return True, 0
+
+    def _prune_expired(self, cutoff: float) -> None:
+        empty = [k for k, dq in self._clients.items() if not dq or dq[-1] <= cutoff]
+        for k in empty:
+            self._clients.pop(k, None)
+
+
+chat_limiter = SlidingWindowLimiter()
+
+
+def get_client_ip(request: Request) -> str:
+    # O último IP é o que o proxy do Render acrescentou; os anteriores vêm do cliente e podem ser forjados.
+    xff = request.headers.get("x-forwarded-for")
+    if xff:
+        ip = xff.split(",")[-1].strip()
+        if ip:
+            return ip
+    if request.client and request.client.host:
+        return request.client.host
+    return "127.0.0.1"
+
+
+def llm_allowed(request: Request, settings: Settings) -> bool:
+    """Cota de chamadas ao LLM por cliente. Estourou: a pergunta vai para o agente local, sem erro."""
+    if not settings.llm_enabled:
+        return False
+    if not settings.chat_rate_limit_enabled or settings.chat_rate_limit_per_minute <= 0:
+        return True
+    allowed, _ = chat_limiter.check(get_client_ip(request), settings.chat_rate_limit_per_minute)
+    return allowed
 
 
 def repo_dep(request: Request) -> Repository:
@@ -117,7 +202,7 @@ def register_routes(app: FastAPI) -> None:
     def orders(
         repo: Repo,
         f: F,
-        offset: Annotated[int, Query(ge=0)] = 0,
+        offset: Annotated[int, Query(ge=0, le=1_000_000)] = 0,
         limit: Annotated[int, Query(ge=1, le=500)] = 100,
         sort: str = "created_at",
         desc: bool = True,
@@ -135,8 +220,13 @@ def register_routes(app: FastAPI) -> None:
                             headers={"Cache-Control": "no-store"})
 
     @app.post("/api/agent/chat", response_model=ChatResponse, tags=["insights"])
-    def chat(req: ChatRequest, repo: Repo, settings: Annotated[Settings, Depends(get_settings)]):
-        return agent.chat(req, repo, settings)
+    def chat(
+        req: ChatRequest,
+        repo: Repo,
+        settings: Annotated[Settings, Depends(get_settings)],
+        request: Request,
+    ):
+        return agent.chat(req, repo, settings, use_llm=llm_allowed(request, settings))
 
 
 app = create_app()

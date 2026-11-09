@@ -12,6 +12,7 @@ import type { Filters } from "./api/client";
 type Segment = NonNullable<Filters["segment"]>[number];
 type ChannelType = NonNullable<Filters["channel_type"]>[number];
 type Modal = NonNullable<Filters["modal"]>[number];
+type OrderStatus = NonNullable<Filters["status"]>[number];
 
 export interface Recorte {
   start: string | null;
@@ -22,6 +23,7 @@ export interface Recorte {
   segment: Segment[];
   channel_type: ChannelType[];
   modal: Modal[];
+  status: OrderStatus[];
 }
 
 export const EMPTY: Recorte = {
@@ -33,11 +35,13 @@ export const EMPTY: Recorte = {
   segment: [],
   channel_type: [],
   modal: [],
+  status: [],
 };
 
 const SEGMENTS: Segment[] = ["food", "good"];
 const CHANNELS: ChannelType[] = ["marketplace", "own"];
 const MODALS: Modal[] = ["moto", "bike"];
+const STATUSES: OrderStatus[] = ["delivered", "canceled"];
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 /** Recorte atual. Fica vazio até `initFilters()` ler a URL no navegador. */
@@ -46,10 +50,16 @@ export const $filters = atom<Recorte>(EMPTY);
 export const $ready = atom(false);
 
 export const $activeCount = computed($filters, (f) =>
-  [f.start || f.end ? 1 : 0, f.city.length, f.hub.length, f.store.length, f.segment.length, f.channel_type.length, f.modal.length].reduce(
-    (a, b) => a + (b ? 1 : 0),
-    0,
-  ),
+  [
+    f.start || f.end ? 1 : 0,
+    f.city.length,
+    f.hub.length,
+    f.store.length,
+    f.segment.length,
+    f.channel_type.length,
+    f.modal.length,
+    f.status.length,
+  ].reduce((a, b) => a + (b ? 1 : 0), 0),
 );
 
 function ints(values: string[]): number[] {
@@ -73,6 +83,7 @@ export function parseSearch(search: string): Recorte {
     segment: oneOf(p.getAll("segment"), SEGMENTS),
     channel_type: oneOf(p.getAll("channel_type"), CHANNELS),
     modal: oneOf(p.getAll("modal"), MODALS),
+    status: oneOf(p.getAll("status"), STATUSES),
   };
 }
 
@@ -86,6 +97,7 @@ export function toQuery(f: Recorte): Record<string, string | (string | number)[]
     segment: f.segment,
     channel_type: f.channel_type,
     modal: f.modal,
+    status: f.status,
   };
 }
 
@@ -100,6 +112,7 @@ export function toBody(f: Recorte): Filters {
     segment: f.segment,
     channel_type: f.channel_type,
     modal: f.modal,
+    status: f.status,
   };
 }
 

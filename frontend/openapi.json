@@ -182,6 +182,24 @@
               "title": "Modal"
             },
             "description": "Pedidos sem entregador saem do recorte"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "delivered",
+                  "canceled"
+                ],
+                "type": "string"
+              },
+              "description": "Status do pedido: delivered ou canceled",
+              "title": "Status"
+            },
+            "description": "Status do pedido: delivered ou canceled"
           }
         ],
         "responses": {
@@ -342,6 +360,24 @@
               "title": "Modal"
             },
             "description": "Pedidos sem entregador saem do recorte"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "delivered",
+                  "canceled"
+                ],
+                "type": "string"
+              },
+              "description": "Status do pedido: delivered ou canceled",
+              "title": "Status"
+            },
+            "description": "Status do pedido: delivered ou canceled"
           },
           {
             "name": "grain",
@@ -521,6 +557,24 @@
               "title": "Modal"
             },
             "description": "Pedidos sem entregador saem do recorte"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "delivered",
+                  "canceled"
+                ],
+                "type": "string"
+              },
+              "description": "Status do pedido: delivered ou canceled",
+              "title": "Status"
+            },
+            "description": "Status do pedido: delivered ou canceled"
           }
         ],
         "responses": {
@@ -685,6 +739,24 @@
               "title": "Modal"
             },
             "description": "Pedidos sem entregador saem do recorte"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "delivered",
+                  "canceled"
+                ],
+                "type": "string"
+              },
+              "description": "Status do pedido: delivered ou canceled",
+              "title": "Status"
+            },
+            "description": "Status do pedido: delivered ou canceled"
           },
           {
             "name": "by",
@@ -921,6 +993,24 @@
               "title": "Modal"
             },
             "description": "Pedidos sem entregador saem do recorte"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "delivered",
+                  "canceled"
+                ],
+                "type": "string"
+              },
+              "description": "Status do pedido: delivered ou canceled",
+              "title": "Status"
+            },
+            "description": "Status do pedido: delivered ou canceled"
           }
         ],
         "responses": {
@@ -1083,11 +1173,30 @@
             "description": "Pedidos sem entregador saem do recorte"
           },
           {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "delivered",
+                  "canceled"
+                ],
+                "type": "string"
+              },
+              "description": "Status do pedido: delivered ou canceled",
+              "title": "Status"
+            },
+            "description": "Status do pedido: delivered ou canceled"
+          },
+          {
             "name": "offset",
             "in": "query",
             "required": false,
             "schema": {
               "type": "integer",
+              "maximum": 1000000,
               "minimum": 0,
               "default": 0,
               "title": "Offset"
@@ -1284,6 +1393,24 @@
               "title": "Modal"
             },
             "description": "Pedidos sem entregador saem do recorte"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "delivered",
+                  "canceled"
+                ],
+                "type": "string"
+              },
+              "description": "Status do pedido: delivered ou canceled",
+              "title": "Status"
+            },
+            "description": "Status do pedido: delivered ou canceled"
           }
         ],
         "responses": {
@@ -1744,7 +1871,7 @@
               "$ref": "#/components/schemas/ChatTurn"
             },
             "type": "array",
-            "maxItems": 12,
+            "maxItems": 8,
             "title": "History"
           }
         },
@@ -1809,7 +1936,7 @@
           },
           "content": {
             "type": "string",
-            "maxLength": 6000,
+            "maxLength": 2000,
             "title": "Content"
           }
         },
@@ -2030,6 +2157,18 @@
             "type": "array",
             "title": "Modal",
             "description": "Pedidos sem entregador saem do recorte"
+          },
+          "status": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "delivered",
+                "canceled"
+              ]
+            },
+            "type": "array",
+            "title": "Status",
+            "description": "Status do pedido: delivered ou canceled"
           }
         },
         "type": "object",

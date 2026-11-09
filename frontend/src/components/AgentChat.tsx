@@ -234,8 +234,8 @@ export function AgentConversation({ visible, onClose }: ConversationProps) {
         filters: toBody(vars.filters),
         history: vars.history
           .filter((m) => !m.error)
-          .slice(-8)
-          .map((m) => ({ role: m.role, content: m.content.slice(0, 6000) })),
+          .slice(-8) // limites do ChatRequest: 8 turnos, 2000 caracteres
+          .map((m) => ({ role: m.role, content: m.content.slice(0, 2000) })),
       }),
     onSuccess: (res, vars) =>
       $messages.set([

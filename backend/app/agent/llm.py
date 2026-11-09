@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from pathlib import Path
 from typing import Any, get_args
 
@@ -21,7 +22,7 @@ from app.schemas import ChatTurn, Dimension, Grain, SortKey
 
 log = logging.getLogger(__name__)
 SYSTEM_PROMPT = (Path(__file__).with_name("prompts.md")).read_text(encoding="utf-8")
-MAX_ROUNDS = 5
+MAX_ROUNDS = 3
 
 TOOLS: list[dict[str, Any]] = [
     {
@@ -131,66 +132,111 @@ class ToolRunner:
         return {"erro": f"ferramenta desconhecida: {name}"}
 
 
-def _client(settings: Settings):
+def _client(settings: Settings, timeout: float | None = None):
     from openai import OpenAI
 
     return OpenAI(
         api_key=settings.openrouter_api_key,
         base_url="https://openrouter.ai/api/v1",
-        timeout=settings.llm_timeout_s,
-        max_retries=1,
+        timeout=timeout if timeout is not None else settings.llm_timeout_s,
+        max_retries=0,
         default_headers={"X-Title": "Central de Operacoes Delivery"},
     )
 
 
 def _messages(question: str, history: list[ChatTurn], scope: str) -> list[dict]:
     msgs: list[dict] = [{"role": "system", "content": SYSTEM_PROMPT + f"\n\nRecorte atual: {scope}"}]
-    msgs += [{"role": t.role, "content": t.content} for t in history[-8:]]
-    msgs.append({"role": "user", "content": question})
+    msgs += [{"role": t.role, "content": t.content} for t in history[-4:]]
+    msgs.append({"role": "user", "content": f"<pergunta_operador>\n{question}\n</pergunta_operador>"})
     return msgs
 
 
 def answer_with_tools(
-    question: str, history: list[ChatTurn], repo: Repository, f: Filters, settings: Settings
+    question: str,
+    history: list[ChatTurn],
+    repo: Repository,
+    f: Filters,
+    settings: Settings,
+    deadline: float | None = None,
 ) -> tuple[str, list[str]] | None:
-    client = _client(settings)
     runner = ToolRunner(repo, f)
     messages = _messages(question, history, repo.describe(f))
-    for _ in range(MAX_ROUNDS):
+    for round_idx in range(MAX_ROUNDS):
+        remaining = (deadline - time.monotonic()) if deadline is not None else settings.chat_budget_s
+        if remaining <= 0:
+            log.warning("Budget de tempo do chat esgotado no round %d", round_idx)
+            return None
+        per_call_timeout = min(remaining, settings.llm_timeout_s)
+        client = _client(settings, timeout=per_call_timeout)
         response = client.chat.completions.create(
-            model=settings.openrouter_model, temperature=0.2, messages=messages, tools=TOOLS,
+            model=settings.openrouter_model,
+            temperature=0.2,
+            messages=messages,
+            tools=TOOLS,
+            timeout=per_call_timeout,
         )
         msg = response.choices[0].message
         calls = msg.tool_calls or []
         if not calls:
             text = (msg.content or "").strip()
             return (text, runner.used) if text else None
+
+        call_ids: list[str] = []
+        assistant_calls = []
+        for i, call in enumerate(calls):
+            call_id = call.id or f"call_{round_idx}_{i}"
+            call_ids.append(call_id)
+            fn_name = getattr(call.function, "name", "")
+            fn_args = getattr(call.function, "arguments", "") or "{}"
+            assistant_calls.append({
+                "id": call_id,
+                "type": "function",
+                "function": {"name": fn_name, "arguments": fn_args},
+            })
+
         messages.append({
             "role": "assistant",
             "content": msg.content or "",
-            "tool_calls": [
-                {"id": c.id, "type": "function", "function": {"name": c.function.name, "arguments": c.function.arguments}}
-                for c in calls
-            ],
+            "tool_calls": assistant_calls,
         })
-        for call in calls:
+        for i, call in enumerate(calls):
+            call_id = call_ids[i]
+            fn_name = getattr(call.function, "name", "")
+            raw_args = getattr(call.function, "arguments", "") or "{}"
             try:
-                args = json.loads(call.function.arguments or "{}")
-                result = runner.run(call.function.name, args if isinstance(args, dict) else {})
+                args = json.loads(raw_args)
+                if not isinstance(args, dict):
+                    args = {}
+            except Exception as exc:
+                log.warning("JSON inválido nos argumentos da ferramenta %s: %s", fn_name, exc)
+                args = {}
+            try:
+                result = runner.run(fn_name, args)
             except Exception as exc:  # erro de ferramenta volta para o modelo, não derruba a resposta
-                log.warning("tool %s falhou: %s", call.function.name, exc)
+                log.warning("tool %s falhou: %s", fn_name, exc)
                 result = {"erro": "falha ao consultar"}
             messages.append({
                 "role": "tool",
-                "tool_call_id": call.id,
+                "tool_call_id": call_id,
                 "content": json.dumps(result, ensure_ascii=False, default=str),
             })
     return None
 
 
 def answer_with_context(
-    question: str, history: list[ChatTurn], repo: Repository, f: Filters, settings: Settings
+    question: str,
+    history: list[ChatTurn],
+    repo: Repository,
+    f: Filters,
+    settings: Settings,
+    deadline: float | None = None,
 ) -> str | None:
+    remaining = (deadline - time.monotonic()) if deadline is not None else settings.chat_budget_s
+    if remaining <= 0:
+        log.warning("Budget de tempo esgotado antes de answer_with_context")
+        return None
+    per_call_timeout = min(remaining, settings.llm_timeout_s)
+
     runner = ToolRunner(repo, f)
     context = {
         "kpis": runner.run("get_kpis", {}),
@@ -203,10 +249,14 @@ def answer_with_context(
     messages[-1]["content"] = (
         "Contexto do recorte (agregados, não o dataset bruto):\n"
         + json.dumps(context, ensure_ascii=False, default=str)
-        + f"\n\nPergunta do operador: {question}"
+        + f"\n\n<pergunta_operador>\n{question}\n</pergunta_operador>"
     )
-    response = _client(settings).chat.completions.create(
-        model=settings.openrouter_model, temperature=0.2, messages=messages,
+    client = _client(settings, timeout=per_call_timeout)
+    response = client.chat.completions.create(
+        model=settings.openrouter_model,
+        temperature=0.2,
+        messages=messages,
+        timeout=per_call_timeout,
     )
     text = (response.choices[0].message.content or "").strip()
     return text or None

@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     openrouter_api_key: str | None = None
     openrouter_model: str = DEFAULT_MODEL
     llm_timeout_s: float = 45.0
+    chat_budget_s: float = 20.0
+    chat_rate_limit_per_minute: int = 8
+    chat_rate_limit_enabled: bool = True
 
     @property
     def cors_origin_list(self) -> list[str]:

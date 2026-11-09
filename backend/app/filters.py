@@ -15,6 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 Segment = Literal["food", "good"]
 ChannelType = Literal["marketplace", "own"]
 Modal = Literal["moto", "bike"]
+OrderStatus = Literal["delivered", "canceled"]
 
 _MAX_ITEMS = 200
 
@@ -30,6 +31,7 @@ class Filters(BaseModel):
     segment: list[Segment] = Field(default_factory=list)
     channel_type: list[ChannelType] = Field(default_factory=list)
     modal: list[Modal] = Field(default_factory=list, description="Pedidos sem entregador saem do recorte")
+    status: list[OrderStatus] = Field(default_factory=list, description="Status do pedido: delivered ou canceled")
 
     @model_validator(mode="after")
     def _check_range(self) -> Filters:
@@ -54,6 +56,7 @@ class Filters(BaseModel):
             ("segment", self.segment),
             ("channel_type", self.channel_type),
             ("modal", self.modal),
+            ("status", self.status),
         ):
             if values:
                 clauses.append(f"list_contains(?, {column})")

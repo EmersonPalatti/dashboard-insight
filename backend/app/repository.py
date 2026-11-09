@@ -51,7 +51,7 @@ METRICS_SQL = f"""
     median(collected_min) filter (where {_VALID}) as collected_p50,
     median(expedition_min) filter (where {_VALID}) as expedition_p50,
     median(transit_min) filter (where {_VALID}) as transit_p50,
-    median(distance_m) filter (where status = 'delivered') / 1000.0 as distance_p50_km,
+    median(distance_m) filter (where {_VALID}) / 1000.0 as distance_p50_km,
     avg(delivery_fee) filter (where status = 'delivered') as fee_avg,
     avg(delivery_cost) filter (where status = 'delivered') as cost_avg,
     avg(delivery_cost - delivery_fee) filter (where status = 'delivered') as subsidy
@@ -78,7 +78,7 @@ SORTS: dict[str, str] = {
 ORDER_COLUMNS = (
     "order_id, created_at, status, city, hub_name, store_name, segment, channel, modal, payment_method, "
     "amount, delivery_fee, cycle_min, production_min, transit_min, distance_m::int as distance_m, "
-    "case when status = 'delivered' and cycle_min is not null then on_time(segment, cycle_min) end as on_time"
+    f"case when {_MEASURED} then on_time(segment, cycle_min) end as on_time"
 )
 ORDER_SORTS = {
     "created_at", "amount", "delivery_fee", "cycle_min", "production_min", "transit_min",
@@ -91,18 +91,33 @@ def _flag_outliers(rows: list[dict], base: dict) -> list[dict]:
     """Marca linhas do ranking que desviam do recorte (`base` = metrics do recorte inteiro).
 
     Taxa nula nunca é marcada: sem base para comparar, não há desvio.
+    Amostra pequena nunca é marcada. SLA usa a base medida (`low_sample`, abaixo de MIN_MEASURED).
+    Cancelamento usa todos os pedidos como denominador, então a mesma régua vale para `orders`.
+    Chave ausente (linha montada à mão, sem METRICS_SQL) cai na regra antiga: não bloqueia a marca.
     """
     sla_floor = base["sla_rate"] - SLA_BELOW_GAP if base["sla_rate"] is not None else None
     cancel_ceiling = max((base["cancel_rate"] or 0.0) * CANCEL_ABOVE_RATIO, CANCEL_ABOVE_FLOOR)
     for row in rows:
-        row["sla_below"] = sla_floor is not None and row["sla_rate"] is not None and row["sla_rate"] < sla_floor
-        row["cancel_above"] = row["cancel_rate"] is not None and row["cancel_rate"] > cancel_ceiling
+        sla_ok = not row.get("low_sample", False)
+        row["sla_below"] = (
+            sla_ok and sla_floor is not None and row["sla_rate"] is not None and row["sla_rate"] < sla_floor
+        )
+        cancel_ok = row.get("orders", MIN_MEASURED) >= MIN_MEASURED
+        row["cancel_above"] = cancel_ok and row["cancel_rate"] is not None and row["cancel_rate"] > cancel_ceiling
     return rows
 
 
-# Rótulos de exibição dos valores crus do dataset (segmento, canal, modal).
-VALUE_LABELS = {"food": "food", "good": "goods", "marketplace": "marketplace", "own": "canal próprio",
-                "moto": "moto", "bike": "bike"}
+# Rótulos de exibição dos valores crus do dataset (segmento, canal, modal, status).
+VALUE_LABELS = {
+    "food": "food",
+    "good": "goods",
+    "marketplace": "marketplace",
+    "own": "canal próprio",
+    "moto": "moto",
+    "bike": "bike",
+    "delivered": "concluído",
+    "canceled": "cancelado",
+}
 
 
 class Repository:
@@ -112,7 +127,7 @@ class Repository:
                 f"{data_path} não existe. Rode `python scripts/build_parquet.py` com os CSVs em data/raw/."
             )
         self._con = duckdb.connect(":memory:")
-        self._con.execute("set memory_limit = '400MB'")
+        self._con.execute("set memory_limit = '256MB'")
         # Spill de memória vai para o temp do sistema, nunca para a pasta do projeto.
         spill = (Path(tempfile.gettempdir()) / "central-operacoes-duckdb").as_posix().replace("'", "''")
         self._con.execute(f"set temp_directory = '{spill}'")
@@ -197,7 +212,12 @@ class Repository:
         if f.store:
             names = self.names("store", f.store)
             parts.append("loja " + (", ".join(names) if len(names) <= 4 else f"{len(names)} lojas"))
-        for title, values in (("segmento", f.segment), ("canal", f.channel_type), ("modal", f.modal)):
+        for title, values in (
+            ("segmento", f.segment),
+            ("canal", f.channel_type),
+            ("modal", f.modal),
+            ("status", f.status),
+        ):
             if values:
                 parts.append(f"{title} " + ", ".join(VALUE_LABELS.get(v, v) for v in values))
         return " · ".join(parts)
@@ -299,10 +319,11 @@ class Repository:
     def export_csv(self, f: Filters, target: Path) -> None:
         where, params = f.where()
         cur = self._con.cursor()
+        dest = target.as_posix().replace("'", "''")  # caminho com aspas simples não quebra o COPY
         try:
             cur.execute(
                 f"copy (select {ORDER_COLUMNS} from orders where {where} order by created_at) "
-                f"to '{target.as_posix()}' (header, delimiter ',')",
+                f"to '{dest}' (header, delimiter ',')",
                 params,
             )
         finally:

@@ -183,13 +183,13 @@ class AlertsResponse(BaseModel):
 
 class ChatTurn(BaseModel):
     role: Literal["user", "assistant"]
-    content: str = Field(max_length=6000)
+    content: str = Field(max_length=2000)
 
 
 class ChatRequest(BaseModel):
     question: str = Field(min_length=1, max_length=800)
     filters: Filters = Field(default_factory=Filters)
-    history: list[ChatTurn] = Field(default_factory=list, max_length=12)
+    history: list[ChatTurn] = Field(default_factory=list, max_length=8)
 
 
 class ChatResponse(BaseModel):

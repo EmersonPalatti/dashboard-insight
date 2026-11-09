@@ -1,20 +1,54 @@
 """Fixtures: parquet sintético com o mesmo schema do ETL, sem depender do Kaggle.
 
-Cenário plantado para os testes de alerta:
+Base (`BASE_SQL`): pedidos uniformes de 01/01 a ~14/02/2021 com o cenário antigo:
 - hub 2 ("Hub Lento") tem trânsito +40 min → SLA ruim;
 - loja 30 ("Loja Quebrada") cancela tudo;
 - hub 3 ("Hub Preso") tem metade dos pedidos com ciclo > 4h.
+
+Cenário plantado de março (`_planted_rows`): cada regra de alerta tem uma loja nova, dentro de
+um hub existente, numa janela de datas só dela. Assim a fatia do teste é filtrável e a base de
+jan–fev não muda de sentido. Os pedidos plantados contam no total de 12.000 (test_api fixa esse
+número), então a base encolhe na mesma medida.
+
+| Loja | Hub | Janela       | O que planta                                             | Regra que deve disparar    |
+|------|-----|--------------|----------------------------------------------------------|----------------------------|
+| 15   | 1   | 02/03        | 17 entregues atrasados + 10 cancelados (um dia)           | sla/cancel-recorte em baixa amostra |
+| 16   | 1   | 05–11/03     | 200 entregues atrasados                                  | sla-recorte                |
+| 17   | 1   | 12–18/03     | 4 horas de pico (12h, 13h, 19h, 20h) atrasadas            | sla-pico (rótulo "12h–14h e 19h–21h") |
+| 18   | 1   | 01–31/03     | 15 pedidos por dia, no prazo, sem cancelamento            | fatia saudável            |
+| 19   | 1   | 18–31/03     | queda de ~60% na última semana                           | volume-queda               |
+| 25   | 2   | 08–14/03     | 45% de cancelamento em 200 pedidos                        | cancel-store (loja crítica) |
+| 26   | 2   | 20–31/03     | 320 entregues no prazo                                   | contrapeso (hub 2 saudável) |
+| 13   | 1   | 20–31/03     | 280 cancelados + 40 entregues atrasados                  | sla-hub com amostra pequena |
+| 46   | 4   | 26–31/03     | 320 entregues atrasados, etapas curtas (goods)            | sla-hub sem etapa acima da mediana |
+| 14   | 1   | 26–31/03     | 320 entregues no prazo, etapas longas                    | contrapeso do cenário acima |
+| 45   | 4   | 01–31/03     | 160 entregas com frete R$ 2 e custo R$ 12                 | custo-frete                |
 """
 
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 
 import duckdb
 import pytest
 from fastapi.testclient import TestClient
 
-SQL = """
+TOTAL_ORDERS = 12_000  # test_api/test_health fixam este total
+HUB_INFO = {
+    1: ("Hub Centro", "São Paulo", "SP", "food"),
+    2: ("Hub Lento", "São Paulo", "SP", "food"),
+    3: ("Hub Preso", "Curitiba", "PR", "food"),
+    4: ("Hub Goods", "Curitiba", "PR", "good"),
+}
+COLUMNS = (
+    "order_id", "created_at", "created_date", "hour", "weekday", "status", "amount", "delivery_fee",
+    "delivery_cost", "store_id", "store_name", "segment", "hub_id", "hub_name", "city", "state", "channel",
+    "channel_type", "payment_method", "has_chargeback", "modal", "driver_type", "distance_m",
+    "delivery_attempts", "production_min", "collected_min", "walking_min", "expedition_min", "transit_min",
+    "cycle_min",
+)
+BASE_SQL = """
 select setseed(0.42);
 create table fact as
 with base as (
@@ -24,7 +58,7 @@ with base as (
         (i % 4) + 1 as hub_id,
         ((i % 4) + 1) * 10 + (i % 3) as store_id,
         random() as r1, random() as r2, random() as r3
-    from range(1, 12001) t(i)
+    from range(1, {base_rows} + 1) t(i)
 )
 select
     order_id,
@@ -61,18 +95,153 @@ select
         else 15 + r1 * 15 + 5 + r3 * 4 + case when hub_id = 2 then 50 else 10 end + r3 * 12
     end, 2) as cycle_min
 from base;
+"""
+FLAGS_SQL = """
 alter table fact add column cycle_outlier boolean;
 alter table fact add column amount_outlier boolean;
 update fact set cycle_outlier = cycle_min > 240, amount_outlier = amount > 5000;
 """
+LATE = 90.0  # food passa de 60 min; goods (120 min) também, com folga
+ON_TIME = 30.0
+LONG_STAGES = (12.0, 2.0, 5.0, 15.0)  # mesma ordem de STAGES: preparo, coleta, expedição, trânsito
+SHORT_STAGES = (3.0, 1.0, 2.0, 5.0)
+
+
+def _order(
+    store: int,
+    at: datetime,
+    *,
+    status: str = "delivered",
+    cycle: float = ON_TIME,
+    stages: tuple[float, float, float, float] = LONG_STAGES,
+    fee: float = 9.9,
+    cost: float = 8.0,
+) -> dict:
+    hub = store // 10
+    hub_name, city, state, segment = HUB_INFO[hub]
+    production, collected, expedition, transit = stages
+    return {
+        "created_at": at,
+        "created_date": at.date(),
+        "hour": at.hour,
+        "weekday": at.weekday(),
+        "status": status,
+        "amount": 80.0,
+        "delivery_fee": fee,
+        "delivery_cost": cost,
+        "store_id": store,
+        "store_name": f"Loja {store}",
+        "segment": segment,
+        "hub_id": hub,
+        "hub_name": hub_name,
+        "city": city,
+        "state": state,
+        "channel": "Food Place",
+        "channel_type": "marketplace",
+        "payment_method": "online",
+        "has_chargeback": False,
+        "modal": "moto",
+        "driver_type": "freelance",
+        "distance_m": 2000,
+        "delivery_attempts": 1,
+        "production_min": production,
+        "collected_min": collected,
+        "walking_min": 3.0,
+        "expedition_min": expedition,
+        "transit_min": transit,
+        "cycle_min": cycle,
+    }
+
+
+def _planted_rows() -> list[dict]:
+    rows: list[dict] = []
+    add = rows.append
+
+    def at(day: int, hour: int, minute: int = 0) -> datetime:
+        return datetime(2021, 3, day, hour, minute)
+
+    # 15: um dia, amostra pequena (17 entregues medidos, todos atrasados) e 10 cancelados.
+    for k in range(17):
+        add(_order(15, at(2, 9 + k % 12, (k * 7) % 60), cycle=LATE))
+    for k in range(10):
+        add(_order(15, at(2, 10 + k % 8, (k * 5) % 60), status="canceled"))
+
+    # 16: SLA ruim com base grande (200 entregues atrasados).
+    for k in range(200):
+        add(_order(16, at(5 + k % 7, 10 + k % 12, (k * 3) % 60), cycle=LATE))
+
+    # 17: pico nas 12h, 13h, 19h e 20h (40 atrasados por hora); outras 20 horas com 2 pedidos no prazo.
+    peak_hours = (12, 13, 19, 20)
+    for hour in peak_hours:
+        for k in range(40):
+            add(_order(17, at(12 + k % 7, hour, (k * 7) % 60), cycle=LATE))
+    for hour in range(24):
+        if hour in peak_hours:
+            continue
+        for k in range(2):
+            add(_order(17, at(12 + k, hour, 30), cycle=ON_TIME))
+
+    # 18: saudável, 15 pedidos por dia em março, sempre no prazo e sem cancelamento.
+    for day in range(1, 32):
+        for k in range(15):
+            add(_order(18, at(day, 8 + k % 14, (k * 11) % 60)))
+
+    # 19: queda de volume: 22 pedidos por dia em 18–24/03 e 9 por dia em 25–31/03.
+    for day in range(18, 25):
+        for k in range(22):
+            add(_order(19, at(day, 9 + k % 12, (k * 2) % 60)))
+    for day in range(25, 32):
+        for k in range(9):
+            add(_order(19, at(day, 9 + k % 12, (k * 3) % 60)))
+
+    # 25: loja crítica, não quebrada. 200 pedidos, 9 de cada 20 cancelados (45%).
+    for k in range(200):
+        add(_order(25, at(8 + k % 7, 10 + k % 10, (k * 5) % 60), status="canceled" if k % 20 < 9 else "delivered"))
+
+    # 26: hub 2 no prazo (320 pedidos), 13: hub 1 com quase tudo cancelado e 40 atrasados. Mesma janela.
+    for k in range(320):
+        add(_order(26, at(20 + k % 12, 9 + k % 13, (k * 3) % 60)))
+    for k in range(280):
+        add(_order(13, at(20 + k % 12, 9 + k % 13, (k * 2) % 60), status="canceled"))
+    for k in range(40):
+        add(_order(13, at(20 + k % 12, 9 + k % 13, (k * 4) % 60), cycle=LATE))
+
+    # 46: hub 4 (goods) com 320 pedidos atrasados e etapas curtas. 14: hub 1 no prazo, etapas longas.
+    for k in range(320):
+        add(_order(46, at(26 + k % 6, 9 + k % 13, (k * 3) % 60), cycle=150.0, stages=SHORT_STAGES))
+    for k in range(320):
+        add(_order(14, at(26 + k % 6, 9 + k % 13, (k * 3) % 60)))
+
+    # 45: 160 entregas no prazo com frete de R$ 2 e custo de R$ 12 (subsídio de R$ 10 por pedido).
+    for k in range(160):
+        add(_order(45, at(1 + k % 31, 9 + k % 12, (k * 5) % 60), fee=2.0, cost=12.0))
+
+    return rows
+
+
+PLANTED = _planted_rows()
+BASE_ROWS = TOTAL_ORDERS - len(PLANTED)
+assert BASE_ROWS > 0
+
+
+def _build_parquet(path: Path) -> None:
+    con = duckdb.connect()
+    con.execute(BASE_SQL.format(base_rows=BASE_ROWS))
+    for offset, row in enumerate(PLANTED, start=1):
+        row["order_id"] = BASE_ROWS + offset
+    placeholders = ", ".join(["?"] * len(COLUMNS))
+    con.executemany(
+        f"insert into fact ({', '.join(COLUMNS)}) values ({placeholders})",
+        [tuple(row[c] for c in COLUMNS) for row in PLANTED],
+    )
+    con.execute(FLAGS_SQL)
+    con.execute(f"copy fact to '{path.as_posix()}' (format parquet)")
 
 
 @pytest.fixture(scope="session")
 def parquet_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
     path = tmp_path_factory.mktemp("data") / "orders.parquet"
-    con = duckdb.connect()
-    con.execute(SQL)
-    con.execute(f"copy fact to '{path.as_posix()}' (format parquet)")
+    _build_parquet(path)
     return path
 
 

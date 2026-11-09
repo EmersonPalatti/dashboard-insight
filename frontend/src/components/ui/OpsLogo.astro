@@ -1,0 +1,158 @@
+---
+interface Props {
+  class?: string;
+  size?: number;
+}
+
+const { class: className = "", size = 32 } = Astro.props;
+---
+
+<div
+  class:list={[
+    "ops-logo-container group relative inline-flex shrink-0 items-center justify-center select-none",
+    className,
+  ]}
+  style={`width: ${size}px; height: ${size}px;`}
+  aria-hidden="true"
+>
+  <svg
+    viewBox="0 0 32 32"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+    class="size-full overflow-visible"
+  >
+    <!-- Pulso 1: onda contínua de radar não intrusiva (non-stop) -->
+    <circle
+      cx="16"
+      cy="16"
+      r="3.5"
+      class="radar-pulse-ring radar-pulse-1"
+    />
+
+    <!-- Pulso 2: eco defasado para criar ritmo contínuo -->
+    <circle
+      cx="16"
+      cy="16"
+      r="3.5"
+      class="radar-pulse-ring radar-pulse-2"
+    />
+
+    <!-- Anel externo: mira operacional com graduação de bússola/scope -->
+    <circle
+      cx="16"
+      cy="16"
+      r="13.5"
+      stroke="currentColor"
+      stroke-width="1.25"
+      class="text-on-wine/30 transition-all duration-300 ease-out group-hover:text-on-wine/70 group-hover:stroke-[1.5]"
+    />
+
+    <!-- Marcadores cardeais da torre de controle (4 ticks discretos) -->
+    <path
+      d="M16 1.5V3.5 M16 28.5V30.5 M1.5 16H3.5 M28.5 16H30.5"
+      stroke="currentColor"
+      stroke-width="1.5"
+      stroke-linecap="round"
+      class="text-on-wine/50 transition-colors duration-300 group-hover:text-white"
+    />
+
+    <!-- Anel orbital segmentado (gira 90 graus no hover) -->
+    <g class="radar-orbit transition-transform duration-500 ease-(--ease-smooth-out) group-hover:rotate-90">
+      <circle
+        cx="16"
+        cy="16"
+        r="8.5"
+        stroke="currentColor"
+        stroke-width="1.5"
+        stroke-linecap="round"
+        stroke-dasharray="14 7 9 4"
+        class="text-on-wine/75 transition-colors duration-300 group-hover:text-white"
+      />
+      <!-- Feixe de varredura sutil no quadrante superior -->
+      <line
+        x1="16"
+        y1="16"
+        x2="22"
+        y2="10"
+        stroke="currentColor"
+        stroke-width="1.25"
+        stroke-linecap="round"
+        class="text-on-wine/40 transition-colors duration-300 group-hover:text-shell-good"
+      />
+    </g>
+
+    <!-- Núcleo central: sinal emissor do Hub central -->
+    <circle
+      cx="16"
+      cy="16"
+      r="3"
+      fill="currentColor"
+      class="text-on-wine/40 transition-all duration-300 group-hover:scale-110 group-hover:text-on-wine/80"
+    />
+    <circle
+      cx="16"
+      cy="16"
+      r="1.75"
+      fill="currentColor"
+      class="radar-core text-white transition-all duration-300 group-hover:scale-125 group-hover:text-shell-good"
+    />
+  </svg>
+</div>
+
+<style>
+  /* Pulso contínuo: expande do centro (r=3.5 até ~13.5) com fade out suave */
+  .radar-pulse-ring {
+    stroke: currentColor;
+    stroke-width: 1.25;
+    fill: none;
+    color: var(--color-on-wine, #f1dbe3);
+    transform-origin: center;
+    animation: radar-ping 3.6s cubic-bezier(0.1, 0.6, 0.4, 1) infinite;
+  }
+
+  .radar-pulse-1 {
+    animation-delay: 0s;
+  }
+
+  .radar-pulse-2 {
+    animation-delay: 1.8s;
+  }
+
+  @keyframes radar-ping {
+    0% {
+      r: 3.5;
+      opacity: 0.7;
+      stroke-width: 1.5;
+    }
+    50% {
+      opacity: 0.35;
+      stroke-width: 1.2;
+    }
+    100% {
+      r: 14;
+      opacity: 0;
+      stroke-width: 0.8;
+    }
+  }
+
+  /* Órbita com ponto de rotação centrado */
+  .radar-orbit {
+    transform-origin: 16px 16px;
+  }
+
+  /* Brilho pulsante sutil no hover */
+  .group:hover .radar-core {
+    filter: drop-shadow(0 0 4px rgba(155, 199, 90, 0.8));
+  }
+
+  /* Respeito estrito à redução de movimento */
+  @media (prefers-reduced-motion: reduce) {
+    .radar-pulse-ring {
+      animation: none;
+      display: none;
+    }
+    .radar-orbit {
+      transition: none;
+    }
+  }
+</style>

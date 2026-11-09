@@ -163,6 +163,13 @@ export function useFilterModel() {
       (m) => set({ modal: f.modal.filter((x) => x !== m) }),
       () => set({ modal: [] }),
     ),
+    ...chipsOf(
+      "Status",
+      f.status,
+      (s) => label(s),
+      (s) => set({ status: f.status.filter((x) => x !== s) }),
+      () => set({ status: [] }),
+    ),
   ];
 
   // período personalizado: datas que não batem com nenhum preset

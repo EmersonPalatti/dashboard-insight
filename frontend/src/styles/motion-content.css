@@ -118,3 +118,35 @@
     }
   }
 }
+
+/*
+ * Revelação suave do título e subtítulo da faixa vinho (transitions.dev: 18-texts-reveal).
+ * Entrada na montagem: o título sobe e desfoca levemente; o subtítulo/tags entram com stagger (--duration-stagger).
+ */
+@keyframes header-reveal-in {
+  from {
+    opacity: 0;
+    transform: translateY(var(--distance-small));
+    filter: blur(var(--blur-small));
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
+
+@utility header-reveal-title {
+  animation: header-reveal-in var(--duration-fast) var(--ease-smooth-out) both;
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
+}
+
+@utility header-reveal-sub {
+  animation: header-reveal-in var(--duration-fast) var(--ease-smooth-out) both;
+  animation-delay: var(--duration-stagger);
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
+}

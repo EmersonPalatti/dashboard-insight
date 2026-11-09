@@ -409,6 +409,11 @@ export interface components {
              * @description Pedidos sem entregador saem do recorte
              */
             modal?: ("moto" | "bike")[];
+            /**
+             * Status
+             * @description Status do pedido: delivered ou canceled
+             */
+            status?: ("delivered" | "canceled")[];
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -723,6 +728,8 @@ export interface operations {
                 channel_type?: ("marketplace" | "own")[];
                 /** @description Pedidos sem entregador saem do recorte */
                 modal?: ("moto" | "bike")[];
+                /** @description Status do pedido: delivered ou canceled */
+                status?: ("delivered" | "canceled")[];
             };
             header?: never;
             path?: never;
@@ -764,6 +771,8 @@ export interface operations {
                 channel_type?: ("marketplace" | "own")[];
                 /** @description Pedidos sem entregador saem do recorte */
                 modal?: ("moto" | "bike")[];
+                /** @description Status do pedido: delivered ou canceled */
+                status?: ("delivered" | "canceled")[];
                 grain?: "hour" | "day" | "week";
             };
             header?: never;
@@ -806,6 +815,8 @@ export interface operations {
                 channel_type?: ("marketplace" | "own")[];
                 /** @description Pedidos sem entregador saem do recorte */
                 modal?: ("moto" | "bike")[];
+                /** @description Status do pedido: delivered ou canceled */
+                status?: ("delivered" | "canceled")[];
             };
             header?: never;
             path?: never;
@@ -847,6 +858,8 @@ export interface operations {
                 channel_type?: ("marketplace" | "own")[];
                 /** @description Pedidos sem entregador saem do recorte */
                 modal?: ("moto" | "bike")[];
+                /** @description Status do pedido: delivered ou canceled */
+                status?: ("delivered" | "canceled")[];
                 by?: "city" | "hub" | "store" | "channel" | "channel_type" | "segment" | "modal" | "driver_type" | "payment_method" | "hour" | "weekday";
                 sort?: "orders" | "gmv" | "ticket" | "cancel_rate" | "cycle_p50" | "sla_rate" | "stuck_rate" | "subsidy";
                 desc?: boolean;
@@ -893,6 +906,8 @@ export interface operations {
                 channel_type?: ("marketplace" | "own")[];
                 /** @description Pedidos sem entregador saem do recorte */
                 modal?: ("moto" | "bike")[];
+                /** @description Status do pedido: delivered ou canceled */
+                status?: ("delivered" | "canceled")[];
             };
             header?: never;
             path?: never;
@@ -934,6 +949,8 @@ export interface operations {
                 channel_type?: ("marketplace" | "own")[];
                 /** @description Pedidos sem entregador saem do recorte */
                 modal?: ("moto" | "bike")[];
+                /** @description Status do pedido: delivered ou canceled */
+                status?: ("delivered" | "canceled")[];
                 offset?: number;
                 limit?: number;
                 sort?: string;
@@ -979,6 +996,8 @@ export interface operations {
                 channel_type?: ("marketplace" | "own")[];
                 /** @description Pedidos sem entregador saem do recorte */
                 modal?: ("moto" | "bike")[];
+                /** @description Status do pedido: delivered ou canceled */
+                status?: ("delivered" | "canceled")[];
             };
             header?: never;
             path?: never;
