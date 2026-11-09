@@ -17,10 +17,27 @@ export const $agentOpen = atom(false);
 export type AgentActivity = "idle" | "pending" | "unread";
 export const $agentActivity = atom<AgentActivity>("idle");
 
+type ChatModule = typeof import("@/components/AgentChat");
+let chatModule: Promise<ChatModule> | null = null;
+
+/**
+ * Baixa o chunk da conversa (idempotente). O painel usa a mesma Promise no React.lazy,
+ * então prefetch por intenção (hover, foco, idle) deixa a primeira abertura instantânea.
+ * Se a rede falhar, a próxima chamada tenta de novo em vez de guardar a rejeição.
+ */
+export function prefetchAgentChat(): Promise<ChatModule> {
+  chatModule ??= import("@/components/AgentChat").catch((err: unknown) => {
+    chatModule = null;
+    throw err;
+  });
+  return chatModule;
+}
+
 /** Quem abriu o painel recebe o foco de volta quando ele fecha. */
 let opener: HTMLElement | null = null;
 
 export function openAgent() {
+  prefetchAgentChat();
   if ($agentOpen.get()) return;
   if (typeof document !== "undefined") {
     const el = document.activeElement;
@@ -54,6 +71,7 @@ export function toggleAgent() {
 
 /** Abre o painel com a pergunta preenchida. A página fica onde está. */
 export function askAgentAbout(question: string) {
+  prefetchAgentChat();
   $agentDraft.set(question);
   openAgent();
 }

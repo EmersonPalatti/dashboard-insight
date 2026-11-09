@@ -1,10 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { fmt, WEEKDAYS } from "@/lib/format";
 import { island, useRecorteQuery } from "@/lib/query";
+import { HeatmapChart } from "echarts/charts";
+import { VisualMapComponent } from "echarts/components";
+import * as echarts from "echarts/core";
 import { EChart, type Tokens } from "./charts/EChart";
 import { AskAgentButton } from "./ui/AskAgentButton";
 import { EvidenceTag, useEvidence } from "./ui/EvidenceTag";
-import { Empty, ErrorState, Panel, Segmented, Skeleton } from "./ui/Panel";
+import { Empty, ErrorState, panelFallback, PanelContent, Segmented, Skeleton } from "./ui/Panel";
+
+// Módulos deste gráfico: mapa de calor e visualMap (escala de cor). O resto fica em charts/EChart.tsx.
+echarts.use([HeatmapChart, VisualMapComponent]);
 
 type Metric = "orders" | "sla_rate" | "cancel_rate" | "cycle_p50";
 
@@ -104,9 +110,8 @@ function HeatmapChartInner() {
   );
 
   return (
-    <Panel
+    <PanelContent
       note={focus && <EvidenceTag focus={focus} />}
-      title="Dia × hora"
       hint={metric === "orders" ? "Volume por faixa (horário de Brasília)." : `Taxas só em faixas com ${MIN_ORDERS}+ pedidos.`}
       busy={isPlaceholderData}
       actions={
@@ -124,7 +129,9 @@ function HeatmapChartInner() {
       {isPending ? (
         <Skeleton height={CHART_H} />
       ) : error ? (
-        <ErrorState error={error} onRetry={() => refetch()} />
+        <div className="flex items-center justify-center" style={{ minHeight: CHART_H }}>
+          <ErrorState error={error} onRetry={() => refetch()} />
+        </div>
       ) : (
         <div className="content-reveal min-w-0">
           {usable.length === 0 ? (
@@ -151,8 +158,8 @@ function HeatmapChartInner() {
           )}
         </div>
       )}
-    </Panel>
+    </PanelContent>
   );
 }
 
-export default island(HeatmapChartInner);
+export default island(HeatmapChartInner, panelFallback(CHART_H, { hint: true }));

@@ -2,10 +2,22 @@ import { useCallback } from "react";
 import { applyDrilldown } from "@/lib/filters";
 import { fmt } from "@/lib/format";
 import { island, useRecorteQuery } from "@/lib/query";
+import { BarChart } from "echarts/charts";
+import { LegendComponent } from "echarts/components";
+import * as echarts from "echarts/core";
 import { EChart, type Tokens } from "./charts/EChart";
 import { AskAgentButton } from "./ui/AskAgentButton";
 import { EvidenceTag, useEvidence } from "./ui/EvidenceTag";
-import { Empty, ErrorState, Panel, Skeleton } from "./ui/Panel";
+import { Empty, ErrorState, panelFallback, PanelContent, Skeleton } from "./ui/Panel";
+
+// Módulos deste gráfico: barras empilhadas e legenda. O resto fica em charts/EChart.tsx.
+echarts.use([BarChart, LegendComponent]);
+
+/**
+ * Altura reservada do gráfico: skeleton, fallback do SSR e área mínima do resultado.
+ * O gráfico em si pode ser mais baixo (poucos hubs); a área reservada impede o layout de encolher.
+ */
+const CHART_H = 340;
 
 const STAGES = [
   { key: "production_p50", label: "Preparo na loja" },
@@ -74,7 +86,7 @@ function StagesChartInner() {
   );
 
   return (
-    <Panel
+    <PanelContent
       note={
         focus && (
           <EvidenceTag
@@ -83,8 +95,6 @@ function StagesChartInner() {
           />
         )
       }
-      title="Onde o tempo vai, por hub"
-      hint="Mediana de cada etapa, sem pedidos presos. Clique numa barra para filtrar o hub."
       busy={isPlaceholderData}
       actions={
         <AskAgentButton
@@ -94,13 +104,17 @@ function StagesChartInner() {
       }
     >
       {isPending ? (
-        <Skeleton height={340} />
+        <Skeleton height={CHART_H} />
       ) : error ? (
-        <ErrorState error={error} onRetry={() => refetch()} />
+        <div className="flex items-center justify-center" style={{ minHeight: CHART_H }}>
+          <ErrorState error={error} onRetry={() => refetch()} />
+        </div>
       ) : rows.length === 0 ? (
-        <Empty>Nenhum hub com 200+ pedidos no recorte.</Empty>
+        <div className="flex items-center justify-center" style={{ minHeight: CHART_H }}>
+          <Empty>Nenhum hub com 200+ pedidos no recorte.</Empty>
+        </div>
       ) : (
-        <div className="content-reveal min-w-0">
+        <div className="content-reveal min-w-0" style={{ minHeight: CHART_H }}>
           <EChart
             option={option}
             height={Math.max(220, rows.length * 26 + 50)}
@@ -114,8 +128,8 @@ function StagesChartInner() {
           />
         </div>
       )}
-    </Panel>
+    </PanelContent>
   );
 }
 
-export default island(StagesChartInner);
+export default island(StagesChartInner, panelFallback(CHART_H));

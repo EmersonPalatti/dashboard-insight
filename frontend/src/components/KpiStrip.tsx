@@ -241,9 +241,42 @@ function Volume({ def, current, previous, focus }: { def: KpiDef; current: Metri
 
 function KpiSkeleton() {
   return (
-    <div className="grid gap-2.5 lg:grid-cols-[minmax(0,3fr)_minmax(15rem,1fr)]">
-      <div className="skeleton h-[188px]" />
-      <div className="skeleton h-[72px] lg:h-[188px]" />
+    <div className="grid gap-2.5" aria-hidden="true">
+      {/* Linha de cabeçalho: período e SLA */}
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 px-0.5">
+        <div className="skeleton h-4 w-60 max-w-[65%]" />
+        <div className="skeleton h-3.5 w-44 max-w-[30%]" />
+      </div>
+      {/* lg+: operação à esquerda (3 colunas em sm+), volume à direita (empilhado em lg, linha em sm, empilhado em mobile) */}
+      <div className="grid gap-2.5 lg:grid-cols-[minmax(0,3fr)_minmax(15rem,1fr)]">
+        <div className="grid grid-cols-1 gap-px overflow-hidden rounded-card border border-rule bg-rule sm:grid-cols-3">
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="min-w-0 bg-surface px-4 pt-3.5 pb-3">
+              <div className="flex min-w-0 items-center justify-between gap-2">
+                <div className="skeleton h-3.5 w-24" />
+              </div>
+              <div className="skeleton mt-1.5 h-11 w-32" />
+              <div className="mt-1">
+                <div className="skeleton h-4 w-20" />
+              </div>
+              <div className="skeleton mt-2 h-7 w-full" />
+              <div className="skeleton mt-1.5 h-3.5 w-40 max-w-full" />
+            </div>
+          ))}
+        </div>
+        <div className="tile grid grid-cols-1 divide-y divide-rule overflow-hidden sm:grid-cols-3 sm:divide-x sm:divide-y-0 lg:auto-rows-fr lg:grid-cols-1 lg:divide-x-0 lg:divide-y">
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="flex min-w-0 flex-col justify-center px-4 py-2.5">
+              <div className="flex flex-wrap items-baseline gap-2">
+                <div className="skeleton h-4 w-14" />
+                <div className="skeleton h-6 w-20" />
+                <div className="skeleton h-3.5 w-14" />
+              </div>
+              <div className="skeleton mt-1 h-3.5 w-36 max-w-full" />
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
@@ -307,4 +340,4 @@ function KpiStripInner() {
   );
 }
 
-export default island(KpiStripInner, 300);
+export default island(KpiStripInner, <KpiSkeleton />);

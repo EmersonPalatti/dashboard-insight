@@ -57,6 +57,8 @@ export interface PresetOption {
   short: string;
   start: string | null;
   end: string | null;
+  /** Precisa da última data do dataset, que só chega com /api/meta. */
+  disabled?: boolean;
 }
 
 /**
@@ -68,14 +70,17 @@ export function useFilterModel() {
   const active = useStore($activeCount);
   const { data: meta } = useMeta();
 
-  const max = meta?.max_date ?? "2021-04-30";
-  const min = meta?.min_date ?? "2021-01-01";
+  // limites do dataset vêm só de /api/meta (regra: sem nomes ou datas fixas no código).
+  // Antes dele chegar, min e max são undefined: presets e Datas ficam desabilitados.
+  const min = meta?.min_date;
+  const max = meta?.max_date;
+  const datesReady = Boolean(min && max);
   const presets: PresetOption[] = [
     { id: "all", label: "Tudo", short: "Tudo", start: null, end: null },
-    { id: "30d", label: "Últimos 30 dias", short: "30 dias", start: shiftDays(max, -29), end: max },
-    { id: "7d", label: "Últimos 7 dias", short: "7 dias", start: shiftDays(max, -6), end: max },
+    { id: "30d", label: "Últimos 30 dias", short: "30 dias", start: max ? shiftDays(max, -29) : null, end: max ?? null, disabled: !max },
+    { id: "7d", label: "Últimos 7 dias", short: "7 dias", start: max ? shiftDays(max, -6) : null, end: max ?? null, disabled: !max },
   ];
-  const activePreset = presets.find((p) => p.start === f.start && p.end === f.end)?.id;
+  const activePreset = presets.find((p) => !p.disabled && p.start === f.start && p.end === f.end)?.id;
 
   // dimensões do "Mais filtros" (desktop) que têm algum valor selecionado
   const extraCount = [f.segment, f.channel_type, f.modal].filter((v) => v.length > 0).length;
@@ -182,7 +187,7 @@ export function useFilterModel() {
         ? `desde ${dayMonth(f.start)}`
         : `até ${dayMonth(f.end ?? "")}`;
 
-  return { f, active, min, max, presets, activePreset, customDates, datesLabel, extraCount, opts, chips, set };
+  return { f, active, min, max, datesReady, presets, activePreset, customDates, datesLabel, extraCount, opts, chips, set };
 }
 
 export type FilterModel = ReturnType<typeof useFilterModel>;

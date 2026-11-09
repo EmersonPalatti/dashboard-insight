@@ -169,6 +169,30 @@
 }
 
 /*
+ * Moldura de painel dividida entre casca e ilha. `Panel.astro` renderiza a seção, o título
+ * e a dica fixa (HTML estático, visível sem JS); a ilha entra como filha direta. Como
+ * <astro-island> é `display: contents`, as peças da ilha (`PanelContent`) viram itens
+ * deste flex: ações à direita do título (quebram para a linha de baixo quando não cabem),
+ * dica dinâmica e nota numa linha inteira, corpo por último.
+ */
+@utility panel-frame {
+  @apply panel flex min-w-0 flex-wrap items-start gap-x-2 p-4;
+}
+@utility panel-head {
+  /* min-h igual à altura das ações: a linha do título não cresce quando a ilha monta */
+  @apply mr-auto min-h-8 min-w-0;
+}
+@utility panel-actions {
+  @apply flex flex-wrap items-center gap-1.5;
+}
+@utility panel-sub {
+  @apply order-1 mt-0.5 min-w-0 basis-full;
+}
+@utility panel-body {
+  @apply order-2 mt-3 min-w-0 basis-full;
+}
+
+/*
  * Comanda: papel picotado no topo (máscara com furos), linha tracejada sob o
  * cabeçalho. Só alertas usam; fora deles vira fantasia.
  */

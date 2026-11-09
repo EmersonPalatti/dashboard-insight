@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, type ReactNode } from "react";
-import { prefersReducedMotion } from "./media";
+import { prefersReducedMotion } from "@/lib/media";
 import type { PresetOption } from "./useFilterModel";
 
 interface Rect {
@@ -26,8 +26,8 @@ interface Props {
 
 /** Classe de um segmento; exportada para o botão Datas, que vive fora deste componente. */
 export const presetClass = (on: boolean) =>
-  `relative flex items-center gap-1.5 rounded-t-[4px] border-b-2 border-transparent px-2.5 text-[0.88rem] whitespace-nowrap transition-colors duration-(--duration-quick) ${
-    on ? "text-ink" : "text-muted hover:text-ink"
+  `relative flex items-center gap-1.5 rounded-t-[4px] border-b-2 border-transparent px-2.5 text-[0.88rem] whitespace-nowrap transition-colors duration-(--duration-quick) disabled:cursor-not-allowed disabled:opacity-50 ${
+    on ? "text-ink" : "text-muted hover:text-ink disabled:hover:text-muted"
   }`;
 
 /**
@@ -112,6 +112,7 @@ export function PeriodPresets({ presets, activeId, onSelect, extra }: Props) {
             data-preset={p.id}
             aria-label={p.label}
             aria-pressed={on}
+            disabled={p.disabled}
             onClick={() => onSelect(p)}
             className={presetClass(on)}
           >

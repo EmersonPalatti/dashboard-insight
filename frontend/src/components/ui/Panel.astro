@@ -1,0 +1,28 @@
+---
+/**
+ * Moldura estática de um painel: seção, título e dica fixa saem no HTML do build,
+ * antes de qualquer JS. A ilha vai no slot e devolve `PanelContent` (ações, dica
+ * dinâmica, nota e corpo), que se encaixa no mesmo flex (ver `panel-frame` no CSS).
+ */
+interface Props {
+  title: string;
+  /** Só texto que não depende do recorte. Dica que muda com o estado fica na ilha. */
+  hint?: string;
+  class?: string;
+}
+const { title, hint, class: className } = Astro.props;
+const headingId = `painel-${title
+  .normalize("NFD")
+  .replace(/[̀-ͯ]/g, "")
+  .toLowerCase()
+  .replace(/[^a-z0-9]+/g, "-")
+  .replace(/^-|-$/g, "")}`;
+---
+
+<section class:list={["panel-frame", className]} aria-labelledby={headingId}>
+  <div class="panel-head">
+    <h2 id={headingId} class="section-title text-balance">{title}</h2>
+    {hint && <p class="label mt-0.5 text-pretty">{hint}</p>}
+  </div>
+  <slot />
+</section>

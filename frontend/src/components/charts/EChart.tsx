@@ -7,39 +7,19 @@
  * as views e animar a transição. Trocar o tema usa setTheme, sem animação, e
  * reaplica a opção com as cores novas. prefers-reduced-motion desliga a
  * animação em todo setOption.
+ *
+ * Este arquivo registra só o que todo gráfico usa (renderer, grid, tooltip).
+ * Cada gráfico registra os próprios charts e components no topo do seu arquivo,
+ * com `use` de echarts/core, para o bundle não levar módulos que nenhuma tela usa.
  */
 import { useStore } from "@nanostores/react";
-import { BarChart, HeatmapChart, LineChart, ScatterChart } from "echarts/charts";
-import {
-  BrushComponent,
-  DataZoomComponent,
-  GridComponent,
-  LegendComponent,
-  MarkLineComponent,
-  ToolboxComponent,
-  TooltipComponent,
-  VisualMapComponent,
-} from "echarts/components";
+import { GridComponent, TooltipComponent } from "echarts/components";
 import * as echarts from "echarts/core";
 import { CanvasRenderer } from "echarts/renderers";
 import { useEffect, useMemo, useRef } from "react";
 import { $theme, tokens, type Theme } from "@/lib/theme";
 
-echarts.use([
-  BarChart,
-  LineChart,
-  HeatmapChart,
-  ScatterChart,
-  GridComponent,
-  TooltipComponent,
-  LegendComponent,
-  DataZoomComponent,
-  VisualMapComponent,
-  BrushComponent,
-  ToolboxComponent,
-  MarkLineComponent,
-  CanvasRenderer,
-]);
+echarts.use([CanvasRenderer, GridComponent, TooltipComponent]);
 
 export type Tokens = ReturnType<typeof tokens>;
 export type ECOption = echarts.EChartsCoreOption;

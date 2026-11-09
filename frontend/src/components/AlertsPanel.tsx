@@ -10,6 +10,7 @@ import type { Alert } from "@/lib/api/client";
 import { askAgentAbout } from "@/lib/agentBridge";
 import { $evidence, EVIDENCE_ANCHOR, showEvidence } from "@/lib/evidence";
 import { applyDrilldown } from "@/lib/filters";
+import { prefersReducedMotion } from "@/lib/media";
 import { island, useRecorteQuery } from "@/lib/query";
 import { SEVERITY } from "./ui/EvidenceTag";
 import { ErrorState } from "./ui/Panel";
@@ -45,9 +46,6 @@ type FocusRequest = { id: string; on: "title" | "stub" } | null;
 
 /** Índice de escalonamento da reimpressão, lido pelo CSS como `--i`. */
 const printVars = (index: number) => ({ "--i": Math.min(index, PRINT_STAGGER_CAP) }) as CSSProperties;
-
-/** Movimento reduzido do sistema: o recolhimento acontece na hora, sem animação. */
-const prefersReducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 /** Cabeçalho da comanda. No trilho (`compact`) a severidade fica na marca e um chevron indica expansão. */
 function TicketHead({
@@ -275,6 +273,76 @@ function useRailMarker(railRef: React.RefObject<HTMLOListElement | null>, select
   return marker;
 }
 
+function AlertsSkeletonBody() {
+  return (
+    <div className="grid gap-2" aria-hidden="true">
+      {/* Trilho de comandas (stubs): 2 visíveis em mobile, 4 em sm+ */}
+      <div className="grid grid-cols-2 gap-2 pb-2 sm:grid-cols-4">
+        {[0, 1, 2, 3].map((i) => (
+          <div
+            key={i}
+            className={`ticket flex h-[96px] flex-col justify-start bg-surface px-4 pt-4 pb-3.5 ${
+              i === 0 ? "border-b-2 border-ink" : "bg-surface/60"
+            } ${i > 1 ? "max-sm:hidden" : ""}`}
+          >
+            <div className="flex items-center justify-between">
+              <div className="skeleton h-3 w-20" />
+              <div className="skeleton size-3.5 rounded" />
+            </div>
+            <div className="skeleton mt-2 h-4 w-full" />
+            <div className="skeleton mt-1 h-4 w-3/4" />
+          </div>
+        ))}
+      </div>
+      {/* Faixa aberta: a primeira comanda abre por padrão; no mobile Ação vem primeiro, no desktop lado a lado */}
+      <div className="ticket mt-2 bg-surface px-5 pt-5 pb-4">
+        <div className="flex items-center justify-between border-b-[1.5px] border-dashed border-rule pb-2.5">
+          <div className="flex items-center gap-2">
+            <div className="skeleton size-2.5 rounded-full" />
+            <div className="skeleton h-3.5 w-28" />
+          </div>
+          <div className="skeleton h-4 w-16" />
+        </div>
+        <div className="mt-3 grid gap-x-8 gap-y-3.5 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
+          <div className="min-w-0">
+            <div className="skeleton h-5 w-3/4 max-w-sm" />
+            <div className="mt-2 space-y-1.5">
+              <div className="skeleton h-4 w-full" />
+              <div className="skeleton h-4 w-5/6" />
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <div className="skeleton h-9 w-28 rounded-card max-lg:h-11 max-lg:w-32" />
+              <div className="skeleton h-9 w-32 rounded-card max-lg:h-11 max-lg:w-36" />
+              <div className="skeleton h-9 w-36 rounded-card max-lg:h-11 max-lg:w-40" />
+            </div>
+          </div>
+          <div className="self-start rounded-card bg-sunken-strong/40 p-4 max-lg:order-first lg:mt-0.5">
+            <div className="skeleton h-3 w-12" />
+            <div className="mt-2 space-y-1.5">
+              <div className="skeleton h-4 w-full" />
+              <div className="skeleton h-4 w-4/5" />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AlertsSkeleton() {
+  return (
+    <section aria-labelledby="comandas-title" aria-hidden="true">
+      <header className="mb-2 flex items-baseline justify-between gap-2 px-0.5">
+        <h2 id="comandas-title" className="cond text-[0.9rem] font-bold text-ink">
+          Comandas abertas
+        </h2>
+        <div className="skeleton h-3.5 w-28 max-sm:hidden" />
+      </header>
+      <AlertsSkeletonBody />
+    </section>
+  );
+}
+
 function AlertsPanelInner() {
   const { data, error, isPending, refetch, isPlaceholderData } = useRecorteQuery("/api/alerts");
   const alerts = data?.alerts ?? [];
@@ -403,25 +471,20 @@ function AlertsPanelInner() {
         <h2 id="comandas-title" className="cond text-[0.9rem] font-bold text-ink">
           Comandas abertas{data ? ` · ${alerts.length}` : ""}
         </h2>
-        {data && alerts.length > 0 && (
+        {data && alerts.length > 0 ? (
           <p className="text-[0.82rem] text-muted">
             {highText}
             {mediumText}
           </p>
+        ) : (
+          !data && <div className="skeleton h-3.5 w-28 max-sm:hidden" aria-hidden />
         )}
       </header>
       <p className="sr-only" aria-live="polite">
         {status}
       </p>
       {isPending ? (
-        <div className="grid gap-2">
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-            {[0, 1, 2, 3].map((i) => (
-              <div key={i} className={`skeleton h-[88px] ${i > 1 ? "max-sm:hidden" : ""}`} />
-            ))}
-          </div>
-          <div className="skeleton h-[180px]" />
-        </div>
+        <AlertsSkeletonBody />
       ) : error ? (
         <div className="tile p-4">
           <ErrorState error={error} onRetry={() => refetch()} />
@@ -499,4 +562,4 @@ function AlertsPanelInner() {
   );
 }
 
-export default island(AlertsPanelInner, 300);
+export default island(AlertsPanelInner, <AlertsSkeleton />);

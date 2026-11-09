@@ -1,7 +1,14 @@
 import { useStore } from "@nanostores/react";
 import { Bot } from "lucide-react";
 import type { KeyboardEvent } from "react";
-import { $agentActivity, $agentOpen, askAgentAbout, toggleAgent, type AgentActivity } from "@/lib/agentBridge";
+import {
+  $agentActivity,
+  $agentOpen,
+  askAgentAbout,
+  prefetchAgentChat,
+  toggleAgent,
+  type AgentActivity,
+} from "@/lib/agentBridge";
 
 const ACTIVITY_TEXT: Record<AgentActivity, string> = {
   idle: "",
@@ -57,6 +64,8 @@ export function AgentAskButton() {
       aria-label={open ? "Fechar agente" : "Perguntar ao agente sobre este recorte"}
       onClick={toggleAgent}
       onKeyDown={onKeyDown}
+      onPointerEnter={prefetchAgentChat}
+      onFocus={prefetchAgentChat}
       className={`agent-ask flex h-10 min-w-0 items-center gap-2 rounded-card border px-3 text-left text-[0.92rem] whitespace-nowrap transition-colors duration-(--duration-quick) @6xl:w-[19rem] ${
         open ? "border-series bg-sunken" : "border-series bg-surface hover:bg-sunken"
       }`}
@@ -78,14 +87,17 @@ export function AgentAskButton() {
 
 /** Botão flutuante do mobile: na zona do polegar, some enquanto o painel está aberto. */
 export function AgentFab() {
+  const open = useStore($agentOpen);
   const activity = useStore($agentActivity);
   return (
     <button
       type="button"
       data-agent-launcher
       aria-controls="agente"
-      aria-expanded={false}
+      aria-expanded={open}
       onClick={toggleAgent}
+      onPointerEnter={prefetchAgentChat}
+      onFocus={prefetchAgentChat}
       className="agent-fab no-print btn fixed right-4 bottom-[calc(1rem+env(safe-area-inset-bottom))] z-30 min-h-12 border border-wine-raised bg-wine px-4 text-white hover:bg-wine-raised"
     >
       <Bot className="size-4 text-on-wine" aria-hidden />

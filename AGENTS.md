@@ -17,7 +17,8 @@ frontend/  Astro (casca estática) + ilhas React ──HTTP──▶ backend/  F
 - **Consultas:** `backend/app/repository.py`. Colunas, dimensões e ordenações vêm de listas fixas (`DIMENSIONS`, `SORTS`, `ORDER_SORTS`); nunca interpole texto do usuário em SQL.
 - **Alertas:** `backend/app/alerts.py`. Cada alerta = problema + número + **ação operacional** + drill-down opcional.
 - **Agente:** `backend/app/agent/`. `service.py` tenta LLM com tools → LLM com contexto → regras locais (`local.py`). As tools (`llm.py`) recebem o recorte do servidor; o modelo escolhe o que consultar, nunca sobre quais dados. Prompt em `prompts.md`.
-- **Frontend:** `frontend/src/pages/index.astro` é a casca sem JS. Cada componente em `src/components/` é uma ilha exportada via `island(Componente, alturaDoSkeleton)` de `src/lib/query.tsx`, que monta o `QueryClient` compartilhado e evita hydration mismatch.
+- **Frontend:** `frontend/src/pages/index.astro` é a casca sem JS. Cada componente em `src/components/` é uma ilha exportada via `island(Componente, fallback)` de `src/lib/query.tsx`, que monta o `QueryClient` compartilhado e evita hydration mismatch. `fallback` é o skeleton do SSR (altura em px ou um nó com classes por breakpoint) e deve ter a altura do estado carregando, para não haver salto de layout.
+- **Painéis:** moldura, título e dica fixa ficam na casca (`src/components/ui/Panel.astro`); a ilha devolve só `PanelContent` (ações, dica dinâmica, nota, corpo) e usa `panelFallback(altura)`. Como `<astro-island>` é `display: contents`, as peças da ilha entram no mesmo flex da moldura.
 - **Estado global:** `src/lib/filters.ts` (`$filters`, átomo Nanostores ligado à URL). Ilhas leem com `useStore($filters)` e buscam com `useRecorteQuery(path, extra)`.
 - **Tipos:** `src/lib/api/schema.d.ts` é **gerado** do OpenAPI. Mudou schema Pydantic? Rode o fluxo da seção Comandos; não edite o `.d.ts` à mão.
 
@@ -48,7 +49,7 @@ npm run build                            # astro check + build estático
 3. **Ação, não ranking.** Alerta e resposta do agente fecham com quem faz o quê, onde e quando.
 4. **Sem nomes fixos.** Hubs, lojas e cidades vêm dos dados, nunca do código.
 5. **Lógica de negócio no backend** (`repository`, `alerts`, `agent`). Componentes só exibem e filtram.
-6. **Ilhas só onde há interação.** Conteúdo estático fica no `.astro`. `client:load` acima da dobra, `client:visible` no resto.
+6. **Ilhas só onde há interação ou dado do recorte.** Texto que não depende de estado (títulos, dicas fixas, rodapé) fica no `.astro`. `client:load` acima da dobra e para gatilhos globais (agente), `client:visible` no resto. O que só abre por clique (diálogos, folhas, conversa do agente) entra com `React.lazy`.
 7. **Decisões de limpeza visíveis.** Fuso UTC→Brasília, SLA por segmento (food 60 / goods 120 min), pedido "preso" (ciclo > 4h) fora de medianas e SLA, valor > R$ 5 mil fora do GMV. Se mudar, atualize rodapé, README e testes.
 8. **Design (mundo "Comanda", ver `DESIGN.md`):** só tokens semânticos (`bg-field`, `bg-surface`, `bg-wine`, `text-crit`, `text-series`…) de `src/styles/global.css`. Vermelho (`crit`) só para crítico e ação principal; série de dados em vinho (`series`); severidade também por forma (cheia, vazada, traço). Picote (`ticket`) só em comandas de alerta. Sem sombras; cantos 4px/8px; Archivo, condensada só em rótulos; tema claro e escuro.
 9. **Testes:** toda regra de alerta nova ganha um cenário plantado em `backend/tests/conftest.py`.

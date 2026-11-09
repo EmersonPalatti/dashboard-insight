@@ -4,9 +4,18 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { $filters, patchFilters } from "@/lib/filters";
 import { fmt } from "@/lib/format";
 import { island, useRecorteQuery } from "@/lib/query";
+import { BarChart, LineChart } from "echarts/charts";
+import { DataZoomComponent, LegendComponent } from "echarts/components";
+import * as echarts from "echarts/core";
 import { EChart, type ECInstance, type Tokens } from "./charts/EChart";
 import { AskAgentButton } from "./ui/AskAgentButton";
-import { Empty, ErrorState, Panel, Segmented, Skeleton } from "./ui/Panel";
+import { Empty, ErrorState, panelFallback, PanelContent, Segmented, Skeleton } from "./ui/Panel";
+
+// Módulos deste gráfico: barras, linhas, zoom (interno e barra) e legenda. O resto fica em charts/EChart.tsx.
+echarts.use([BarChart, LineChart, DataZoomComponent, LegendComponent]);
+
+/** Altura do gráfico e do skeleton: a mesma nos três estados, para o layout não pular. */
+const CHART_H = 340;
 
 type Grain = "hour" | "day" | "week";
 type View = "volume" | "sla" | "cancel";
@@ -155,8 +164,7 @@ function TrendChartInner() {
   };
 
   return (
-    <Panel
-      title="Tendência"
+    <PanelContent
       hint={
         zoom
           ? `Zoom em ${fmt.date(zoom.start)} a ${fmt.date(zoom.end)}. Aplique para levar o período a todo o painel.`
@@ -190,24 +198,28 @@ function TrendChartInner() {
       }
     >
       {isPending ? (
-        <Skeleton height={340} />
+        <Skeleton height={CHART_H} />
       ) : error ? (
-        <ErrorState error={error} onRetry={() => refetch()} />
+        <div className="flex items-center justify-center" style={{ minHeight: CHART_H }}>
+          <ErrorState error={error} onRetry={() => refetch()} />
+        </div>
       ) : points.length === 0 ? (
-        <Empty />
+        <div className="flex items-center justify-center" style={{ minHeight: CHART_H }}>
+          <Empty />
+        </div>
       ) : (
         <div className="content-reveal min-w-0">
           <EChart
             option={option}
-            height={340}
+            height={CHART_H}
             onEvents={{ datazoom: onZoom }}
             onReady={(c) => (chart.current = c)}
             ariaLabel={`Série ${VIEW_LABEL[view]} por ${GRAIN_LABEL[grain].toLowerCase()} no recorte`}
           />
         </div>
       )}
-    </Panel>
+    </PanelContent>
   );
 }
 
-export default island(TrendChartInner, 430);
+export default island(TrendChartInner, panelFallback(CHART_H, { hint: true }));

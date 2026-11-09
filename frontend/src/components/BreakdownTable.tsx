@@ -13,7 +13,7 @@ import { applyDrilldown, patchFilters } from "@/lib/filters";
 import { fmt, label, WEEKDAYS } from "@/lib/format";
 import { island, useRecorteQuery } from "@/lib/query";
 import { AskAgentButton } from "./ui/AskAgentButton";
-import { Empty, ErrorState, Panel, Skeleton } from "./ui/Panel";
+import { Empty, ErrorState, PanelContent, panelFallback, Skeleton } from "./ui/Panel";
 import { Select } from "./ui/Select";
 
 type Tab = Extract<Dimension, "hub" | "store" | "city" | "channel" | "modal" | "payment_method" | "weekday">;
@@ -132,8 +132,7 @@ function BreakdownTableInner() {
   };
 
   return (
-    <Panel
-      title="Ranking do recorte"
+    <PanelContent
       hint={`Ordene pelas colunas. Seta para baixo: no prazo abaixo do recorte. Seta para cima: cancelamento acima do recorte.${tab === "store" ? " Lojas com 30+ pedidos." : ""}`}
       busy={isPlaceholderData}
       actions={
@@ -147,7 +146,7 @@ function BreakdownTableInner() {
       }
     >
       {isPending ? (
-        <Skeleton height={360} />
+        <Skeleton height={420} />
       ) : error ? (
         <ErrorState error={error} onRetry={() => refetch()} />
       ) : rows.length === 0 ? (
@@ -210,8 +209,8 @@ function BreakdownTableInner() {
           </table>
         </div>
       )}
-    </Panel>
+    </PanelContent>
   );
 }
 
-export default island(BreakdownTableInner);
+export default island(BreakdownTableInner, panelFallback(420, { hint: true }));

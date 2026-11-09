@@ -35,11 +35,16 @@ export function Island({ children, fallback }: { children: ReactNode; fallback?:
   return <QueryClientProvider client={queryClient}>{mounted ? children : fallback}</QueryClientProvider>;
 }
 
-/** Envolve um componente de ilha com o Provider compartilhado e um skeleton de altura fixa. */
-export function island<P extends object>(Component: ComponentType<P>, fallbackHeight = 320) {
-  const fallback = <div className="skeleton w-full" style={{ height: fallbackHeight }} aria-hidden />;
+/**
+ * Envolve um componente de ilha com o Provider compartilhado e o fallback do SSR.
+ * `fallback` é a altura de um skeleton simples, ou o próprio nó (ex.: `panelFallback(340)`,
+ * ou um skeleton com classes por breakpoint), para a troca skeleton → conteúdo não empurrar o layout.
+ */
+export function island<P extends object>(Component: ComponentType<P>, fallback: number | ReactNode = 320) {
+  const node =
+    typeof fallback === "number" ? <div className="skeleton w-full" style={{ height: fallback }} aria-hidden /> : fallback;
   const Wrapped = (props: P) => (
-    <Island fallback={fallback}>
+    <Island fallback={node}>
       <Component {...props} />
     </Island>
   );

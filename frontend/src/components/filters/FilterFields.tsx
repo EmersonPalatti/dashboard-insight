@@ -1,15 +1,17 @@
-import { Calendar, X } from "lucide-react";
+import { Calendar } from "lucide-react";
 import { useState } from "react";
 import type { Recorte } from "@/lib/filters";
 import { DatePicker } from "../ui/DatePicker";
 import { MultiSelect } from "../ui/MultiSelect";
 import { PeriodPresets, presetClass } from "./PeriodPresets";
 import { Popover } from "./Popover";
-import type { Chip, FilterModel, PresetOption } from "./useFilterModel";
+import type { FilterModel, PresetOption } from "./useFilterModel";
 
 /** Início e Fim empilhados, cada um um campo de 40px que abre o próprio calendário. */
 function DateRange({ m }: { m: FilterModel }) {
   const { f, set, min, max } = m;
+  // DatePicker precisa dos limites do dataset (vêm de /api/meta); antes deles não há calendário
+  if (!min || !max) return null;
   return (
     <div role="group" aria-label="Período personalizado" className="grid gap-1.5">
       <DatePicker label="Início" min={min} max={f.end ?? max} value={f.start} rangeOther={f.end} onChange={(start) => set({ start })} />
@@ -24,7 +26,7 @@ function DateRange({ m }: { m: FilterModel }) {
  * abre os dois campos logo abaixo, em fluxo, para o calendário não ser cortado.
  */
 export function PeriodFields({ m, variant = "bar" }: { m: FilterModel; variant?: "bar" | "sheet" }) {
-  const { presets, activePreset, customDates, datesLabel, set } = m;
+  const { presets, activePreset, customDates, datesLabel, datesReady, set } = m;
   const [sheetDates, setSheetDates] = useState(false);
   const activeId = activePreset ?? (customDates ? "dates" : undefined);
   const datesInner = (
@@ -39,7 +41,7 @@ export function PeriodFields({ m, variant = "bar" }: { m: FilterModel; variant?:
   };
 
   if (variant === "sheet") {
-    const showDates = sheetDates || customDates;
+    const showDates = datesReady && (sheetDates || customDates);
     return (
       <fieldset className="grid">
         <legend className="sr-only">Período</legend>
@@ -54,6 +56,7 @@ export function PeriodFields({ m, variant = "bar" }: { m: FilterModel; variant?:
               aria-pressed={customDates}
               aria-expanded={showDates}
               aria-controls="periodo-datas"
+              disabled={!datesReady}
               onClick={() => setSheetDates((v) => !v)}
               className={presetClass(customDates)}
             >
@@ -95,7 +98,12 @@ export function PeriodFields({ m, variant = "bar" }: { m: FilterModel; variant?:
             align="left"
             panelClassName="w-[18rem] p-2"
             triggerClassName={`${presetClass(customDates)} h-full`}
-            triggerProps={{ "data-preset": "dates", "aria-pressed": customDates, "aria-label": `Datas: ${customDates ? datesLabel : "escolher início e fim"}` }}
+            triggerProps={{
+              "data-preset": "dates",
+              "aria-pressed": customDates,
+              "aria-label": `Datas: ${customDates ? datesLabel : "escolher início e fim"}`,
+              disabled: !datesReady,
+            }}
             trigger={datesInner}
           >
             <DateRange m={m} />
@@ -132,32 +140,5 @@ export function ExtraFields({ m }: { m: FilterModel }) {
       />
       <MultiSelect label="Modal" options={opts.modals} value={f.modal} onChange={(modal) => set({ modal: modal as Recorte["modal"] })} />
     </>
-  );
-}
-
-/** Chips do recorte com entrada suave (starting: sai de opacidade e escala menores). Remoção é instantânea. */
-export function ActiveChips({ chips }: { chips: Chip[] }) {
-  return (
-    <ul aria-label="Filtros ativos" className="flex flex-wrap items-center gap-1.5">
-      {chips.map((c) => (
-        <li
-          key={c.key}
-          className="inline-flex max-w-full items-center gap-1 rounded-[4px] border border-ink bg-surface pl-2 pr-0.5 text-[0.85rem] text-ink transition-[opacity,scale] duration-(--duration-fast) ease-(--ease-smooth-out) starting:scale-(--scale-medium) starting:opacity-0 motion-reduce:transition-none"
-        >
-          <span className="text-muted">{c.dim}</span>
-          <span className="max-w-[16rem] truncate" title={c.value}>
-            {c.value}
-          </span>
-          <button
-            type="button"
-            aria-label={`Remover ${c.dim}: ${c.value}`}
-            onClick={c.remove}
-            className="inline-flex size-6 shrink-0 items-center justify-center rounded-[4px] text-muted transition-colors duration-(--duration-quick) hover:bg-sunken hover:text-ink"
-          >
-            <X className="size-3.5" aria-hidden />
-          </button>
-        </li>
-      ))}
-    </ul>
   );
 }

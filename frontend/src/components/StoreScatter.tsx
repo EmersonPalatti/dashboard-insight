@@ -4,10 +4,19 @@ import type { BreakdownRow } from "@/lib/api/client";
 import { patchFilters } from "@/lib/filters";
 import { fmt } from "@/lib/format";
 import { island, useRecorteQuery } from "@/lib/query";
+import { ScatterChart } from "echarts/charts";
+import { BrushComponent, ToolboxComponent } from "echarts/components";
+import * as echarts from "echarts/core";
 import { EChart, type ECInstance, type Tokens } from "./charts/EChart";
 import { AskAgentButton } from "./ui/AskAgentButton";
 import { EvidenceTag, useEvidence } from "./ui/EvidenceTag";
-import { Empty, ErrorState, Panel, Segmented, Skeleton } from "./ui/Panel";
+import { Empty, ErrorState, panelFallback, PanelContent, Segmented, Skeleton } from "./ui/Panel";
+
+// Módulos deste gráfico: dispersão, caixa de seleção (brush) e barra de ferramentas que a abriga.
+echarts.use([ScatterChart, BrushComponent, ToolboxComponent]);
+
+/** Altura do gráfico e do skeleton. A barra de lojas selecionadas abaixo só aparece após uma seleção do usuário. */
+const CHART_H = 340;
 
 type Y = "cancel_rate" | "cycle_p50" | "sla_rate";
 const Y_AXIS: Record<Y, { label: string; format: (v: number) => string }> = {
@@ -112,7 +121,7 @@ function StoreScatterInner() {
   );
 
   return (
-    <Panel
+    <PanelContent
       note={
         focus && (
           <EvidenceTag
@@ -121,8 +130,6 @@ function StoreScatterInner() {
           />
         )
       }
-      title="Lojas: volume × problema"
-      hint="Cada ponto é uma loja com 30+ pedidos; tamanho = GMV. Use a seleção retangular para filtrar um grupo."
       busy={isPlaceholderData}
       actions={
         <>
@@ -140,17 +147,21 @@ function StoreScatterInner() {
       }
     >
       {isPending ? (
-        <Skeleton height={340} />
+        <Skeleton height={CHART_H} />
       ) : error ? (
-        <ErrorState error={error} onRetry={() => refetch()} />
+        <div className="flex items-center justify-center" style={{ minHeight: CHART_H }}>
+          <ErrorState error={error} onRetry={() => refetch()} />
+        </div>
       ) : rows.length === 0 ? (
-        <Empty>Nenhuma loja com 30+ pedidos no recorte.</Empty>
+        <div className="flex items-center justify-center" style={{ minHeight: CHART_H }}>
+          <Empty>Nenhuma loja com 30+ pedidos no recorte.</Empty>
+        </div>
       ) : (
         <div className="content-reveal min-w-0">
           <EChart
             key={y}
             option={option}
-            height={340}
+            height={CHART_H}
             onEvents={{ brushselected: onBrush }}
             ariaLabel={`Dispersão de lojas: pedidos contra ${Y_AXIS[y].label}`}
           />
@@ -183,8 +194,8 @@ function StoreScatterInner() {
           )}
         </div>
       )}
-    </Panel>
+    </PanelContent>
   );
 }
 
-export default island(StoreScatterInner);
+export default island(StoreScatterInner, panelFallback(CHART_H));

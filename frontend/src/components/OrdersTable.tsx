@@ -14,7 +14,7 @@ import { $filters, $ready, patchFilters, toQuery, type Recorte } from "@/lib/fil
 import { fmt, label } from "@/lib/format";
 import { island, useMeta } from "@/lib/query";
 import { AskAgentButton } from "./ui/AskAgentButton";
-import { ErrorState, Panel, Skeleton } from "./ui/Panel";
+import { ErrorState, PanelContent, panelFallback, Skeleton } from "./ui/Panel";
 
 // Pergunta pela coluna de ordenação atual (ids de SORTABLE); "Resumo" é o fallback do agente.
 const ASK_BY_SORT: Record<string, string> = {
@@ -312,8 +312,7 @@ function OrdersTableInner() {
   };
 
   return (
-    <Panel
-      title="Pedidos do recorte"
+    <PanelContent
       hint={
         query.data
           ? `${fmt.int(total)} pedidos · ${fmt.int(rows.length)} carregados. Role para buscar mais; clique para ordenar ou filtrar nas colunas.`
@@ -328,7 +327,7 @@ function OrdersTableInner() {
       }
     >
       {query.isPending ? (
-        <Skeleton height={420} />
+        <Skeleton height={460} />
       ) : query.error ? (
         <ErrorState error={query.error} onRetry={() => query.refetch()} />
       ) : (
@@ -429,8 +428,8 @@ function OrdersTableInner() {
           </div>
         </div>
       )}
-    </Panel>
+    </PanelContent>
   );
 }
 
-export default island(OrdersTableInner, 540);
+export default island(OrdersTableInner, panelFallback(460, { hint: true }));

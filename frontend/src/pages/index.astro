@@ -2,9 +2,12 @@
 /**
  * Casca estática (zero JS): cabeçalho, seções, rodapé e metodologia.
  * Só o que reage ao recorte vira ilha React:
- *  - client:load    → filtros, trilho de comandas, KPIs (acima da dobra)
+ *  - client:load    → filtros, trilho de comandas, KPIs (acima da dobra) e o painel do agente
+ *                     (leve: a conversa em si carrega sob demanda, mas a barra, o botão
+ *                     flutuante e o Ctrl+K funcionam desde o primeiro clique)
  *  - client:visible → gráficos e tabelas (hidratam ao rolar)
- *  - client:idle    → painel do agente (fora do fluxo; abre pela barra, pelo botão flutuante ou Ctrl+K)
+ * Moldura, título e dica fixa de cada painel ficam aqui (ui/Panel.astro), fora das ilhas:
+ * saem no HTML do build e não somem atrás do skeleton enquanto o JS não chega.
  */
 import Base from "@/layouts/Base.astro";
 import AgentDock from "@/components/agent/AgentDock";
@@ -19,6 +22,7 @@ import StoreScatter from "@/components/StoreScatter";
 import TopBarStatus from "@/components/TopBarStatus";
 import TrendChart from "@/components/TrendChart";
 import OpsLogo from "@/components/ui/OpsLogo.astro";
+import Panel from "@/components/ui/Panel.astro";
 
 const apiUrl = (import.meta.env.PUBLIC_API_URL ?? "http://localhost:8000").replace(/\/$/, "");
 const repoUrl = "https://github.com/EmersonPalatti/dashboard-insight";
@@ -77,23 +81,33 @@ const repoUrl = "https://github.com/EmersonPalatti/dashboard-insight";
 
       <KpiStrip client:load />
 
-      <TrendChart client:visible />
+      <Panel title="Tendência"><TrendChart client:visible /></Panel>
 
       <!--
         Âncoras dos gráficos que provam uma comanda ("Ver no gráfico"). Ficam na casca porque as
         ilhas só hidratam ao aparecer: o alvo da rolagem precisa existir antes delas.
       -->
       <div class="grid gap-5 lg:grid-cols-2">
-        <div id="grafico-etapas" tabindex="-1" class="evidence-anchor grid min-w-0"><StagesChart client:visible /></div>
-        <div id="grafico-dia-hora" tabindex="-1" class="evidence-anchor grid min-w-0"><HeatmapChart client:visible /></div>
+        <div id="grafico-etapas" tabindex="-1" class="evidence-anchor grid min-w-0">
+          <Panel title="Onde o tempo vai, por hub" hint="Mediana de cada etapa, sem pedidos presos. Clique numa barra para filtrar o hub.">
+            <StagesChart client:visible />
+          </Panel>
+        </div>
+        <div id="grafico-dia-hora" tabindex="-1" class="evidence-anchor grid min-w-0">
+          <Panel title="Dia × hora"><HeatmapChart client:visible /></Panel>
+        </div>
       </div>
 
       <div class="grid gap-5 xl:grid-cols-2">
-        <div id="grafico-lojas" tabindex="-1" class="evidence-anchor grid min-w-0"><StoreScatter client:visible /></div>
-        <BreakdownTable client:visible />
+        <div id="grafico-lojas" tabindex="-1" class="evidence-anchor grid min-w-0">
+          <Panel title="Lojas: volume × problema" hint="Cada ponto é uma loja com 30+ pedidos; tamanho = GMV. Use a seleção retangular para filtrar um grupo.">
+            <StoreScatter client:visible />
+          </Panel>
+        </div>
+        <Panel title="Ranking do recorte"><BreakdownTable client:visible /></Panel>
       </div>
 
-      <OrdersTable client:visible />
+      <Panel title="Pedidos do recorte"><OrdersTable client:visible /></Panel>
     </main>
 
     <footer class="border-t border-rule bg-surface">
@@ -120,5 +134,5 @@ const repoUrl = "https://github.com/EmersonPalatti/dashboard-insight";
     </footer>
   </div>
 
-  <AgentDock client:idle />
+  <AgentDock client:load />
 </Base>

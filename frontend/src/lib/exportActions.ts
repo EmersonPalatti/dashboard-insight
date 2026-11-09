@@ -1,11 +1,61 @@
 /**
- * Ações de exportação do recorte, compartilhadas pelo modal (ExportDialog, mobile)
- * e pelo menu "Compartilhar" da barra (ShareMenu, desktop).
+ * Ações de exportação do recorte, compartilhadas pelo modal (ExportDialog, mobile),
+ * pelo menu "Compartilhar" da barra (ShareMenu, desktop) e pelo botão "Copiar link"
+ * (CopyLinkButton, folha mobile). Rótulos, feedback e tempos vivem aqui, num lugar só.
  */
-import type { QueryClient } from "@tanstack/react-query";
+import { useStore } from "@nanostores/react";
+import { useQueryClient, type QueryClient } from "@tanstack/react-query";
+import { useEffect, useRef, useState } from "react";
 import { apiGet, apiUrl, type AlertsResponse, type KpiResponse } from "@/lib/api/client";
-import { toQuery, type Recorte } from "@/lib/filters";
+import { $filters, shareUrl, toQuery, type Recorte } from "@/lib/filters";
 import { fmt } from "@/lib/format";
+
+/** O estado "copiado" (link e briefing) dura 1,8 s e volta sozinho ao normal. */
+export const FEEDBACK_MS = 1800;
+
+/** A impressão espera o modal ou o menu fechar (--duration-quick, 150 ms) com folga, para ele não sair no PDF. */
+export const PRINT_DELAY_MS = 250;
+
+/** Rótulos e descrições de cada ação, na voz da interface. */
+export const EXPORT_ACTIONS = {
+  link: {
+    title: "Copiar link",
+    copiedTitle: "Link copiado",
+    detail: "Quem abrir vê o mesmo recorte.",
+  },
+  csv: {
+    title: "Pedidos em CSV",
+    detail: "Uma linha por pedido, com o recorte atual.",
+  },
+  briefing: {
+    title: "Copiar briefing (Markdown)",
+    busyTitle: "Copiando briefing…",
+    doneTitle: "Briefing copiado",
+    errorTitle: "Não deu para copiar",
+    detail: "KPIs, alertas e ações, pronto para colar no Slack ou num doc.",
+  },
+  print: {
+    title: "PDF da tela",
+    detail: 'Abre a impressão do navegador; escolha "Salvar como PDF".',
+  },
+} as const;
+
+export type BriefingState = "idle" | "busy" | "done" | "error";
+
+/** Título do item de briefing conforme o estado da cópia. */
+export function briefingTitle(state: BriefingState): string {
+  const a = EXPORT_ACTIONS.briefing;
+  switch (state) {
+    case "busy":
+      return a.busyTitle;
+    case "done":
+      return a.doneTitle;
+    case "error":
+      return a.errorTitle;
+    default:
+      return a.title;
+  }
+}
 
 export function briefingMarkdown(kpis: KpiResponse, alerts: AlertsResponse["alerts"], url: string) {
   const m = kpis.current;
@@ -39,4 +89,55 @@ export async function copyBriefing(qc: QueryClient, filters: Recorte): Promise<v
 /** Link do CSV de pedidos com o recorte atual. */
 export function csvHref(filters: Recorte): string {
   return apiUrl("/api/orders.csv", toQuery(filters));
+}
+
+/** Abre a impressão do navegador depois de o modal ou menu começar a fechar. */
+export function printAfterClose() {
+  window.setTimeout(() => window.print(), PRINT_DELAY_MS);
+}
+
+/** Copia o link do recorte. `copied` vale por FEEDBACK_MS após cada cópia bem-sucedida. */
+export function useCopyLink() {
+  const [copied, setCopied] = useState(false);
+  const timer = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(timer.current), []);
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(shareUrl());
+      setCopied(true);
+      window.clearTimeout(timer.current);
+      timer.current = window.setTimeout(() => setCopied(false), FEEDBACK_MS);
+    } catch {
+      /* clipboard negado: o link continua na barra de endereço */
+    }
+  };
+
+  return { copied, copy };
+}
+
+/**
+ * Copia o briefing do recorte atual. O estado volta a "idle" FEEDBACK_MS depois de
+ * terminar, com sucesso ou erro (o ExportDialog e o ShareMenu mostram o mesmo feedback).
+ */
+export function useBriefingCopy() {
+  const [state, setState] = useState<BriefingState>("idle");
+  const filters = useStore($filters);
+  const qc = useQueryClient();
+  const timer = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(timer.current), []);
+
+  const copy = async () => {
+    window.clearTimeout(timer.current);
+    setState("busy");
+    try {
+      await copyBriefing(qc, filters);
+      setState("done");
+    } catch {
+      setState("error");
+    }
+    timer.current = window.setTimeout(() => setState("idle"), FEEDBACK_MS);
+  };
+
+  return { state, copy, title: briefingTitle(state) };
 }

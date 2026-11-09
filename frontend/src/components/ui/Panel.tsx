@@ -1,34 +1,65 @@
 import { useEffect, useLayoutEffect, useRef, type KeyboardEvent, type ReactNode } from "react";
 import { LoaderCircle, TriangleAlert } from "lucide-react";
 
-interface PanelProps {
-  title: string;
-  hint?: ReactNode;
+interface PanelContentProps {
+  /** Ações à direita do título (Segmented, Pergunte ao agente…). */
   actions?: ReactNode;
-  children: ReactNode;
-  className?: string;
-  /** Mostra um indicador discreto enquanto o recorte novo carrega por cima do antigo. */
-  busy?: boolean;
+  /** Dica que depende do estado da ilha. Dica fixa vai em `<Panel hint>` na casca. */
+  hint?: ReactNode;
   /** Linha abaixo da dica, ex.: a etiqueta da comanda que este gráfico prova. */
   note?: ReactNode;
+  /** Indicador discreto enquanto o recorte novo carrega por cima do antigo. Reserva o espaço sempre. */
+  busy?: boolean;
+  children: ReactNode;
 }
 
-export function Panel({ title, hint, actions, children, className = "", busy, note }: PanelProps) {
+/**
+ * Parte interativa de um painel cuja moldura (seção e título) está em `ui/Panel.astro`.
+ * Devolve itens soltos, sem wrapper: eles se encaixam no flex da moldura.
+ */
+export function PanelContent({ actions, hint, note, busy, children }: PanelContentProps) {
   return (
-    <section className={`panel flex min-w-0 flex-col p-4 ${className}`}>
-      <header className="mb-3 flex flex-wrap items-start justify-between gap-2">
-        <div className="min-w-0">
-          <h2 className="section-title text-balance flex items-center gap-2">
-            {title}
-            {busy && <LoaderCircle aria-label="Atualizando" className="size-3.5 animate-spin text-muted motion-reduce:animate-none" />}
-          </h2>
-          {hint && <p className="label mt-0.5 text-pretty">{hint}</p>}
+    <>
+      {(actions || busy !== undefined) && (
+        <div className="panel-actions">
+          {busy !== undefined && (
+            <LoaderCircle
+              aria-label={busy ? "Atualizando" : undefined}
+              aria-hidden={!busy}
+              className={`size-3.5 text-muted ${busy ? "animate-spin motion-reduce:animate-none" : "invisible"}`}
+            />
+          )}
+          {actions}
+        </div>
+      )}
+      {(hint || note) && (
+        <div className="panel-sub">
+          {hint && <p className="label text-pretty">{hint}</p>}
           {note && <div className="mt-1.5 flex min-w-0">{note}</div>}
         </div>
-        {actions && <div className="flex flex-wrap items-center gap-1.5">{actions}</div>}
-      </header>
-      {children}
-    </section>
+      )}
+      <div className="panel-body">{children}</div>
+    </>
+  );
+}
+
+/**
+ * Fallback de `island()` para painéis: ocupa o lugar do corpo com a altura do estado carregando.
+ * `hint: true` reserva também a linha da dica dinâmica (uma linha de `label`), para o corpo
+ * não descer quando a ilha monta.
+ */
+export function panelFallback(height: number, { hint = false }: { hint?: boolean } = {}) {
+  return (
+    <>
+      {hint && (
+        <div className="panel-sub" aria-hidden>
+          <p className="label">
+            <span className="skeleton inline-block h-3 w-2/3 max-w-md align-middle" />
+          </p>
+        </div>
+      )}
+      <div className="panel-body skeleton" style={{ height }} aria-hidden />
+    </>
   );
 }
 

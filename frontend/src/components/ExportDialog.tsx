@@ -1,8 +1,7 @@
 import { useStore } from "@nanostores/react";
-import { useQueryClient } from "@tanstack/react-query";
 import { Check, ClipboardCopy, FileSpreadsheet, Printer, X } from "lucide-react";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { copyBriefing, csvHref } from "@/lib/exportActions";
+import { useEffect, useLayoutEffect, useRef } from "react";
+import { EXPORT_ACTIONS, csvHref, printAfterClose, useBriefingCopy } from "@/lib/exportActions";
 import { $filters } from "@/lib/filters";
 
 interface Props {
@@ -15,8 +14,6 @@ interface Props {
  * disparar, o dialog fecha neste tempo (um pouco de folga além dos 150ms).
  */
 const CLOSE_FALLBACK_MS = 170;
-/** A impressão espera o modal fechar (--duration-quick). */
-const PRINT_DELAY_MS = 250;
 
 /*
  * Movimento do modal: abre com transição de entrada (@starting-style via starting:) e
@@ -37,8 +34,7 @@ export function ExportDialog({ open, onClose }: Props) {
   // Fechamento em curso: função que cancela o timer e o listener; null quando o modal não está fechando.
   const stopClosing = useRef<(() => void) | null>(null);
   const filters = useStore($filters);
-  const qc = useQueryClient();
-  const [copied, setCopied] = useState<"idle" | "busy" | "done" | "error">("idle");
+  const briefing = useBriefingCopy();
 
   /**
    * Fecha com animação: marca data-closing, espera o fim da transição (ou o fallback) e só
@@ -88,16 +84,6 @@ export function ExportDialog({ open, onClose }: Props) {
   // Desmontar no meio do fechamento limpa timer e listener.
   useEffect(() => () => stopClosing.current?.(), []);
 
-  const onCopyBriefing = async () => {
-    setCopied("busy");
-    try {
-      await copyBriefing(qc, filters);
-      setCopied("done");
-    } catch {
-      setCopied("error");
-    }
-  };
-
   return (
     <dialog
       ref={ref}
@@ -124,17 +110,15 @@ export function ExportDialog({ open, onClose }: Props) {
           <a className="btn-ghost justify-start py-3" href={csvHref(filters)} download>
             <FileSpreadsheet className="size-4 text-series" aria-hidden />
             <span>
-              <span className="block font-semibold">Pedidos em CSV</span>
-              <span className="label">Uma linha por pedido, com o recorte atual.</span>
+              <span className="block font-semibold">{EXPORT_ACTIONS.csv.title}</span>
+              <span className="label">{EXPORT_ACTIONS.csv.detail}</span>
             </span>
           </a>
-          <button type="button" className="btn-ghost justify-start py-3 text-left" onClick={onCopyBriefing} disabled={copied === "busy"}>
-            {copied === "done" ? <Check className="size-4 text-good" aria-hidden /> : <ClipboardCopy className="size-4 text-series" aria-hidden />}
+          <button type="button" className="btn-ghost justify-start py-3 text-left" onClick={briefing.copy} disabled={briefing.state === "busy"}>
+            {briefing.state === "done" ? <Check className="size-4 text-good" aria-hidden /> : <ClipboardCopy className="size-4 text-series" aria-hidden />}
             <span>
-              <span className="block font-semibold">
-                {copied === "done" ? "Briefing copiado" : copied === "error" ? "Não deu para copiar" : "Copiar briefing (Markdown)"}
-              </span>
-              <span className="label">KPIs, alertas e ações, pronto para colar no Slack ou num doc.</span>
+              <span className="block font-semibold">{briefing.title}</span>
+              <span className="label">{EXPORT_ACTIONS.briefing.detail}</span>
             </span>
           </button>
           <button
@@ -142,13 +126,13 @@ export function ExportDialog({ open, onClose }: Props) {
             className="btn-ghost justify-start py-3 text-left"
             onClick={() => {
               onClose();
-              setTimeout(() => window.print(), PRINT_DELAY_MS);
+              printAfterClose();
             }}
           >
             <Printer className="size-4 text-series" aria-hidden />
             <span>
-              <span className="block font-semibold">PDF da tela</span>
-              <span className="label">Abre a impressão do navegador; escolha "Salvar como PDF".</span>
+              <span className="block font-semibold">{EXPORT_ACTIONS.print.title}</span>
+              <span className="label">{EXPORT_ACTIONS.print.detail}</span>
             </span>
           </button>
         </div>

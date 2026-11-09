@@ -6,8 +6,9 @@ import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "
 import { $agentActivity, $agentDraft } from "@/lib/agentBridge";
 import { askAgent, type ChatResponse } from "@/lib/api/client";
 import { $activeCount, $filters, toBody, type Recorte } from "@/lib/filters";
+import { prefersReducedMotion } from "@/lib/media";
 import { useMeta } from "@/lib/query";
-import { ActiveChips } from "./filters/FilterFields";
+import { ActiveChips } from "./ui/ActiveChips";
 import { useFilterModel } from "./filters/useFilterModel";
 
 interface Message {
@@ -218,7 +219,7 @@ export function AgentConversation({ visible, onClose }: ConversationProps) {
   const active = useStore($activeCount);
   const draft = useStore($agentDraft);
   const { data: meta } = useMeta();
-  const [input, setInput] = useState("");
+  const [input, setInput] = useState(() => $agentDraft.get() ?? "");
   const [elapsed, setElapsed] = useState(0);
   const [moreSuggestions, setMoreSuggestions] = useState(false);
   const { chips } = useFilterModel();
@@ -259,13 +260,13 @@ export function AgentConversation({ visible, onClose }: ConversationProps) {
   useEffect(() => {
     const log = logRef.current;
     if (!log) return;
-    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const reduced = prefersReducedMotion();
     log.scrollTo({ top: log.scrollHeight, behavior: visible && !reduced ? "smooth" : "auto" });
   }, [messages.length, mutation.isPending, visible]);
 
   // Foco no campo ao abrir o painel. A pergunta pronta de uma comanda tem o próprio efeito abaixo.
   useEffect(() => {
-    if (visible) inputRef.current?.focus({ preventScroll: true });
+    if (visible && !$agentDraft.get()) inputRef.current?.focus({ preventScroll: true });
   }, [visible]);
 
   // O botão de abrir mostra a espera e a resposta que chegou com o painel fechado.
@@ -469,4 +470,3 @@ export function AgentConversation({ visible, onClose }: ConversationProps) {
     </div>
   );
 }
-

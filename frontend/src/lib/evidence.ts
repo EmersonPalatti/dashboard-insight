@@ -5,6 +5,7 @@
  */
 import { atom } from "nanostores";
 import type { Alert, Evidence } from "./api/client";
+import { prefersReducedMotion } from "./media";
 
 export interface FocusedEvidence {
   alertId: string;
@@ -29,7 +30,7 @@ export function showEvidence(view: Evidence["view"]) {
   if (view === "kpi" || typeof document === "undefined") return;
   const el = document.getElementById(EVIDENCE_ANCHOR[view].id);
   if (!el) return;
-  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const reduce = prefersReducedMotion();
   el.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
   el.focus({ preventScroll: true });
   // Os gráficos no caminho hidratam enquanto a página rola e mudam de altura: o alvo sai do lugar.
