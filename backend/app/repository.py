@@ -97,14 +97,22 @@ def _flag_outliers(rows: list[dict], base: dict) -> list[dict]:
     Chave ausente (linha montada à mão, sem METRICS_SQL) cai na regra antiga: não bloqueia a marca.
     """
     sla_floor = base["sla_rate"] - SLA_BELOW_GAP if base["sla_rate"] is not None else None
-    cancel_ceiling = max((base["cancel_rate"] or 0.0) * CANCEL_ABOVE_RATIO, CANCEL_ABOVE_FLOOR)
+    base_cancel = base["cancel_rate"] or 0.0
     for row in rows:
         sla_ok = not row.get("low_sample", False)
+        # "mais de 5 pontos": exatamente 5 pontos não marca.
         row["sla_below"] = (
             sla_ok and sla_floor is not None and row["sla_rate"] is not None and row["sla_rate"] < sla_floor
         )
         cancel_ok = row.get("orders", MIN_MEASURED) >= MIN_MEASURED
-        row["cancel_above"] = cancel_ok and row["cancel_rate"] is not None and row["cancel_rate"] > cancel_ceiling
+        rate = row["cancel_rate"]
+        # "acima de 1,6×" é estrito; "pelo menos 6%" inclui o piso.
+        row["cancel_above"] = (
+            cancel_ok
+            and rate is not None
+            and rate >= CANCEL_ABOVE_FLOOR
+            and rate > base_cancel * CANCEL_ABOVE_RATIO
+        )
     return rows
 
 
