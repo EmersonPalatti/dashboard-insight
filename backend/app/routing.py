@@ -7,7 +7,6 @@ o sufixo do id). Não há nome de hub, loja ou cidade fixo aqui.
 from __future__ import annotations
 
 import re
-
 from collections.abc import Mapping
 
 from app.schemas import Alert, AlertRoute
