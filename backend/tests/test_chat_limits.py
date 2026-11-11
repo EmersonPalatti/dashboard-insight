@@ -7,14 +7,16 @@ from unittest.mock import MagicMock
 import pytest
 
 from app.config import Settings, get_settings
-from app.main import chat_limiter
+from app.main import chat_global_limiter, chat_limiter
 
 
 @pytest.fixture(autouse=True)
 def _reset_limiter():
     chat_limiter.reset()
+    chat_global_limiter.reset()
     yield
     chat_limiter.reset()
+    chat_global_limiter.reset()
 
 
 def test_orders_offset_bounds(client):
@@ -122,6 +124,58 @@ def test_chat_quota_keys_on_proxy_appended_ip(client, monkeypatch):
             for i in range(4)
         ]
         assert modes == ["llm-tools", "llm-tools", "local", "local"]
+    finally:
+        client.app.dependency_overrides.pop(get_settings, None)
+
+
+def test_chat_quota_uses_configured_client_ip_header(client, monkeypatch):
+    """Com CLIENT_IP_HEADER, a cota segue esse header e não o último hop do X-Forwarded-For."""
+    calls: list[int] = []
+    _fast_llm(monkeypatch, calls)
+    client.app.dependency_overrides[get_settings] = lambda: Settings(
+        openrouter_api_key="test-key",
+        chat_rate_limit_per_minute=2,
+        client_ip_header="true-client-ip",
+    )
+    try:
+        modes = [
+            client.post(
+                "/api/agent/chat",
+                json={"question": f"teste {i}"},
+                headers={"X-Forwarded-For": f"203.0.113.{i}, 198.51.100.9", "True-Client-IP": "192.0.2.10"},
+            ).json()["mode"]
+            for i in range(4)
+        ]
+        assert modes == ["llm-tools", "llm-tools", "local", "local"]
+        other = client.post(
+            "/api/agent/chat",
+            json={"question": "outro ip"},
+            headers={"X-Forwarded-For": "203.0.113.50, 198.51.100.9", "True-Client-IP": "192.0.2.11"},
+        )
+        assert other.json()["mode"] == "llm-tools"
+    finally:
+        client.app.dependency_overrides.pop(get_settings, None)
+
+
+def test_chat_global_cap_falls_back_to_local(client, monkeypatch):
+    calls: list[int] = []
+    _fast_llm(monkeypatch, calls)
+    client.app.dependency_overrides[get_settings] = lambda: Settings(
+        openrouter_api_key="test-key",
+        chat_rate_limit_per_minute=10,
+        chat_global_rate_limit_per_minute=3,
+    )
+    try:
+        modes = [
+            client.post(
+                "/api/agent/chat",
+                json={"question": f"teste {i}"},
+                headers={"X-Forwarded-For": f"198.51.100.{i}"},
+            ).json()["mode"]
+            for i in range(5)
+        ]
+        assert modes == ["llm-tools"] * 3 + ["local"] * 2
+        assert len(calls) == 3
     finally:
         client.app.dependency_overrides.pop(get_settings, None)
 

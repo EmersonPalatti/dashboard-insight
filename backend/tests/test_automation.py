@@ -105,6 +105,23 @@ def test_invalid_dates_match_the_rest_of_the_api(client, path):
     assert client.get(path, params={"start": "not-a-date"}).status_code == 422
 
 
+@pytest.mark.parametrize("path", ["/api/briefing", "/api/alerts/routing"])
+def test_automation_token_is_optional_until_configured(client, path):
+    from app.config import Settings, get_settings
+
+    assert client.get(path, params={"city": "Nenhuma"}).status_code == 200
+    client.app.dependency_overrides[get_settings] = lambda: Settings(automation_token="segredo")
+    try:
+        assert client.get(path, params={"city": "Nenhuma"}).status_code == 401
+        wrong = client.get(path, params={"city": "Nenhuma"}, headers={"X-Automation-Token": "outro"})
+        assert wrong.status_code == 401
+        assert wrong.json()["detail"] == "Token de automação inválido."
+        ok = client.get(path, params={"city": "Nenhuma"}, headers={"X-Automation-Token": "segredo"})
+        assert ok.status_code == 200
+    finally:
+        client.app.dependency_overrides.pop(get_settings, None)
+
+
 def test_recipient_templates_and_message_are_pure():
     store = _alert(
         id="cancel-store-25",

@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import anyio
+
+from app.config import Settings, get_settings
 from app.filters import Filters
+from app.main import export_limiter
 
 
 def test_health(client):
@@ -96,7 +100,9 @@ def test_orders_page_and_sort_whitelist(client):
     assert amounts == sorted(amounts, reverse=True)
     assert page["total"] == 12000
     # coluna fora da lista cai para created_at em vez de virar SQL
-    assert client.get("/api/orders", params={"sort": "amount; drop table orders"}).status_code == 200
+    fallback = client.get("/api/orders", params={"sort": "amount; drop table orders", "limit": 5}).json()
+    created = client.get("/api/orders", params={"sort": "created_at", "limit": 5}).json()
+    assert [row["order_id"] for row in fallback["rows"]] == [row["order_id"] for row in created["rows"]]
 
 
 def test_csv_export_respects_filter(client):
@@ -111,3 +117,138 @@ def test_timeseries_and_heatmap(client):
     assert len(ts) >= 8  # fixture cobre ~58 dias
     heat = client.get("/api/heatmap").json()
     assert all(0 <= c["weekday"] <= 6 and 0 <= c["hour"] <= 23 for c in heat)
+
+
+def test_week_bucket_starts_at_the_filter_not_the_previous_monday(client):
+    # 2021-01-06 é quarta. date_trunc('week') cairia em 2021-01-04.
+    start = "2021-01-06"
+    rows = client.get("/api/timeseries", params={"grain": "week", "start": start, "end": "2021-01-20"}).json()
+    assert rows[0]["t"].startswith("2021-01-06")
+    assert all(row["t"][:10] >= start for row in rows)
+    assert rows[1]["t"].startswith("2021-01-11")  # segunda seguinte, já dentro do recorte
+
+
+def test_day_and_hour_grains_stay_inside_the_filter(client):
+    day = client.get("/api/timeseries", params={"grain": "day", "start": "2021-01-06", "end": "2021-01-08"}).json()
+    assert [row["t"][:10] for row in day] == ["2021-01-06", "2021-01-07", "2021-01-08"]
+    hour = client.get("/api/timeseries", params={"grain": "hour", "start": "2021-01-06", "end": "2021-01-06"}).json()
+    assert hour
+    assert all(row["t"].startswith("2021-01-06T") for row in hour)
+
+
+def test_filter_bounds_reject_oversized_values(client):
+    assert client.get("/api/kpis", params={"start": "1999-12-31"}).status_code == 422
+    assert client.get("/api/kpis", params={"end": "2101-01-01"}).status_code == 422
+    assert client.get("/api/kpis", params={"start": "2000-01-01", "end": "2000-01-02"}).status_code == 200
+    assert client.get("/api/kpis", params={"city": "a" * 81}).status_code == 422
+    assert client.get("/api/kpis", params={"city": "a" * 80}).status_code == 200
+    too_many = [("hub", i) for i in range(1, 52)]
+    assert client.get("/api/kpis", params=too_many).status_code == 422
+    assert client.get("/api/breakdown", params={"by": "store", "min_orders": 100001}).status_code == 422
+    assert client.get("/api/breakdown", params={"by": "store", "min_orders": 100000}).status_code == 200
+
+
+def _asgi_post(app, headers: list[tuple[bytes, bytes]], parts: list[bytes]) -> tuple[int, bytes]:
+    status: dict[str, int] = {}
+    payload = bytearray()
+    index = 0
+
+    async def receive():
+        nonlocal index
+        if index >= len(parts):
+            return {"type": "http.request", "body": b"", "more_body": False}
+        chunk = parts[index]
+        index += 1
+        return {"type": "http.request", "body": chunk, "more_body": index < len(parts)}
+
+    async def send(message):
+        if message["type"] == "http.response.start":
+            status["code"] = message["status"]
+        elif message["type"] == "http.response.body":
+            payload.extend(message.get("body") or b"")
+
+    scope = {
+        "type": "http",
+        "asgi": {"version": "3.0", "spec_version": "2.3"},
+        "http_version": "1.1",
+        "method": "POST",
+        "scheme": "http",
+        "path": "/api/agent/chat",
+        "raw_path": b"/api/agent/chat",
+        "query_string": b"",
+        "headers": headers,
+        "client": ("127.0.0.1", 50000),
+        "server": ("test", 80),
+    }
+    anyio.run(app, scope, receive, send)
+    return status["code"], bytes(payload)
+
+
+def test_post_without_content_length_over_64kb_is_413(client):
+    code, body = _asgi_post(
+        client.app,
+        [(b"content-type", b"application/json")],
+        [b"x" * (40 * 1024), b"y" * (30 * 1024)],
+    )
+    assert code == 413
+    assert "64 KB" in body.decode()
+
+
+def test_post_with_bad_content_length_is_400(client):
+    code, body = _asgi_post(
+        client.app,
+        [(b"content-type", b"application/json"), (b"content-length", b"nope")],
+        [b'{"question":"oi"}'],
+    )
+    assert code == 400
+    assert "Content-Length" in body.decode()
+
+
+def test_post_without_content_length_under_the_cap_reaches_the_route(client):
+    code, body = _asgi_post(
+        client.app,
+        [(b"content-type", b"application/json")],
+        [b'{"question":"ola"}'],
+    )
+    assert code == 200
+    assert b"local" in body
+
+
+def test_csv_export_rejects_recorte_over_the_row_cap(client):
+    export_limiter.reset()
+    client.app.dependency_overrides[get_settings] = lambda: Settings(csv_export_max_rows=10, csv_export_per_minute=0)
+    try:
+        response = client.get("/api/orders.csv", params={"city": "Curitiba"})
+        assert response.status_code == 413
+        assert "Afine o filtro" in response.json()["detail"]
+    finally:
+        client.app.dependency_overrides.pop(get_settings, None)
+        export_limiter.reset()
+
+
+def test_csv_export_rate_limit_per_ip(client):
+    export_limiter.reset()
+    client.app.dependency_overrides[get_settings] = lambda: Settings(
+        csv_export_max_rows=100_000, csv_export_per_minute=1
+    )
+    try:
+        headers = {"X-Forwarded-For": "203.0.113.8"}
+        assert client.get("/api/orders.csv", params={"city": "Curitiba"}, headers=headers).status_code == 200
+        blocked = client.get("/api/orders.csv", params={"city": "Curitiba"}, headers=headers)
+        assert blocked.status_code == 429
+        assert "export" in blocked.json()["detail"].lower()
+    finally:
+        client.app.dependency_overrides.pop(get_settings, None)
+        export_limiter.reset()
+
+
+def test_alerts_response_serializes(client):
+    response = client.get("/api/alerts", params={"store": 16})
+    assert response.status_code == 200
+    body = response.json()
+    assert isinstance(body["orders"], int) and body["orders"] > 0
+    assert body["alerts"]
+    for alert in body["alerts"]:
+        assert alert["severity"] in {"high", "medium", "low"}
+        assert alert["id"] and alert["title"] and alert["detail"] and alert["action"]
+        assert alert["category"]

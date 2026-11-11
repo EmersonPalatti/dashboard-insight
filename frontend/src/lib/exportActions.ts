@@ -91,6 +91,62 @@ export function csvHref(filters: Recorte): string {
   return apiUrl("/api/orders.csv", toQuery(filters));
 }
 
+export type CsvState = "idle" | "busy" | "error";
+
+/**
+ * Baixa o CSV do recorte. Se a API recusar (recorte grande demais, cota),
+ * devolve a mensagem em pt-BR em vez de salvar o JSON de erro como arquivo.
+ */
+export function useCsvDownload() {
+  const filters = useStore($filters);
+  const [state, setState] = useState<CsvState>("idle");
+  const [message, setMessage] = useState<string | null>(null);
+
+  const download = async (): Promise<boolean> => {
+    setState("busy");
+    setMessage(null);
+    try {
+      const res = await fetch(csvHref(filters));
+      if (!res.ok) {
+        let detail = "Não deu para exportar o CSV.";
+        try {
+          const body = await res.json();
+          if (typeof body.detail === "string" && body.detail) detail = body.detail;
+        } catch {
+          /* corpo não-JSON */
+        }
+        setState("error");
+        setMessage(detail);
+        return false;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = "pedidos-recorte.csv";
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+      setState("idle");
+      return true;
+    } catch {
+      setState("error");
+      setMessage("Não deu para exportar o CSV.");
+      return false;
+    }
+  };
+
+  return {
+    download,
+    busy: state === "busy",
+    error: state === "error",
+    title:
+      state === "busy" ? "Exportando CSV…" : state === "error" ? "Não deu para exportar" : EXPORT_ACTIONS.csv.title,
+    detail: message ?? EXPORT_ACTIONS.csv.detail,
+  };
+}
+
 /** Abre a impressão do navegador depois de o modal ou menu começar a fechar. */
 export function printAfterClose() {
   window.setTimeout(() => window.print(), PRINT_DELAY_MS);
