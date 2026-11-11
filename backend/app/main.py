@@ -226,7 +226,10 @@ def register_routes(app: FastAPI) -> None:
 
     @app.get("/api/alerts/routing", response_model=list[AlertRoute], tags=["automacao"])
     def alert_routing(repo: Repo, f: F):
-        return route_alerts(detect_alerts(repo, f))
+        meta = repo.meta()
+        hub_names = {int(h["value"]): h["label"] for h in meta["hubs"]}
+        store_names = {int(s["value"]): s["label"] for s in meta["stores"]}
+        return route_alerts(detect_alerts(repo, f), hub_names, store_names)
 
     @app.get("/api/orders", response_model=OrdersPage, tags=["pedidos"])
     def orders(

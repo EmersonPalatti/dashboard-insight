@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import re
 
+from collections.abc import Mapping
+
 from app.schemas import Alert, AlertRoute
 
 DEFAULT_RECIPIENT = "Time de operações da praça"
@@ -15,12 +17,18 @@ _STORE_IN_ID = re.compile(r"(?:^|-)store-(\d+)$")
 _HUB_IN_ID = re.compile(r"(?:^|-)hub-(\d+)$")
 
 
-def route_alerts(alerts: list[Alert]) -> list[AlertRoute]:
+Names = Mapping[int, str]
+
+
+def route_alerts(
+    alerts: list[Alert], hub_names: Names | None = None, store_names: Names | None = None
+) -> list[AlertRoute]:
+    """`hub_names`/`store_names` (id → nome, vindos dos dados) deixam o destinatário legível."""
     return [
         AlertRoute(
             alert_id=alert.id,
             severity=alert.severity,
-            recipient=recipient_for(alert),
+            recipient=recipient_for(alert, hub_names, store_names),
             message=message_for(alert),
         )
         for alert in alerts
@@ -32,20 +40,22 @@ def message_for(alert: Alert) -> str:
     return f"{alert.title}. {alert.detail} Ação: {alert.action}"
 
 
-def recipient_for(alert: Alert) -> str:
+def recipient_for(alert: Alert, hub_names: Names | None = None, store_names: Names | None = None) -> str:
     stores = _store_ids(alert)
     if stores:
-        return _role("Loja", "Lojas", stores)
+        return _role("Loja", "Lojas", stores, store_names)
     hubs = _hub_ids(alert)
     if hubs:
-        return _role("Líder do hub", "Líder dos hubs", hubs)
+        return _role("Líder do hub", "Líder dos hubs", hubs, hub_names)
     return DEFAULT_RECIPIENT
 
 
-def _role(one: str, many: str, ids: list[int]) -> str:
-    if len(ids) == 1:
-        return f"{one} {ids[0]}"
-    listed = ", ".join(str(item) for item in ids[:-1]) + f" e {ids[-1]}"
+def _role(one: str, many: str, ids: list[int], names: Names | None = None) -> str:
+    # Nome e id juntos: a mensagem cita o nome, e o id é o que o filtro do painel usa.
+    named = [f"{names[item]} ({item})" if names and names.get(item) else str(item) for item in ids]
+    if len(named) == 1:
+        return f"{one} {named[0]}"
+    listed = ", ".join(named[:-1]) + f" e {named[-1]}"
     return f"{many} {listed}"
 
 

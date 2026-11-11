@@ -132,7 +132,7 @@ Dois GETs em `/api` alimentam automação (agendador, mensagem) sem chamar o age
 | | |
 |---|---|
 | `GET /api/briefing` | `{markdown, start, end, alert_count}`. `markdown` é o briefing local do recorte. `start` e `end` são as datas pedidas; sem elas, o primeiro e o último dia com pedido no recorte, ou `null` se não houver pedido. `alert_count` é o tamanho da fila de alertas. |
-| `GET /api/alerts/routing` | Lista `{alert_id, severity, recipient, message}`. `recipient` sai do drill-down ou da evidência do alerta: `Loja {id}` ou `Líder do hub {id}`. Sem loja nem hub, fica `Time de operações da praça`. `message` junta o problema (números já em pt-BR) e a ação. Template fixo, sem LLM. |
+| `GET /api/alerts/routing` | Lista `{alert_id, severity, recipient, message}`. `recipient` sai do drill-down ou da evidência do alerta: `Loja {nome} ({id})` ou `Líder do hub {nome} ({id})`, com o nome vindo dos dados. Sem loja nem hub, fica `Time de operações da praça`. `message` junta o problema (números já em pt-BR) e a ação. Template fixo, sem LLM. |
 
 ## Deploy
 

@@ -33,7 +33,7 @@ SLA cai no horário de pico. No pico (11h–13h e 19h–21h), 84,1% dos pedidos 
 ### Alerta 2
 
 ```text
-🟠 *Para: Líder do hub 31*
+🟠 *Para: Líder do hub Pagode Shopping (31)*
 
 Pedidos presos no fluxo. 120 entregas (5,9%) com ciclo acima de 4h; pior hub: Pagode Shopping com 19,0%. Ficam fora das medianas de tempo. Ação: Conferir a rotina de finalização desses pedidos (baixa manual, agendamento ou goods com retirada posterior) antes de cobrar SLA do hub.
 ```

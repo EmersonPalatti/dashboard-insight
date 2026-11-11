@@ -71,7 +71,7 @@ def test_routing_on_planted_store_is_deterministic(client):
     assert rows == second.json()
     assert rows
     routed = next(row for row in rows if row["alert_id"] == "cancel-store-25")
-    assert routed["recipient"] == "Loja 25"
+    assert routed["recipient"] == "Loja Loja 25 (25)"  # nome sintético + id
     assert routed["severity"] == "high"
     assert "Ação:" in routed["message"]
     assert "%" in routed["message"]
@@ -82,7 +82,7 @@ def test_routing_on_planted_store_is_deterministic(client):
 def test_routing_hub_comes_from_drilldown(client):
     rows = client.get("/api/alerts/routing", params=[("store", 46), ("store", 14)]).json()
     hub = next(row for row in rows if row["alert_id"] == "sla-hub-4")
-    assert hub["recipient"] == "Líder do hub 4"
+    assert hub["recipient"] == "Líder do hub Hub Goods (4)"
     assert all(row["recipient"] for row in rows)
 
 
@@ -141,3 +141,16 @@ def test_recipient_templates_and_message_are_pure():
     assert "Ação: Ligar para a loja hoje." in routes[0].message
     assert route_alerts([store, hub, from_evidence, from_id, plain]) == routes
     assert recipient_for(plain) == "Time de operações da praça"
+
+
+def test_recipient_names_hub_and_store_with_id():
+    hub = _alert(id="sla-hub-31", evidence=Evidence(view="stages", hubs=[31]))
+    hubs = _alert(id="x", evidence=Evidence(view="stages", hubs=[3, 8]))
+    store = _alert(id="cancel-store-25")
+    names = {31: "Pagode Shopping", 3: "Hub A"}
+    routes = route_alerts([hub, hubs, store], hub_names=names, store_names={25: "Muspuo Smiru"})
+    assert [r.recipient for r in routes] == [
+        "Líder do hub Pagode Shopping (31)",
+        "Líder dos hubs Hub A (3) e 8",
+        "Loja Muspuo Smiru (25)",
+    ]

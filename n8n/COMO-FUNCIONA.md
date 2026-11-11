@@ -2,7 +2,7 @@
 
 O arquivo `briefing-diario.json` é o workflow `briefing-diario` (id `briefingDiario01`). Ele sai do arquivo com `"active": false`: o horário não dispara até alguém ativar o workflow no n8n. O fuso está em `settings.timezone`, `America/Sao_Paulo`. Execuções manuais ficam no histórico (`saveManualExecutions`).
 
-Os dois gatilhos chegam no mesmo nó Config. Dali o fluxo pede `GET /api/health`, depois `GET /api/briefing` e `GET /api/alerts/routing` para um único dia do dataset, formata o texto e manda no Telegram. A saída de erro dos três HTTP Request vai para um aviso fixo. A mensagem de uma execução real está em [exemplo-briefing.md](exemplo-briefing.md). O passo a passo para importar e ligar o bot está em [README.md](README.md).
+Os dois gatilhos chegam no mesmo nó Config. Dali o fluxo pede `GET /api/health`, depois `GET /api/briefing` e `GET /api/alerts/routing` para um único dia do dataset, formata o texto e manda no Telegram. Se a API não acorda, o fluxo espera 30 s e tenta de novo antes de avisar. Erro no briefing e erro no roteamento têm avisos diferentes. Se o Telegram recusar o Markdown, a mensagem é reenviada em texto puro. A mensagem de uma execução real está em [exemplo-briefing.md](exemplo-briefing.md). O passo a passo para importar e ligar o bot está em [README.md](README.md).
 
 ```mermaid
 flowchart LR
@@ -10,21 +10,29 @@ flowchart LR
   sched["Todo dia às 8h"] --> config
   config --> wake["Acordar API"]
   wake -->|ok| brief["Buscar briefing"]
-  wake -->|erro| fail["Texto da falha"]
+  wake -->|erro| wait["Esperar a API subir (30 s)"]
+  wait --> wake2["Acordar API de novo"]
+  wake2 -->|ok| brief
+  wake2 -->|erro| fail["Texto da falha"]
   brief -->|ok| tbrief["Texto do briefing"]
   brief -->|erro| fail
   tbrief --> tgbrief["Telegram: briefing"]
-  tgbrief --> route["Buscar roteamento"]
+  tgbrief -->|ok| route["Buscar roteamento"]
+  tgbrief -->|erro| tgbriefp["Telegram: briefing (texto puro)"]
+  tgbriefp --> route
   route -->|ok| loop["Um alerta por vez"]
-  route -->|erro| fail
+  route -->|erro| failr["Texto da falha do roteamento"]
   loop -->|cada item| talert["Texto do alerta"]
   talert --> tgalert["Telegram: alerta"]
-  tgalert --> loop
+  tgalert -->|ok| loop
+  tgalert -->|erro| tgalertp["Telegram: alerta (texto puro)"]
+  tgalertp --> loop
   loop -->|done| fim["sem ligação"]
   fail --> tgfail["Telegram: falha da API"]
+  failr --> tgfail
 ```
 
-Cada HTTP Request tem duas saídas. A primeira continua o caminho. A segunda, a de erro, vai para Texto da falha. O n8n só usa a saída de erro depois das 3 tentativas. Numa execução, o primeiro HTTP que esgota as tentativas desvia para o aviso e os HTTP seguintes não rodam.
+Cada HTTP Request tem duas saídas. A primeira continua o caminho. A segunda é a de erro: no Acordar API ela leva à segunda chance; nos outros, a um aviso de falha. O n8n só usa a saída de erro depois das 3 tentativas. Numa execução, o primeiro HTTP que esgota as tentativas desvia para o aviso e os HTTP seguintes não rodam.
 
 ## Nó a nó
 
@@ -50,13 +58,13 @@ Edit Fields (nó Set). Grava três campos num único item:
 
 | Campo | No arquivo | Papel |
 |---|---|---|
-| `api_base` | `http://127.0.0.1:8000` | Origem da API. Texto fixo, sem expressão. |
+| `api_base` | `https://central-operacoes-api.onrender.com` | Origem da API. Texto fixo, sem expressão. |
 | `data_ref` | expressão Luxon | O dia do dataset que representa "hoje". |
 | `chat_id` | `SEU_CHAT_ID` | Destino no Telegram. Texto fixo, para trocar pelo id do chat. |
 
 Os nós seguintes leem esses campos com `$('Config').first().json...`. A URL, o dia e o chat ficam num lugar só.
 
-`api_base` usa `127.0.0.1` porque, no Windows, `localhost` resolveu para o IPv6 `::1` e o uvicorn deste projeto escuta só IPv4. Depois do deploy, o valor passa a ser `https://central-operacoes-api.onrender.com`.
+O arquivo aponta para o Render. Para a API local, use `http://127.0.0.1:8000`, não `localhost`: no Windows, `localhost` resolveu para o IPv6 `::1` e o uvicorn deste projeto escuta só IPv4.
 
 Se a expressão de `data_ref` quebrar, a execução para aqui. Não há chamada HTTP e não há mensagem no Telegram. Um `api_base` errado só aparece no nó Acordar API, que aí manda o aviso de falha, desde que o `chat_id` seja um chat de verdade. `SEU_CHAT_ID` faz o Telegram recusar o envio: o aviso de falha usa o mesmo chat, então ele também não chega. O erro fica no histórico do n8n.
 
@@ -66,9 +74,13 @@ A expressão de `data_ref` está decomposta na seção Expressões.
 
 HTTP Request, `GET {api_base}/api/health`. A resposta é `{"status": "ok", "orders": N}`. O fluxo não lê o corpo. A chamada existe pelo efeito de acordar o processo.
 
-O plano grátis do Render dorme depois de 15 min sem acesso. A primeira requisição sobe a API e o DuckDB carrega o parquet, até cerca de 40 s. Este nó absorve essa espera antes do briefing. Retry On Fail: 3 tentativas, 5 s entre elas, timeout de 60 s por tentativa. On Error: continue (using error output). A saída de sucesso vai para Buscar briefing. A de erro vai para Texto da falha.
+O plano grátis do Render dorme depois de 15 min sem acesso. A primeira requisição sobe a API e o DuckDB carrega o parquet, até cerca de 40 s. Este nó absorve essa espera antes do briefing. Retry On Fail: 3 tentativas, 5 s entre elas, timeout de 60 s por tentativa. On Error: continue (using error output). A saída de sucesso vai para Buscar briefing. A de erro vai para Esperar a API subir.
 
-O motor do n8n limita `waitBetweenTries` a 5000 ms. Um intervalo de 20 s entre tentativas não cabe. O timeout de 60 s cobre a subida do Render: uma tentativa pode esperar o processo acordar.
+O motor do n8n limita `waitBetweenTries` a 5000 ms. Um intervalo de 20 s entre tentativas não cabe ali. O timeout de 60 s cobre a subida quando o Render segura a conexão (no teste de 11/11/2026 o health respondeu em 33 s). Quando ele responde com erro rápido enquanto sobe, as 3 tentativas acabam em cerca de 10 s, e é para isso que existe a segunda chance.
+
+### Esperar a API subir e Acordar API de novo
+
+Wait de 30 s, seguido de uma cópia do Acordar API (mesmas 3 tentativas, 5 s, timeout de 60 s). Somadas, as duas rodadas passam de 40 s mesmo com erro rápido. Sucesso segue para Buscar briefing. Erro segue para Texto da falha. Esperas abaixo de 65 s ficam na memória do n8n, sem gravar a execução no banco.
 
 Recusa de conexão falha na hora, sem esperar os 60 s. No teste com a porta sem serviço foram 3 tentativas em cerca de 10 s (duas esperas de 5 s) e a mensagem de falha chegou no Telegram. Porta fechada e Render acordando são casos diferentes: na subida, cada tentativa pode ocupar até 60 s.
 
@@ -98,7 +110,11 @@ Nó Telegram, `sendMessage`. Chat = `chat_id` do Config. Texto = `$json.text`. P
 
 A credencial no JSON tem id vazio e nome "Telegram account". O token não está no arquivo. Na instância, o nó usa a credencial Telegram API que a pessoa criou.
 
-Sucesso segue para Buscar roteamento. Se o envio falha depois das 3 tentativas (chat errado, token revogado, Markdown rejeitado por `*` ou `_` sem fechar), a execução para. O roteamento não roda e o aviso de API também não, porque essa saída de erro não existe neste nó. Asterisco sem par no texto é um erro de conteúdo: repetir a tentativa não conserta.
+Sucesso segue para Buscar roteamento. Se o envio falha depois das 3 tentativas, a saída de erro vai para Telegram: briefing (texto puro). Markdown rejeitado por `*` ou `_` sem par num nome de loja ou hub é erro de conteúdo: repetir a tentativa não conserta, reenviar sem parse mode conserta.
+
+### Telegram: briefing (texto puro) e Telegram: alerta (texto puro)
+
+Cópias dos nós Telegram, sem parse mode. O texto é o do Set anterior com `*` e `_` removidos, então o Telegram não tem o que recusar. O do briefing segue para Buscar roteamento; o do alerta volta para Um alerta por vez. Se a cópia também falha, o problema não é o texto (chat errado, token revogado): a execução para em erro e fica no histórico do n8n.
 
 ### Buscar roteamento
 
@@ -106,7 +122,7 @@ HTTP Request, `GET {api_base}/api/alerts/routing` com o mesmo `start` e `end`. M
 
 A resposta é um array. Cada elemento vira um item do n8n, com `alert_id`, `severity`, `recipient` e `message`. O destinatário e o texto nascem em `backend/app/routing.py`, por template, a partir do alerta que o servidor já calculou. Esta chamada existe para uma mensagem por alerta, com o papel de quem age. O briefing do operador não traz esse destinatário.
 
-Sucesso segue para Um alerta por vez. Erro segue para Texto da falha. Neste ponto o briefing do operador já foi enviado. Em seguida chega também "Briefing não gerado: API indisponível". O texto de falha é fixo: não diz qual chamada quebrou.
+Sucesso segue para Um alerta por vez. Erro segue para Texto da falha do roteamento. Neste ponto o briefing do operador já foi enviado, e o aviso diz isso: "Alertas não encaminhados: o briefing foi enviado, mas a API não respondeu ao roteamento."
 
 Lista vazia é sucesso HTTP com zero itens. O loop não manda alerta, e o aviso de falha não entra.
 
@@ -128,7 +144,7 @@ Edit Fields. Monta `text` para o item atual:
 
 Depois, uma linha `*Para: {recipient}*` e, em seguida, `message`. O negrito é o do Telegram (`*...*`), então este texto não passa por `replaceAll`.
 
-`recipient` é um papel montado no servidor, com o id da loja ou do hub: `Loja {id}`, `Lojas {ids}`, `Líder do hub {id}`, `Líder dos hubs {ids}`, ou `Time de operações da praça` quando o alerta não tem loja nem hub. `message` junta título, detalhe e ação.
+`recipient` é um papel montado no servidor, com o nome (vindo dos dados) e o id da loja ou do hub: `Loja {nome} ({id})`, `Lojas ...`, `Líder do hub {nome} ({id})`, `Líder dos hubs ...`, ou `Time de operações da praça` quando o alerta não tem loja nem hub. `message` junta título, detalhe e ação.
 
 O `chat_id` não muda aqui. "Para:" é texto dentro da mensagem. No portfólio, operador e responsáveis caem no mesmo chat.
 
@@ -138,19 +154,23 @@ Sem saída de erro. Se a expressão quebrar, o loop para naquele item. Alertas j
 
 Igual ao Telegram do briefing: mesma credencial, Markdown, sem atribuição do n8n, 3 tentativas, 5 s, chat do Config, texto do nó anterior. A diferença é o destino no fluxo: a saída volta para Um alerta por vez.
 
-Se um envio falha depois das tentativas, a execução para nesse alerta. Os anteriores ficam no chat. Os posteriores não são enviados. Não há aviso de falha da API.
+Se um envio falha depois das tentativas, o alerta vai para Telegram: alerta (texto puro), que devolve ao loop. Um nome com `_` não derruba os alertas seguintes.
 
 ### Texto da falha
 
 Edit Fields com o texto fixo `Briefing não gerado: API indisponível`. Não é expressão. Não inclui status HTTP, URL nem o nome do nó que falhou.
 
-Existe para o chat receber alguma coisa quando a API não responde, em vez de a execução só ficar vermelha no n8n. Recebe a saída de erro de Acordar API, Buscar briefing e Buscar roteamento.
+Existe para o chat receber alguma coisa quando a API não responde, em vez de a execução só ficar vermelha no n8n. Recebe a saída de erro de Acordar API de novo e de Buscar briefing.
+
+### Texto da falha do roteamento
+
+Edit Fields com o texto fixo `Alertas não encaminhados: o briefing foi enviado, mas a API não respondeu ao roteamento.` Recebe só a saída de erro de Buscar roteamento e segue para o mesmo Telegram: falha da API.
 
 Um Set com texto fixo não falha na prática. Se falhasse, o Telegram de falha não rodaria.
 
 ### Telegram: falha da API
 
-Manda o texto do nó anterior para o mesmo `chat_id`, com a mesma credencial, o mesmo Markdown, sem atribuição e com as mesmas 3 tentativas.
+Manda o texto do nó anterior para o mesmo `chat_id`, com a mesma credencial, sem parse mode (o aviso é texto fixo), sem atribuição e com as mesmas 3 tentativas.
 
 Foi o nó que entregou a mensagem no teste da porta sem serviço, depois das 3 tentativas do Acordar API.
 
@@ -204,7 +224,7 @@ distância até 02/01   2139 dias
 
 `.item` segue o pareamento: qual item daquele nó o n8n acha que corresponde ao item atual. Config tem um item só, mas o pareamento se perde no caminho. O HTTP Request substitui o item pela resposta, e o loop trabalha um alerta por vez. `.first()` pega o primeiro item do Config, que é o único, sem depender desse pareamento. Por isso a URL, o dia e o chat continuam certos dentro do loop.
 
-Essa forma aparece na URL dos três HTTP Request, nos query params `start` e `end`, no texto do briefing e no `chatId` dos três nós Telegram.
+Essa forma aparece na URL dos quatro HTTP Request, nos query params `start` e `end`, no texto do briefing e no `chatId` dos cinco nós Telegram.
 
 ### `$json`
 
@@ -241,7 +261,7 @@ Os asteriscos em volta de `Para:` já são o negrito do Telegram. `\n\n` abre um
 
 ### O que os nós Telegram enviam
 
-`chatId` é `$('Config').first().json.chat_id` nos três. `text` é `$json.text`. Nenhum dos três escreve a frase do briefing ou do alerta na mão: eles mandam o campo que o Set anterior preparou.
+`chatId` é `$('Config').first().json.chat_id` nos cinco. `text` é `$json.text` (nas cópias "texto puro", o texto do Set com `*` e `_` removidos). Nenhum deles escreve a frase do briefing ou do alerta na mão: eles mandam o campo que o Set anterior preparou.
 
 ## Como a execução foi feita
 
@@ -260,7 +280,7 @@ O teste de falha apontou `api_base` para uma porta sem serviço. Acordar API fez
 
 ### Por que o roteamento não usa LLM?
 
-`GET /api/alerts/routing` chama `route_alerts` em `backend/app/routing.py`. O destinatário sai dos ids que o alerta já traz: filtros do drill-down, listas da evidência, ou o sufixo `store-N` / `hub-N` no id. Loja vira `Loja N` (ou `Lojas ...` se houver mais de uma). Sem loja, hub vira `Líder do hub N`. Sem loja e sem hub, fica `Time de operações da praça`. A mensagem é o template `"{título}. {detalhe} Ação: {ação}"`. Os números já chegam em pt-BR, formatados no servidor.
+`GET /api/alerts/routing` chama `route_alerts` em `backend/app/routing.py`. O destinatário sai dos ids que o alerta já traz: filtros do drill-down, listas da evidência, ou o sufixo `store-N` / `hub-N` no id. Loja vira `Loja {nome} (N)` (ou `Lojas ...` se houver mais de uma). Sem loja, hub vira `Líder do hub {nome} (N)`. O nome sai do mesmo catálogo de `/api/meta` que o painel usa: o id é o que o filtro entende, o nome é o que a mensagem cita. Sem loja e sem hub, fica `Time de operações da praça`. A mensagem é o template `"{título}. {detalhe} Ação: {ação}"`. Os números já chegam em pt-BR, formatados no servidor.
 
 O mesmo alerta produz o mesmo texto. Não entra API key. Um modelo no meio pode trocar um percentual, citar outra loja ou cortar a ação. O agente do painel até usa LLM, e só como melhoria: sem chave ele cai nas regras locais. O caminho das 8h não passa pelo agente. O briefing também é template, `briefing()` em `backend/app/agent/local.py`. No n8n, a formatação é o emoji, o prefixo e a troca de `**` por `*`.
 
@@ -280,11 +300,11 @@ O schedule dispara uma vez às 8h. O segundo envio aparece quando alguém aperta
 
 ### O que muda para produção?
 
-Hoje existe um `chat_id`. A linha `*Para: Líder do hub 31*` diz quem deveria agir, e a mensagem cai no mesmo chat do operador. No portfólio isso simula o encaminhamento. Em produção, cada papel precisa do próprio chat: um mapa de destinatário (ou de hub e loja) para o id da conversa, e o nó Telegram: alerta usa esse id. O briefing do operador pode seguir num chat separado, no `chat_id` do Config.
+Hoje existe um `chat_id`. A linha `*Para: Líder do hub Pagode Shopping (31)*` diz quem deveria agir, e a mensagem cai no mesmo chat do operador. No portfólio isso simula o encaminhamento. Em produção, cada papel precisa do próprio chat: um mapa de destinatário (ou de hub e loja) para o id da conversa, e o nó Telegram: alerta usa esse id. O briefing do operador pode seguir num chat separado, no `chat_id` do Config.
 
-A credencial não viaja no JSON. O id vem vazio e o nome é "Telegram account". Em outra instância, a pessoa cria a credencial Telegram API dela e seleciona nos três nós. O token fica no n8n, não no git, no nó ou no chat. Se vazar, `/revoke` no BotFather e a credencial é atualizada. O token antigo deixa de valer.
+A credencial não viaja no JSON. O id vem vazio e o nome é "Telegram account". Em outra instância, a pessoa cria a credencial Telegram API dela e seleciona nos cinco nós Telegram. O token fica no n8n, não no git, no nó ou no chat. Se vazar, `/revoke` no BotFather e a credencial é atualizada. O token antigo deixa de valer.
 
-`api_base` deixa `http://127.0.0.1:8000` e passa a ser `https://central-operacoes-api.onrender.com`. Instância na nuvem não alcança o `127.0.0.1` da sua máquina.
+`api_base` já é `https://central-operacoes-api.onrender.com`. Instância na nuvem não alcança o `127.0.0.1` da sua máquina.
 
 Aqui o n8n é a Community Edition, local e gratuita. O arquivo `n8n/briefing-diario.json` importa em qualquer instância. Self-hosted: o processo tem de estar no ar às 8h, o workflow ativo, o fuso do workflow em `America/Sao_Paulo`. n8n Cloud: o horário roda sem o seu computador ligado, a API tem de ser a URL pública, e a credencial é criada naquela instância, porque o export não a carrega.
 
@@ -292,6 +312,6 @@ Aqui o n8n é a Community Edition, local e gratuita. O arquivo `n8n/briefing-dia
 
 O plano grátis dorme sem acesso. A primeira visita leva até cerca de 40 s, o mesmo aviso que o topo do painel mostra. `/api/health` é a chamada que sobe o processo. Ela devolve `status` e a contagem de pedidos. Não monta briefing nem alerta. O fluxo ignora o corpo: o valor da chamada é a API estar de pé antes de `/api/briefing` e `/api/alerts/routing`.
 
-Cada HTTP tem timeout de 60 s, acima desses cerca de 40 s, e 3 tentativas. Entre tentativas o motor só espera 5 s. Se a primeira requisição cair enquanto a instância sobe, quem repete é o health. O briefing encontra o processo acordado. Se o health esgotar as tentativas, o chat recebe o aviso e o fluxo não monta o briefing.
+Cada HTTP tem timeout de 60 s, acima desses cerca de 40 s, e 3 tentativas. Entre tentativas o motor só espera 5 s. Se o Render responder com erro rápido enquanto sobe, as 3 tentativas acabam em cerca de 10 s; por isso há uma espera de 30 s e uma segunda rodada do health antes do aviso. O briefing encontra o processo acordado. Se a segunda rodada também esgotar, o chat recebe o aviso e o fluxo não monta o briefing.
 
 Isso é separado do teste da porta fechada. Lá a conexão é recusada na hora, as 3 tentativas levam cerca de 10 s e a mensagem de falha sai. O timeout de 60 s é para a espera do Render, não para esse teste.
