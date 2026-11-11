@@ -10,7 +10,7 @@ import tempfile
 import threading
 from collections import OrderedDict
 from collections.abc import Callable
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +22,8 @@ from app.schemas import Dimension, Grain, SortKey
 # Colunas de ciclo/etapa só valem para entregues e sem pedido "preso" (> 4h).
 _VALID = "status = 'delivered' and not cycle_outlier"
 _SALE = "status = 'delivered' and not amount_outlier"
+# Frete, custo e subsídio na mesma base, senão a frase "custa X e cobra Y" não fecha.
+_PRICED = "status = 'delivered' and delivery_fee is not null and delivery_cost is not null"
 # Base da medição: entregues com ciclo e sem presos. É o denominador do SLA e o universo da mediana.
 _MEASURED = f"{_VALID} and cycle_min is not null"
 # Abaixo disso, SLA e ciclo mediano saem com aviso de amostra pequena. Com n = 100, a margem de erro
@@ -53,9 +55,9 @@ METRICS_SQL = f"""
     median(expedition_min) filter (where {_VALID}) as expedition_p50,
     median(transit_min) filter (where {_VALID}) as transit_p50,
     median(distance_m) filter (where {_VALID}) / 1000.0 as distance_p50_km,
-    avg(delivery_fee) filter (where status = 'delivered') as fee_avg,
-    avg(delivery_cost) filter (where status = 'delivered') as cost_avg,
-    avg(delivery_cost - delivery_fee) filter (where status = 'delivered') as subsidy
+    avg(delivery_fee) filter (where {_PRICED}) as fee_avg,
+    avg(delivery_cost) filter (where {_PRICED}) as cost_avg,
+    avg(delivery_cost - delivery_fee) filter (where {_PRICED}) as subsidy
 """
 
 # dimensão -> (chave, rótulo, pai)
@@ -86,6 +88,13 @@ ORDER_SORTS = {
     "distance_m", "store_name", "hub_name", "city", "status",
 }
 GRAINS = {"hour": "hour", "day": "day", "week": "week"}
+
+# Rótulo da linha quando a dimensão vem nula. Sem isso a soma da quebra perde pedidos.
+NULL_LABELS = {
+    "modal": "Sem entregador",
+    "payment_method": "Sem pagamento",
+}
+_NULL_LABEL = "Não informado"
 
 
 def _flag_outliers(rows: list[dict], base: dict) -> list[dict]:
@@ -268,8 +277,15 @@ class Repository:
 
         def build() -> list[dict]:
             where, params = f.where()
+            # Semana truncada cai na segunda anterior ao início do filtro. O rótulo não pode sair do recorte.
+            bucket_params: list = []
+            if grain == "week" and f.start is not None:
+                bucket = "greatest(date_trunc('week', created_at), ?)"
+                bucket_params = [datetime(f.start.year, f.start.month, f.start.day)]
+            else:
+                bucket = f"date_trunc('{trunc}', created_at)"
             return self._rows(
-                f"""select date_trunc('{trunc}', created_at) as t,
+                f"""select {bucket} as t,
                        count(*)::int as orders,
                        count(*) filter (where status = 'delivered')::int as delivered,
                        coalesce(sum(amount) filter (where {_SALE}), 0)::double as gmv,
@@ -278,7 +294,7 @@ class Repository:
                        avg(on_time(segment, cycle_min)::int)
                            filter (where {_VALID} and cycle_min is not null) as sla_rate
                     from orders where {where} group by 1 order by 1""",
-                params,
+                [*bucket_params, *params],
             )
 
         return self._cached(f"ts:{grain}:" + f.cache_key(), build)
@@ -313,9 +329,11 @@ class Repository:
 
         def build() -> list[dict]:
             where, params = f.where()
+            null_label = NULL_LABELS.get(by, _NULL_LABEL).replace("'", "''")
+            shown = f"case when {key} is null then '{null_label}' else {label} end"
             rows = self._rows(
-                f"""select {key} as key, {label} as label, {parent}::varchar as parent, {METRICS_SQL}
-                    from orders where {where} and {key} is not null
+                f"""select {key} as key, {shown} as label, {parent}::varchar as parent, {METRICS_SQL}
+                    from orders where {where}
                     group by all having count(*) >= ?
                     order by {order} {direction} nulls last, orders desc limit ?""",
                 [*params, int(min_orders), int(limit)],
