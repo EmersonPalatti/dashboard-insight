@@ -10,6 +10,30 @@ Roda sobre **368.990 pedidos reais** do dataset [Delivery Center](https://www.ka
 
 ![Painel com filtros, fila de comandas e KPIs](assets/painel.png)
 
+## Automação diária
+
+Todo dia às 8h, horário de São Paulo, o n8n pede à API o briefing de um dia do dataset e o roteamento dos alertas, e envia as mensagens no Telegram. Se a API não responder, o chat recebe o aviso de que o briefing não foi gerado.
+
+```mermaid
+flowchart LR
+  sched["Schedule n8n (8h)"] --> api["API no Render<br/>/api/health, /api/briefing, /api/alerts/routing"]
+  api --> texto["Briefing e roteamento"]
+  texto --> tg["Telegram<br/>operador + mensagem por responsável"]
+  api -->|falha| aviso["Telegram<br/>Briefing não gerado: API indisponível"]
+```
+
+<!-- Canvas do workflow e a demonstração no Telegram serão adicionados. -->
+
+![Canvas do workflow no n8n](assets/n8n-canvas.png)
+
+![Demonstração no Telegram](assets/n8n-demo.gif)
+
+<img src="assets/n8n-telegram.png" alt="Telegram recebendo o briefing de 22/02/2021, duas mensagens encaminhadas por responsável e o aviso de API indisponível" width="360">
+
+O n8n roda local, na Community Edition gratuita. O workflow está em `n8n/` e pode ser importado em qualquer instância.
+
+Importar e ligar o bot: [n8n/README.md](n8n/README.md). O que cada nó faz: [n8n/COMO-FUNCIONA.md](n8n/COMO-FUNCIONA.md). Mensagens de uma execução real: [n8n/exemplo-briefing.md](n8n/exemplo-briefing.md).
+
 ## O problema
 
 Um dashboard com gráficos não diz para o operador o que fazer. Ele precisa de respostas no recorte que está olhando:
