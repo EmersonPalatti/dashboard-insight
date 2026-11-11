@@ -18,13 +18,28 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 
 from app.agent import service as agent
+from app.agent.local import briefing as briefing_text
 from app.alerts import detect_alerts
 from app.config import Settings, get_settings
 from app.filters import Filters
 from app.repository import Repository
+from app.routing import route_alerts
 from app.schemas import (
-    AlertsResponse, BreakdownResponse, ChatRequest, ChatResponse, Dimension, Grain, HeatCell, Health,
-    KpiResponse, Meta, OrdersPage, SortKey, TimePoint,
+    AlertRoute,
+    AlertsResponse,
+    BreakdownResponse,
+    BriefingResponse,
+    ChatRequest,
+    ChatResponse,
+    Dimension,
+    Grain,
+    Health,
+    HeatCell,
+    KpiResponse,
+    Meta,
+    OrdersPage,
+    SortKey,
+    TimePoint,
 )
 
 
@@ -197,6 +212,21 @@ def register_routes(app: FastAPI) -> None:
     @app.get("/api/alerts", response_model=AlertsResponse, tags=["insights"])
     def alerts(repo: Repo, f: F):
         return {"alerts": detect_alerts(repo, f), "orders": repo.metrics(f)["orders"]}
+
+    @app.get("/api/briefing", response_model=BriefingResponse, tags=["automacao"])
+    def briefing(repo: Repo, f: F):
+        alerts_now = detect_alerts(repo, f)
+        start, end = repo.covered_period(f)
+        return {
+            "markdown": briefing_text(repo, f),
+            "start": start,
+            "end": end,
+            "alert_count": len(alerts_now),
+        }
+
+    @app.get("/api/alerts/routing", response_model=list[AlertRoute], tags=["automacao"])
+    def alert_routing(repo: Repo, f: F):
+        return route_alerts(detect_alerts(repo, f))
 
     @app.get("/api/orders", response_model=OrdersPage, tags=["pedidos"])
     def orders(

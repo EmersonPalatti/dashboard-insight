@@ -207,12 +207,12 @@ def answer_with_tools(
                 args = json.loads(raw_args)
                 if not isinstance(args, dict):
                     args = {}
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 — argumento quebrado volta para o modelo
                 log.warning("JSON inválido nos argumentos da ferramenta %s: %s", fn_name, exc)
                 args = {}
             try:
                 result = runner.run(fn_name, args)
-            except Exception as exc:  # erro de ferramenta volta para o modelo, não derruba a resposta
+            except Exception as exc:  # noqa: BLE001 — erro de ferramenta volta para o modelo, não derruba a resposta
                 log.warning("tool %s falhou: %s", fn_name, exc)
                 result = {"erro": "falha ao consultar"}
             messages.append({

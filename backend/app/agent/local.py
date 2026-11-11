@@ -164,8 +164,10 @@ def _sla(repo: Repository, f: Filters) -> str:
     m = repo.metrics(f)
     hubs = repo.breakdown(f, "hub", sort="sla_rate", desc=False, limit=5, min_orders=300)
     lines = [
-        f"SLA do recorte: {fmt.pct(m['sla_rate'])} no prazo · ciclo mediano {fmt.minutes(m['cycle_p50'])} "
-        f"· p90 {fmt.minutes(m['cycle_p90'])}.",
+        (
+            f"SLA do recorte: {fmt.pct(m['sla_rate'])} no prazo · ciclo mediano {fmt.minutes(m['cycle_p50'])} "
+            f"· p90 {fmt.minutes(m['cycle_p90'])}."
+        ),
     ]
     if hubs:
         lines += ["", "Hubs com pior SLA (mín. 300 pedidos):", *_rank_lines(hubs, "sla_rate", fmt.pct)]
@@ -371,8 +373,10 @@ def _freight(repo: Repository, f: Filters) -> str:
     m = repo.metrics(f)
     hubs = repo.breakdown(f, "hub", sort="subsidy", limit=3, min_orders=300)
     lines = [
-        f"Frete médio cobrado {fmt.brl(m['fee_avg'])} · custo logístico {fmt.brl(m['cost_avg'])} · "
-        f"subsídio {fmt.brl(m['subsidy'])} por entrega.",
+        (
+            f"Frete médio cobrado {fmt.brl(m['fee_avg'])} · custo logístico {fmt.brl(m['cost_avg'])} · "
+            f"subsídio {fmt.brl(m['subsidy'])} por entrega."
+        ),
     ]
     if hubs:
         lines += ["", "Hubs com maior subsídio:", *_rank_lines(hubs, "subsidy", fmt.brl)]
