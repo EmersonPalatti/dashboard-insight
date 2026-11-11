@@ -22,11 +22,9 @@ flowchart LR
   api -->|falha| aviso["Telegram<br/>Briefing não gerado: API indisponível"]
 ```
 
-<!-- Canvas do workflow e a demonstração no Telegram serão adicionados. -->
+![Canvas do workflow no n8n: gatilhos manual e diário, Config, chamadas à API com saída de erro, envio do briefing e laço de um alerta por vez](assets/n8n-canvas.png)
 
-![Canvas do workflow no n8n](assets/n8n-canvas.png)
-
-![Demonstração no Telegram](assets/n8n-demo.gif)
+<!-- GIF da demonstração (assets/n8n-demo.gif) entra aqui quando for gravado. -->
 
 <img src="assets/n8n-telegram.png" alt="Telegram recebendo o briefing de 22/02/2021, duas mensagens encaminhadas por responsável e o aviso de API indisponível" width="360">
 
