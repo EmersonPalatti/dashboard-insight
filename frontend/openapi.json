@@ -1037,6 +1037,366 @@
         }
       }
     },
+    "/api/briefing": {
+      "get": {
+        "tags": [
+          "automacao"
+        ],
+        "summary": "Briefing",
+        "operationId": "briefing_api_briefing_get",
+        "parameters": [
+          {
+            "name": "start",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Data inicial (inclusiva, horário de Brasília)",
+              "title": "Start"
+            },
+            "description": "Data inicial (inclusiva, horário de Brasília)"
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Data final (inclusiva)",
+              "title": "End"
+            },
+            "description": "Data final (inclusiva)"
+          },
+          {
+            "name": "city",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 200,
+              "title": "City"
+            }
+          },
+          {
+            "name": "hub",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "integer"
+              },
+              "maxItems": 200,
+              "title": "Hub"
+            }
+          },
+          {
+            "name": "store",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "integer"
+              },
+              "maxItems": 200,
+              "title": "Store"
+            }
+          },
+          {
+            "name": "segment",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "food",
+                  "good"
+                ],
+                "type": "string"
+              },
+              "title": "Segment"
+            }
+          },
+          {
+            "name": "channel_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "marketplace",
+                  "own"
+                ],
+                "type": "string"
+              },
+              "title": "Channel Type"
+            }
+          },
+          {
+            "name": "modal",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "moto",
+                  "bike"
+                ],
+                "type": "string"
+              },
+              "description": "Pedidos sem entregador saem do recorte",
+              "title": "Modal"
+            },
+            "description": "Pedidos sem entregador saem do recorte"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "delivered",
+                  "canceled"
+                ],
+                "type": "string"
+              },
+              "description": "Status do pedido: delivered ou canceled",
+              "title": "Status"
+            },
+            "description": "Status do pedido: delivered ou canceled"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BriefingResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/alerts/routing": {
+      "get": {
+        "tags": [
+          "automacao"
+        ],
+        "summary": "Alert Routing",
+        "operationId": "alert_routing_api_alerts_routing_get",
+        "parameters": [
+          {
+            "name": "start",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Data inicial (inclusiva, horário de Brasília)",
+              "title": "Start"
+            },
+            "description": "Data inicial (inclusiva, horário de Brasília)"
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Data final (inclusiva)",
+              "title": "End"
+            },
+            "description": "Data final (inclusiva)"
+          },
+          {
+            "name": "city",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 200,
+              "title": "City"
+            }
+          },
+          {
+            "name": "hub",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "integer"
+              },
+              "maxItems": 200,
+              "title": "Hub"
+            }
+          },
+          {
+            "name": "store",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "integer"
+              },
+              "maxItems": 200,
+              "title": "Store"
+            }
+          },
+          {
+            "name": "segment",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "food",
+                  "good"
+                ],
+                "type": "string"
+              },
+              "title": "Segment"
+            }
+          },
+          {
+            "name": "channel_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "marketplace",
+                  "own"
+                ],
+                "type": "string"
+              },
+              "title": "Channel Type"
+            }
+          },
+          {
+            "name": "modal",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "moto",
+                  "bike"
+                ],
+                "type": "string"
+              },
+              "description": "Pedidos sem entregador saem do recorte",
+              "title": "Modal"
+            },
+            "description": "Pedidos sem entregador saem do recorte"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "delivered",
+                  "canceled"
+                ],
+                "type": "string"
+              },
+              "description": "Status do pedido: delivered ou canceled",
+              "title": "Status"
+            },
+            "description": "Status do pedido: delivered ou canceled"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AlertRoute"
+                  },
+                  "title": "Response Alert Routing Api Alerts Routing Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/orders": {
       "get": {
         "tags": [
@@ -1546,6 +1906,39 @@
         ],
         "title": "Alert"
       },
+      "AlertRoute": {
+        "properties": {
+          "alert_id": {
+            "type": "string",
+            "title": "Alert Id"
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "high",
+              "medium",
+              "low"
+            ],
+            "title": "Severity"
+          },
+          "recipient": {
+            "type": "string",
+            "title": "Recipient"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "alert_id",
+          "severity",
+          "recipient",
+          "message"
+        ],
+        "title": "AlertRoute"
+      },
       "AlertsResponse": {
         "properties": {
           "alerts": {
@@ -1854,6 +2247,52 @@
           "parent"
         ],
         "title": "BreakdownRow"
+      },
+      "BriefingResponse": {
+        "properties": {
+          "markdown": {
+            "type": "string",
+            "title": "Markdown"
+          },
+          "start": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start",
+            "description": "Início do período efetivo. Null se o recorte não tem essa data nem pedidos."
+          },
+          "end": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End",
+            "description": "Fim do período efetivo. Null se o recorte não tem essa data nem pedidos."
+          },
+          "alert_count": {
+            "type": "integer",
+            "title": "Alert Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "markdown",
+          "start",
+          "end",
+          "alert_count"
+        ],
+        "title": "BriefingResponse"
       },
       "ChatRequest": {
         "properties": {

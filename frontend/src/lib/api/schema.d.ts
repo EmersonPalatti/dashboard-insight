@@ -123,6 +123,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/briefing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Briefing */
+        get: operations["briefing_api_briefing_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/alerts/routing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Alert Routing */
+        get: operations["alert_routing_api_alerts_routing_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/orders": {
         parameters: {
             query?: never;
@@ -200,6 +234,20 @@ export interface components {
             action: string;
             drilldown?: components["schemas"]["DrillDown"] | null;
             evidence?: components["schemas"]["Evidence"] | null;
+        };
+        /** AlertRoute */
+        AlertRoute: {
+            /** Alert Id */
+            alert_id: string;
+            /**
+             * Severity
+             * @enum {string}
+             */
+            severity: "high" | "medium" | "low";
+            /** Recipient */
+            recipient: string;
+            /** Message */
+            message: string;
         };
         /** AlertsResponse */
         AlertsResponse: {
@@ -299,6 +347,23 @@ export interface components {
              * @default false
              */
             cancel_above: boolean;
+        };
+        /** BriefingResponse */
+        BriefingResponse: {
+            /** Markdown */
+            markdown: string;
+            /**
+             * Start
+             * @description Início do período efetivo. Null se o recorte não tem essa data nem pedidos.
+             */
+            start: string | null;
+            /**
+             * End
+             * @description Fim do período efetivo. Null se o recorte não tem essa data nem pedidos.
+             */
+            end: string | null;
+            /** Alert Count */
+            alert_count: number;
         };
         /** ChatRequest */
         ChatRequest: {
@@ -922,6 +987,92 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AlertsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    briefing_api_briefing_get: {
+        parameters: {
+            query?: {
+                /** @description Data inicial (inclusiva, horário de Brasília) */
+                start?: string | null;
+                /** @description Data final (inclusiva) */
+                end?: string | null;
+                city?: string[];
+                hub?: number[];
+                store?: number[];
+                segment?: ("food" | "good")[];
+                channel_type?: ("marketplace" | "own")[];
+                /** @description Pedidos sem entregador saem do recorte */
+                modal?: ("moto" | "bike")[];
+                /** @description Status do pedido: delivered ou canceled */
+                status?: ("delivered" | "canceled")[];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BriefingResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    alert_routing_api_alerts_routing_get: {
+        parameters: {
+            query?: {
+                /** @description Data inicial (inclusiva, horário de Brasília) */
+                start?: string | null;
+                /** @description Data final (inclusiva) */
+                end?: string | null;
+                city?: string[];
+                hub?: number[];
+                store?: number[];
+                segment?: ("food" | "good")[];
+                channel_type?: ("marketplace" | "own")[];
+                /** @description Pedidos sem entregador saem do recorte */
+                modal?: ("moto" | "bike")[];
+                /** @description Status do pedido: delivered ou canceled */
+                status?: ("delivered" | "canceled")[];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlertRoute"][];
                 };
             };
             /** @description Validation Error */

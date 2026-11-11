@@ -10,6 +10,30 @@ Roda sobre **368.990 pedidos reais** do dataset [Delivery Center](https://www.ka
 
 ![Painel com filtros, fila de comandas e KPIs](assets/painel.png)
 
+## Automação diária
+
+Todo dia às 8h, horário de São Paulo, o n8n pede à API o briefing de um dia do dataset e o roteamento dos alertas, e envia as mensagens no Telegram. Se a API não responder, o chat recebe o aviso de que o briefing não foi gerado.
+
+```mermaid
+flowchart LR
+  sched["Schedule n8n (8h)"] --> api["API no Render<br/>/api/health, /api/briefing, /api/alerts/routing"]
+  api --> texto["Briefing e roteamento"]
+  texto --> tg["Telegram<br/>operador + mensagem por responsável"]
+  api -->|falha| aviso["Telegram<br/>Briefing não gerado: API indisponível"]
+```
+
+<!-- Canvas do workflow e a demonstração no Telegram serão adicionados. -->
+
+![Canvas do workflow no n8n](assets/n8n-canvas.png)
+
+![Demonstração no Telegram](assets/n8n-demo.gif)
+
+<img src="assets/n8n-telegram.png" alt="Telegram recebendo o briefing de 22/02/2021, duas mensagens encaminhadas por responsável e o aviso de API indisponível" width="360">
+
+O n8n roda local, na Community Edition gratuita. O workflow está em `n8n/` e pode ser importado em qualquer instância.
+
+Importar e ligar o bot: [n8n/README.md](n8n/README.md). O que cada nó faz: [n8n/COMO-FUNCIONA.md](n8n/COMO-FUNCIONA.md). Mensagens de uma execução real: [n8n/exemplo-briefing.md](n8n/exemplo-briefing.md).
+
 ## O problema
 
 Um dashboard com gráficos não diz para o operador o que fazer. Ele precisa de respostas no recorte que está olhando:
@@ -78,7 +102,7 @@ cd backend
 python -m venv .venv && .venv\Scripts\activate      # Linux/macOS: source .venv/bin/activate
 pip install -r requirements-dev.txt
 uvicorn app.main:app --reload                       # http://localhost:8000/docs
-pytest                                              # 94 testes, com parquet sintético
+pytest                                              # 104 testes, com parquet sintético
 
 # frontend: Node 20+
 cd frontend
@@ -100,6 +124,17 @@ Agente com LLM (opcional): copie `backend/.env.example` para `backend/.env` e pr
 | `CHAT_BUDGET_S` | `20` | Tempo total por pergunta antes de cair nas regras locais |
 | `CHAT_RATE_LIMIT_PER_MINUTE` | `8` | Perguntas ao LLM por minuto por IP |
 | `CHAT_RATE_LIMIT_ENABLED` | `true` | Liga a cota acima |
+
+## API
+
+A query string é o recorte do painel: `start`, `end`, `city`, `hub`, `store`, `segment`, `channel_type`, `modal` e `status`. O contrato inteiro está em `/docs`.
+
+Dois GETs em `/api` alimentam automação (agendador, mensagem) sem chamar o agente com LLM. Data inválida ou `end` anterior a `start` responde 422, como o resto da API. Resposta 200 de GET leva `Cache-Control: public, max-age=600`.
+
+| | |
+|---|---|
+| `GET /api/briefing` | `{markdown, start, end, alert_count}`. `markdown` é o briefing local do recorte. `start` e `end` são as datas pedidas; sem elas, o primeiro e o último dia com pedido no recorte, ou `null` se não houver pedido. `alert_count` é o tamanho da fila de alertas. |
+| `GET /api/alerts/routing` | Lista `{alert_id, severity, recipient, message}`. `recipient` sai do drill-down ou da evidência do alerta: `Loja {id}` ou `Líder do hub {id}`. Sem loja nem hub, fica `Time de operações da praça`. `message` junta o problema (números já em pt-BR) e a ação. Template fixo, sem LLM. |
 
 ## Deploy
 

@@ -138,7 +138,6 @@ def test_chat_slow_llm_returns_within_budget_with_local_mode(client, monkeypatch
     class SlowCompletions:
         def create(self, *args, **kwargs):
             time.sleep(0.4)
-            return None
 
     class SlowOpenAI:
         chat = SimpleNamespace(completions=SlowCompletions())

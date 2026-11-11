@@ -9,9 +9,10 @@ from __future__ import annotations
 import tempfile
 import threading
 from collections import OrderedDict
+from collections.abc import Callable
 from datetime import date, timedelta
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import duckdb
 
@@ -232,6 +233,26 @@ class Repository:
 
     def period(self, f: Filters) -> tuple[date, date]:
         return (f.start or self.min_date, f.end or self.max_date)
+
+    def covered_period(self, f: Filters) -> tuple[date | None, date | None]:
+        """Período efetivo do recorte para automação.
+
+        Datas pedidas no filtro valem como estão. Sem uma delas, entra o primeiro
+        ou o último dia com pedido dentro do recorte. Recorte vazio sem essa data
+        devolve None: não há intervalo coberto.
+        """
+        if f.start is not None and f.end is not None:
+            return f.start, f.end
+
+        def build() -> tuple[date | None, date | None]:
+            where, params = f.where()
+            row = self._rows(
+                f"select min(created_date) as start, max(created_date) as end from orders where {where}",
+                params,
+            )[0]
+            return f.start or row["start"], f.end or row["end"]
+
+        return self._cached("covered:" + f.cache_key(), build)
 
     def previous_period(self, f: Filters) -> tuple[date, date] | None:
         start, end = self.period(f)

@@ -181,6 +181,24 @@ class AlertsResponse(BaseModel):
     orders: int = Field(description="Pedidos no recorte; 0 significa que não há base para afirmar SLA ou cancelamento.")
 
 
+class BriefingResponse(BaseModel):
+    markdown: str
+    start: date | None = Field(
+        description="Início do período efetivo. Null se o recorte não tem essa data nem pedidos.",
+    )
+    end: date | None = Field(
+        description="Fim do período efetivo. Null se o recorte não tem essa data nem pedidos.",
+    )
+    alert_count: int
+
+
+class AlertRoute(BaseModel):
+    alert_id: str
+    severity: Literal["high", "medium", "low"]
+    recipient: str
+    message: str
+
+
 class ChatTurn(BaseModel):
     role: Literal["user", "assistant"]
     content: str = Field(max_length=2000)
