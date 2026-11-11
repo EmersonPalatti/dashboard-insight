@@ -23,6 +23,23 @@ número), então a base encolhe na mesma medida.
 | 46   | 4   | 26–31/03     | 320 entregues atrasados, etapas curtas (goods)            | sla-hub sem etapa acima da mediana |
 | 14   | 1   | 26–31/03     | 320 entregues no prazo, etapas longas                    | contrapeso do cenário acima |
 | 45   | 4   | 01–31/03     | 160 entregas com frete R$ 2 e custo R$ 12                 | custo-frete                |
+| 33   | 3   | 03/03        | 160 cancelados                                            | tirar do ar mesmo sozinha  |
+| 34   | 3   | 03/03        | 80 cancelados + 80 presos (50%)                           | par da 33; não é 2,5×      |
+| 27   | 2   | 03/03        | 130 atrasados + 20 cancelados                             | segmento food com base     |
+| 47   | 4   | 03/03        | 2 cancelados                                              | goods 100% sem base        |
+| 35   | 3   | 03/03        | 89 cancelados                                             | taxa extrema, amostra fina |
+| 36   | 3   | 03/03        | 5 cancelados + 45 atrasados                               | amostra fina sem data      |
+| 28   | 2   | 03/03        | 210 presos + 100 atrasados                                | SLA não pede frota         |
+| 38   | 3   | 03/03        | 201 cancelados + 99 presos                                | razão com vírgula          |
+| 43   | 4   | 03/03        | 30 cancelados + 270 no prazo                              | contrapeso da razão        |
+| 24   | 2   | 03/03        | 225 no prazo + 75 atrasados (SLA 75%)                     | borda de 5 p.p.            |
+| 44   | 4   | 03/03        | 255 no prazo + 45 atrasados (SLA 85%, goods)              | contrapeso dos 5 p.p.      |
+| 37   | 3   | 03/03        | 36 cancelados + 264 presos (12%)                          | borda de 1,6×              |
+| 49   | 4   | 03/03        | 9 cancelados + 291 no prazo (3%)                          | contrapeso do 1,6×         |
+| 39   | 3   | 03/03        | 9 cancelados + 141 presos (6%)                            | piso de 6% inclusivo       |
+| 48   | 4   | 03/03        | 150 no prazo                                              | contrapeso do piso de 6%   |
+
+Os cenários novos ficam em 03/03 para não mexer na janela de volume (18–31/03) nem na data máxima.
 """
 
 from __future__ import annotations
@@ -54,7 +71,10 @@ create table fact as
 with base as (
     select
         i as order_id,
-        timestamp '2021-01-01 11:00:00' + to_minutes((i * 7) % (120 * 24 * 60)) as created_at,
+        -- 64.757 min é o fim da base original (9.251 linhas × 7 min). Menos linhas
+        -- continuam espalhadas até ~15/02, senão fevereiro fica sem pedido medido.
+        timestamp '2021-01-01 11:00:00'
+            + to_minutes(cast(((i - 1) * 64757) / ({base_rows} - 1) as bigint)) as created_at,
         (i % 4) + 1 as hub_id,
         ((i % 4) + 1) * 10 + (i % 3) as store_id,
         random() as r1, random() as r2, random() as r3
@@ -101,7 +121,9 @@ alter table fact add column cycle_outlier boolean;
 alter table fact add column amount_outlier boolean;
 update fact set cycle_outlier = cycle_min > 240, amount_outlier = amount > 5000;
 """
-LATE = 90.0  # food passa de 60 min; goods (120 min) também, com folga
+LATE = 90.0  # food passa de 60 min; goods (120 min) continua no prazo
+GOODS_LATE = 150.0  # goods passa de 120 min
+STUCK_CYCLE = 600.0  # acima de 4h: preso, fora do SLA
 ON_TIME = 30.0
 LONG_STAGES = (12.0, 2.0, 5.0, 15.0)  # mesma ordem de STAGES: preparo, coleta, expedição, trânsito
 SHORT_STAGES = (3.0, 1.0, 2.0, 5.0)
@@ -215,6 +237,51 @@ def _planted_rows() -> list[dict]:
     # 45: 160 entregas no prazo com frete de R$ 2 e custo de R$ 12 (subsídio de R$ 10 por pedido).
     for k in range(160):
         add(_order(45, at(1 + k % 31, 9 + k % 12, (k * 5) % 60), fee=2.0, cost=12.0))
+
+    # Cenários de 03/03. Lojas novas, fora da janela de volume (18–31/03).
+    def on_day(index: int) -> datetime:
+        return datetime(2021, 3, 3, 8 + (index // 60) % 14, index % 60)
+
+    def add_n(store: int, n: int, *, status: str = "delivered", cycle: float = ON_TIME, start: int = 0) -> int:
+        for k in range(n):
+            add(_order(store, on_day(start + k), status=status, cycle=cycle))
+        return start + n
+
+    # 33: 100% cancelada, com base. 34: 50%, entregas presas para não diluir o hub 3.
+    # Cancelado com ciclo curto iria ocupar a página dos menores ciclos do hub 3.
+    add_n(33, 160, status="canceled", cycle=LATE)
+    add_n(34, 80, status="canceled", cycle=LATE)
+    add_n(34, 80, cycle=STUCK_CYCLE, start=80)
+    # 27 + 47: food leva os cancelamentos; goods é 2/2 e não pode ser "concentrado".
+    add_n(27, 130, cycle=LATE)
+    add_n(27, 20, status="canceled", cycle=LATE, start=130)
+    add_n(47, 2, status="canceled", cycle=LATE)
+    # 35: 89/89 cancelados. 36: 10% de cancelamento e SLA ruim, abaixo de 100 pedidos.
+    add_n(35, 89, status="canceled", cycle=LATE)
+    add_n(36, 45, cycle=LATE)
+    add_n(36, 5, status="canceled", cycle=LATE, start=45)
+    # 28: 210/310 presos e os 100 medidos atrasados.
+    add_n(28, 210, cycle=STUCK_CYCLE)
+    add_n(28, 100, cycle=LATE, start=210)
+    # 38 e 43: 67% contra 10% → fator com casa decimal.
+    add_n(38, 201, status="canceled", cycle=LATE)
+    add_n(38, 99, cycle=STUCK_CYCLE, start=201)
+    add_n(43, 30, status="canceled", cycle=LATE)
+    add_n(43, 270, start=30)
+    # 24 e 44: SLA 75% e 85%, recorte 80%. O desvio é exatamente 5 pontos.
+    add_n(24, 225)
+    add_n(24, 75, cycle=LATE, start=225)
+    add_n(44, 255)
+    add_n(44, 45, cycle=GOODS_LATE, start=255)
+    # 37 e 49: 12% e 3%. O hub quente é exatamente 1,6× o recorte (7,5%).
+    add_n(37, 36, status="canceled", cycle=LATE)
+    add_n(37, 264, cycle=STUCK_CYCLE, start=36)
+    add_n(49, 9, status="canceled", cycle=LATE)
+    add_n(49, 291, start=9)
+    # 39 e 48: 6% contra 0%. O piso de 6% inclui a igualdade.
+    add_n(39, 9, status="canceled", cycle=LATE)
+    add_n(39, 141, cycle=STUCK_CYCLE, start=9)
+    add_n(48, 150)
 
     return rows
 
