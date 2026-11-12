@@ -110,6 +110,10 @@ def briefing(repo: Repository, f: Filters) -> str:
     return "\n".join(lines)
 
 
+def _alert_count(n: int) -> str:
+    return "1 alerta" if n == 1 else f"{n} alertas"
+
+
 def _alerts(repo: Repository, f: Filters) -> str:
     alerts = detect_alerts(repo, f)
     if not alerts:
@@ -119,7 +123,7 @@ def _alerts(repo: Repository, f: Filters) -> str:
             f"cancelamento {fmt.pct(m['cancel_rate'])}, ciclo mediano {fmt.minutes(m['cycle_p50'])}.\n\n"
             "**Ação:** Time de operações deve manter acompanhamento preventivo no pico de hoje."
         )
-    lines = [f"{len(alerts)} alerta(s) no recorte ({repo.describe(f)}):", ""]
+    lines = [f"{_alert_count(len(alerts))} no recorte ({repo.describe(f)}):", ""]
     for a in alerts:
         lines += [f"**{a.title}** (severidade {SEVERITY[a.severity]})", a.detail, f"**Ação:** {a.action}", ""]
     return "\n".join(lines).strip()
@@ -745,7 +749,8 @@ def build_reading(question: str, repo: Repository, f: Filters, history: list | N
         title = "Recorte sem pedidos"
     elif handler is _alerts:
         alerts = detect_alerts(repo, f)
-        title = alerts[0].title if alerts else "Nenhum alerta no recorte"
+        # Título próprio: a comanda do agente fica no trilho ao lado da Nº 01 e não pode repetir o título dela.
+        title = f"{_alert_count(len(alerts))} no recorte" if alerts else "Nenhum alerta no recorte"
     else:
         title = _headline(handler, metrics)
     raw = [] if metrics["orders"] == 0 else _drills_for(handler, repo, f)

@@ -5,7 +5,7 @@
  * a aberta também publica a evidência dela ($evidence) para KPIs e gráficos.
  */
 import { useStore } from "@nanostores/react";
-import { ChevronDown, ChevronUp, CircleSlash, Filter, LineChart, MessageSquareText, ShieldCheck } from "lucide-react";
+import { ChevronDown, ChevronRight, ChevronUp, CircleSlash, Filter, LineChart, MessageSquareText, ShieldCheck } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
 import type { Alert } from "@/lib/api/client";
 import { $railAgentComandas, askAgentAbout, openComandaCount, scopeKey } from "@/lib/agentBridge";
@@ -13,7 +13,8 @@ import { AgentOpenBand, AgentStub } from "./agent/AgentComanda";
 import { $evidence, EVIDENCE_ANCHOR, showEvidence } from "@/lib/evidence";
 import { $filters, applyDrilldown } from "@/lib/filters";
 import { prefersReducedMotion } from "@/lib/media";
-import { island, useRecorteQuery } from "@/lib/query";
+import { island, useMeta, useRecorteQuery } from "@/lib/query";
+import { outsideBaseNote } from "@/lib/format";
 import { SEVERITY } from "./ui/EvidenceTag";
 import { ErrorState } from "./ui/Panel";
 
@@ -281,6 +282,35 @@ function useRailMarker(railRef: React.RefObject<HTMLOListElement | null>, select
   return marker;
 }
 
+/** Quantas comandas do trilho estão cortadas à direita (fora da vista ou pela metade). */
+function useRailHiddenAhead(railRef: { current: HTMLOListElement | null }, deps: string) {
+  const [count, setCount] = useState(0);
+  useEffect(() => {
+    const rail = railRef.current;
+    if (!rail) {
+      setCount(0);
+      return;
+    }
+    // Leitura direta (meia dúzia de retângulos): sem rAF, que não roda com a aba em segundo plano.
+    const measure = () => {
+      const edge = rail.getBoundingClientRect().right + 1;
+      const hidden = [...rail.querySelectorAll<HTMLElement>(":scope > [data-alert]")].filter(
+        (el) => el.getBoundingClientRect().right > edge,
+      ).length;
+      setCount(hidden);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(rail);
+    rail.addEventListener("scroll", measure, { passive: true });
+    return () => {
+      observer.disconnect();
+      rail.removeEventListener("scroll", measure);
+    };
+  }, [railRef, deps]);
+  return count;
+}
+
 function AlertsSkeletonBody() {
   return (
     <div className="grid gap-2" aria-hidden="true">
@@ -341,7 +371,7 @@ function AlertsSkeleton() {
   return (
     <section aria-labelledby="comandas-title" aria-hidden="true">
       <header className="mb-2 flex items-baseline justify-between gap-2 px-0.5">
-        <h2 id="comandas-title" className="cond text-body font-semibold text-ink tabular-nums">
+        <h2 id="comandas-title" className="cond text-body text-ink">
           Comandas abertas
         </h2>
         <div className="skeleton h-3.5 w-28 max-sm:hidden" />
@@ -356,6 +386,7 @@ function AlertsPanelInner() {
   const alerts = data?.alerts ?? [];
   const railAgents = useStore($railAgentComandas);
   const filters = useStore($filters);
+  const { data: meta } = useMeta();
   const scope = scopeKey(filters);
   // undefined = o operador ainda não escolheu (abre a primeira); null = recolheu todas
   const [openId, setOpenId] = useState<string | null | undefined>(undefined);
@@ -418,6 +449,13 @@ function AlertsPanelInner() {
     const alive = alerts.some((alert) => alert.id === openId) || railAgents.some((ticket) => ticket.id === openId);
     if (!alive) setOpenId(null);
   }, [openId, alerts, railAgents]);
+
+  const hiddenAhead = useRailHiddenAhead(railRef, `${printKey}:${alerts.length}:${railAgents.length}`);
+  const showNext = () => {
+    const rail = railRef.current;
+    if (!rail) return;
+    rail.scrollBy({ left: rail.clientWidth * 0.8, behavior: prefersReducedMotion() ? "auto" : "smooth" });
+  };
 
   const marker = useRailMarker(
     railRef,
@@ -545,21 +583,34 @@ function AlertsPanelInner() {
   return (
     <section ref={sectionRef} aria-labelledby="comandas-title" className={`min-w-0 transition-opacity ${isPlaceholderData ? "opacity-60" : ""}`}>
       <header className="mb-2 flex items-baseline justify-between gap-2 px-0.5">
-        <h2 id="comandas-title" className="cond text-body font-semibold text-ink tabular-nums">
+        <h2 id="comandas-title" className="cond text-body text-ink">
           Comandas abertas{data ? ` · ${total}` : ""}
         </h2>
         {data && total > 0 ? (
-          <p className="text-aux text-muted">
-            {alerts.length > 0 ? (
-              <>
-                {highText}
-                {mediumText}
-                {agentSide ? ` · ${agentSide}` : ""}
-              </>
-            ) : (
-              agentSide
+          <div className="flex min-w-0 items-baseline gap-3">
+            <p className="text-aux text-muted">
+              {alerts.length > 0 ? (
+                <>
+                  {highText}
+                  {mediumText}
+                  {agentSide ? ` · ${agentSide}` : ""}
+                </>
+              ) : (
+                agentSide
+              )}
+            </p>
+            {hiddenAhead > 0 && (
+              <button
+                type="button"
+                onClick={showNext}
+                className="hit-target inline-flex shrink-0 items-center gap-0.5 rounded-tick text-aux font-medium whitespace-nowrap text-ink underline decoration-rule underline-offset-2 hover:decoration-ink print:hidden"
+                aria-label={`Mostrar as próximas comandas: ${hiddenAhead} fora da vista`}
+              >
+                mais {hiddenAhead}
+                <ChevronRight className="size-3.5" aria-hidden />
+              </button>
             )}
-          </p>
+          </div>
         ) : (
           !data && <div className="skeleton h-3.5 w-28 max-sm:hidden" aria-hidden />
         )}
@@ -584,7 +635,7 @@ function AlertsPanelInner() {
             <span className="font-semibold">{noOrders ? "Sem pedidos neste recorte." : "Nenhuma comanda aberta neste recorte."}</span>{" "}
             <span className="text-muted">
               {noOrders
-                ? "Não dá para afirmar SLA nem cancelamento sem pedidos. Amplie o período ou tire um filtro."
+                ? `Não dá para afirmar SLA nem cancelamento sem pedidos. ${outsideBaseNote(filters, meta) ?? "Amplie o período ou tire um filtro."}`
                 : "SLA, cancelamento e lojas dentro do esperado. Mude o recorte para checar outro hub."}
             </span>
           </p>

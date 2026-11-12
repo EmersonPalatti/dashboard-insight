@@ -47,3 +47,18 @@ export const label = (v: string | number | null | undefined) =>
   v === null || v === undefined ? "—" : (LABELS[String(v)] ?? String(v).replaceAll("_", " "));
 
 export const WEEKDAYS = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
+
+/**
+ * Período do recorte inteiro fora da base (datas ISO; limites vêm de /api/meta).
+ * Devolve a frase com o intervalo da base, ou null quando o período a toca ou os limites ainda não chegaram.
+ */
+export function outsideBaseNote(
+  period: { start: string | null; end: string | null },
+  base: { min_date?: string; max_date?: string } | undefined,
+): string | null {
+  if (!base?.min_date || !base.max_date) return null;
+  const after = period.start !== null && period.start > base.max_date;
+  const before = period.end !== null && period.end < base.min_date;
+  if (!after && !before) return null;
+  return `A base vai de ${fmt.date(base.min_date)} a ${fmt.date(base.max_date)}; o período escolhido fica fora dela.`;
+}

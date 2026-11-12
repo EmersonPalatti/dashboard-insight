@@ -299,6 +299,8 @@ export function AgentConversation({ visible, onClose }: ConversationProps) {
     setTurn(nextTurn);
     $agentMessages.set([...$agentMessages.get(), { id: nextId++, role: "user", content: q, scope }]);
     setInput("");
+    // A pergunta sugerida some ao ser enviada: o foco vai para o campo, não para o body (Esc segue no painel).
+    inputRef.current?.focus({ preventScroll: true });
     void run(q, history, filters, scope, gen);
   };
 
