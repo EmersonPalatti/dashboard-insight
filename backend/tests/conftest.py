@@ -51,6 +51,8 @@ import duckdb
 import pytest
 from fastapi.testclient import TestClient
 
+from scripts.build_parquet import AMOUNT_OUTLIER, STUCK_CYCLE_MIN
+
 TOTAL_ORDERS = 12_000  # test_api/test_health fixam este total
 HUB_INFO = {
     1: ("Hub Centro", "São Paulo", "SP", "food"),
@@ -116,10 +118,10 @@ select
     end, 2) as cycle_min
 from base;
 """
-FLAGS_SQL = """
+FLAGS_SQL = f"""
 alter table fact add column cycle_outlier boolean;
 alter table fact add column amount_outlier boolean;
-update fact set cycle_outlier = cycle_min > 240, amount_outlier = amount > 5000;
+update fact set cycle_outlier = cycle_min > {STUCK_CYCLE_MIN}, amount_outlier = amount > {AMOUNT_OUTLIER};
 """
 LATE = 90.0  # food passa de 60 min; goods (120 min) continua no prazo
 GOODS_LATE = 150.0  # goods passa de 120 min
