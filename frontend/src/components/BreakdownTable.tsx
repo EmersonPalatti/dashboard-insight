@@ -257,7 +257,7 @@ function BreakdownTableInner() {
                             <button
                               type="button"
                               onClick={h.column.getToggleSortingHandler()}
-                              className="hit-target inline-flex items-center hover:text-ink"
+                              className="hit-target -mx-1 inline-flex size-6 items-center justify-center rounded-tick hover:bg-surface hover:text-ink"
                               aria-label={`Ordenar por ${help.term}, ${sortPhrase(dir)}`}
                             >
                               <Icon className="size-3" aria-hidden />

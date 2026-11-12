@@ -5,7 +5,7 @@
  * a aberta também publica a evidência dela ($evidence) para KPIs e gráficos.
  */
 import { useStore } from "@nanostores/react";
-import { ChevronDown, ChevronRight, ChevronUp, CircleSlash, Filter, LineChart, MessageSquareText, ShieldCheck } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, CircleSlash, Filter, LineChart, MessageSquareText, ShieldCheck } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
 import type { Alert } from "@/lib/api/client";
 import { $railAgentComandas, askAgentAbout, openComandaCount, scopeKey } from "@/lib/agentBridge";
@@ -204,7 +204,7 @@ function OpenBand({
           }
         />
       </div>
-      <div className="mt-3 grid gap-x-8 gap-y-3.5 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
+      <div className="mt-3 grid gap-x-8 gap-y-3.5 max-lg:pr-9 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
         <div className="min-w-0">
           <h3 id={`${BAND_ID}-title`} ref={titleRef} tabIndex={-1} className="text-lead leading-snug font-semibold text-balance">
             {alert.title}
@@ -282,13 +282,15 @@ function useRailMarker(railRef: React.RefObject<HTMLOListElement | null>, select
   return marker;
 }
 
-/** Quantas comandas do trilho estão cortadas à direita (fora da vista ou pela metade). */
-function useRailHiddenAhead(railRef: { current: HTMLOListElement | null }, deps: string) {
+/** Quantas comandas do trilho estão cortadas à direita (fora da vista ou pela metade) e se já há trilho rolado para trás. */
+function useRailOverflow(railRef: { current: HTMLOListElement | null }, deps: string) {
   const [count, setCount] = useState(0);
+  const [behind, setBehind] = useState(false);
   useEffect(() => {
     const rail = railRef.current;
     if (!rail) {
       setCount(0);
+      setBehind(false);
       return;
     }
     // Leitura direta (meia dúzia de retângulos): sem rAF, que não roda com a aba em segundo plano.
@@ -298,6 +300,7 @@ function useRailHiddenAhead(railRef: { current: HTMLOListElement | null }, deps:
         (el) => el.getBoundingClientRect().right > edge,
       ).length;
       setCount(hidden);
+      setBehind(rail.scrollLeft > 1);
     };
     measure();
     const observer = new ResizeObserver(measure);
@@ -308,7 +311,7 @@ function useRailHiddenAhead(railRef: { current: HTMLOListElement | null }, deps:
       rail.removeEventListener("scroll", measure);
     };
   }, [railRef, deps]);
-  return count;
+  return { ahead: count, behind };
 }
 
 function AlertsSkeletonBody() {
@@ -450,11 +453,11 @@ function AlertsPanelInner() {
     if (!alive) setOpenId(null);
   }, [openId, alerts, railAgents]);
 
-  const hiddenAhead = useRailHiddenAhead(railRef, `${printKey}:${alerts.length}:${railAgents.length}`);
-  const showNext = () => {
+  const { ahead: hiddenAhead, behind: railBehind } = useRailOverflow(railRef, `${printKey}:${alerts.length}:${railAgents.length}`);
+  const scrollRail = (direction: 1 | -1) => {
     const rail = railRef.current;
     if (!rail) return;
-    rail.scrollBy({ left: rail.clientWidth * 0.8, behavior: prefersReducedMotion() ? "auto" : "smooth" });
+    rail.scrollBy({ left: direction * rail.clientWidth * 0.8, behavior: prefersReducedMotion() ? "auto" : "smooth" });
   };
 
   const marker = useRailMarker(
@@ -599,10 +602,21 @@ function AlertsPanelInner() {
                 agentSide
               )}
             </p>
+            {railBehind && (
+              <button
+                type="button"
+                onClick={() => scrollRail(-1)}
+                className="hit-target inline-flex shrink-0 items-center gap-0.5 rounded-tick text-aux font-medium whitespace-nowrap text-ink underline decoration-rule underline-offset-2 hover:decoration-ink print:hidden"
+                aria-label="Mostrar as comandas anteriores"
+              >
+                <ChevronLeft className="size-3.5" aria-hidden />
+                voltar
+              </button>
+            )}
             {hiddenAhead > 0 && (
               <button
                 type="button"
-                onClick={showNext}
+                onClick={() => scrollRail(1)}
                 className="hit-target inline-flex shrink-0 items-center gap-0.5 rounded-tick text-aux font-medium whitespace-nowrap text-ink underline decoration-rule underline-offset-2 hover:decoration-ink print:hidden"
                 aria-label={`Mostrar as próximas comandas: ${hiddenAhead} fora da vista`}
               >

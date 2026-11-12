@@ -210,7 +210,7 @@ export function AgentOpenBand({
           </span>
         </span>
       </div>
-      <div className="mt-3 grid gap-x-8 gap-y-3.5 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
+      <div className="mt-3 grid gap-x-8 gap-y-3.5 max-lg:pr-9 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
         <div className="min-w-0">
           {stale && <p className="mb-1.5 text-meta text-muted">Recorte mudou</p>}
           <h3 id="comanda-aberta-title" ref={titleRef} tabIndex={-1} className="text-lead leading-snug font-semibold text-balance">
