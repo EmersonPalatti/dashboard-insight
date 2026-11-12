@@ -1,10 +1,8 @@
 /** Tema claro/escuro + estado da API (o plano grátis do Render "dorme" e leva ~40 s para acordar). */
 import { useStore } from "@nanostores/react";
-import { useQuery } from "@tanstack/react-query";
 import { Moon, Sun } from "lucide-react";
 import { useEffect, useState } from "react";
-import { apiGet } from "@/lib/api/client";
-import { island } from "@/lib/query";
+import { island, useApiHealth } from "@/lib/query";
 import { $theme, setTheme, syncTheme } from "@/lib/theme";
 
 /* Troca sol/lua: os dois ícones ocupam a mesma célula; o que sai vai a 0.8, girado para um lado, e o que entra vem do outro. */
@@ -16,13 +14,7 @@ const ICON_HIDDEN = "opacity-0 scale-[0.8] blur-(--blur-small)";
 function TopBarStatusInner() {
   const theme = useStore($theme);
   const [slow, setSlow] = useState(false);
-  const health = useQuery({
-    queryKey: ["/api/health"],
-    queryFn: ({ signal }) => apiGet("/api/health", {}, signal),
-    retry: 8,
-    retryDelay: 4000,
-    staleTime: 60_000,
-  });
+  const health = useApiHealth();
 
   useEffect(syncTheme, []);
   useEffect(() => {
@@ -56,9 +48,11 @@ function TopBarStatusInner() {
           aria-hidden
         />
         {/* key no status: cada mudança remonta o texto, que entra de baixo com desfoque. Abaixo de sm o texto some visualmente, mas segue no DOM para a leitura de tela. */}
+        {/* Abaixo de sm o texto fica só para o leitor. De sm a xl ele trunca, para a faixa de 64px não estourar. */}
+        <span className="sr-only sm:hidden">{text}</span>
         <span
           key={status}
-          className="sr-only sm:not-sr-only inline-block transition-[opacity,translate,filter] duration-(--duration-quick) ease-(--ease-in-out) starting:translate-y-(--distance-micro) starting:opacity-0 starting:blur-(--blur-small) motion-reduce:transition-none"
+          className="hidden max-w-[7.5rem] truncate transition-[opacity,translate,filter] duration-(--duration-quick) ease-(--ease-in-out) starting:translate-y-(--distance-micro) starting:opacity-0 starting:blur-(--blur-small) motion-reduce:transition-none sm:inline-block lg:max-w-[12rem] xl:max-w-none"
         >
           {text}
         </span>

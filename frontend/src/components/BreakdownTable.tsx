@@ -6,15 +6,18 @@ import {
   useReactTable,
   type SortingState,
 } from "@tanstack/react-table";
+import { useStore } from "@nanostores/react";
 import { ArrowDown, ArrowUp, ArrowUpDown, Filter } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { BreakdownRow, Dimension } from "@/lib/api/client";
-import { applyDrilldown, patchFilters } from "@/lib/filters";
+import { $focusRank, $view, applyDrilldown, patchFilters, setView } from "@/lib/filters";
 import { fmt, label, WEEKDAYS } from "@/lib/format";
+import { GLOSS, STORE_NAMES_HINT } from "@/lib/glossary";
 import { island, useRecorteQuery } from "@/lib/query";
 import { AskAgentButton } from "./ui/AskAgentButton";
-import { Empty, ErrorState, PanelContent, panelFallback, Skeleton } from "./ui/Panel";
+import { AsyncBody, Empty, PanelContent, panelFallback } from "./ui/Panel";
 import { Select } from "./ui/Select";
+import { Term } from "./ui/Term";
 
 type Tab = Extract<Dimension, "hub" | "store" | "city" | "channel" | "modal" | "payment_method" | "weekday">;
 const TABS: { value: Tab; label: string }[] = [
@@ -39,6 +42,11 @@ const ASK_SUBJECT: Record<Tab, string> = {
 };
 
 const col = createColumnHelper<BreakdownRow>();
+
+const HEADER_HELP: Partial<Record<string, { term: string; definition: string }>> = {
+  gmv: { term: "GMV", definition: GLOSS.gmv },
+  subsidy: { term: "Subsídio", definition: GLOSS.subsidy },
+};
 
 /**
  * Taxa desviada do recorte: o servidor marca a linha; aqui só se mostra com
@@ -65,9 +73,11 @@ function FlaggedRate({
 }
 
 function BreakdownTableInner() {
-  const [tab, setTab] = useState<Tab>("hub");
+  const tab = useStore($view).rank;
+  const focusTick = useStore($focusRank);
+  const focused = useRef(0);
   const [sorting, setSorting] = useState<SortingState>([{ id: "orders", desc: true }]);
-  const { data, error, isPending, refetch, isPlaceholderData } = useRecorteQuery("/api/breakdown", {
+  const { data, error, isPending, refetch, isPlaceholderData, waking, down } = useRecorteQuery("/api/breakdown", {
     by: tab,
     sort: "orders",
     limit: tab === "store" ? 300 : 100,
@@ -123,6 +133,15 @@ function BreakdownTableInner() {
     getSortedRowModel: getSortedRowModel(),
   });
 
+  useEffect(() => {
+    if (!focusTick || focused.current === focusTick) return;
+    if (tab !== "store" || isPlaceholderData || isPending) return;
+    focused.current = focusTick;
+    const root = document.getElementById("ranking-recorte");
+    const button = root?.querySelector<HTMLButtonElement>('tbody button[aria-label^="Filtrar"]');
+    (button ?? root)?.focus();
+  }, [focusTick, tab, isPlaceholderData, isPending, rows.length]);
+
   const canDrill = tab === "hub" || tab === "store" || tab === "city" || tab === "modal";
   const drill = (r: BreakdownRow) => {
     if (r.key == null) return;
@@ -134,11 +153,11 @@ function BreakdownTableInner() {
 
   return (
     <PanelContent
-      hint={`Ordene pelas colunas. Seta para baixo: no prazo abaixo do recorte. Seta para cima: cancelamento acima do recorte.${tab === "store" ? " Lojas com 30+ pedidos." : ""}`}
+      hint={`Ordene pelas colunas. Seta para baixo: no prazo abaixo do recorte. Seta para cima: cancelamento acima do recorte.${tab === "store" ? ` Lojas com 30+ pedidos. ${STORE_NAMES_HINT}` : ""}`}
       busy={isPlaceholderData}
       actions={
         <>
-          <Select label="Quebrar por" value={tab} options={TABS} onChange={setTab} align="end" />
+          <Select label="Quebrar por" value={tab} options={TABS} onChange={(value) => setView({ rank: value })} align="end" />
           <AskAgentButton
             subject={`o ranking por ${ASK_SUBJECT[tab]}`}
             question={`No ranking por ${ASK_SUBJECT[tab]}, quem está pior e o que fazer?`}
@@ -146,14 +165,21 @@ function BreakdownTableInner() {
         </>
       }
     >
-      {isPending ? (
-        <Skeleton height={420} />
-      ) : error ? (
-        <ErrorState error={error} onRetry={() => refetch()} />
-      ) : rows.length === 0 ? (
-        <Empty />
-      ) : (
-        <div className="content-reveal relative max-h-[420px] min-w-0 overflow-auto rounded-tick border border-rule">
+      <AsyncBody
+        waking={waking}
+        pending={isPending}
+        error={error}
+        down={down}
+        onRetry={() => refetch()}
+        what="o ranking"
+        height={420}
+        empty={rows.length === 0 ? <Empty /> : null}
+      >
+        <div
+          id="ranking-recorte"
+          tabIndex={-1}
+          className="content-reveal relative max-h-[420px] min-w-0 scroll-mt-32 overflow-auto rounded-tick border border-rule"
+        >
           <table className="w-full border-collapse text-aux tabular-nums">
             <thead className="sticky top-0 z-10 bg-sunken">
               {table.getHeaderGroups().map((hg) => (
@@ -161,6 +187,8 @@ function BreakdownTableInner() {
                   {hg.headers.map((h, i) => {
                     const dir = h.column.getIsSorted();
                     const Icon = dir === "asc" ? ArrowUp : dir === "desc" ? ArrowDown : ArrowUpDown;
+                    const help = HEADER_HELP[h.column.id];
+                    const tone = dir ? "text-ink" : "text-muted hover:text-ink";
                     return (
                       <th
                         key={h.id}
@@ -168,14 +196,28 @@ function BreakdownTableInner() {
                         aria-sort={dir === "asc" ? "ascending" : dir === "desc" ? "descending" : "none"}
                         className={`border-b border-rule px-2.5 py-2 text-aux font-semibold whitespace-nowrap ${i === 0 ? "text-left" : "text-right tabular-nums"}`}
                       >
-                        <button
-                          type="button"
-                          onClick={h.column.getToggleSortingHandler()}
-                          className={`inline-flex items-center gap-1 ${dir ? "text-ink" : "text-muted hover:text-ink"}`}
-                        >
-                          {flexRender(h.column.columnDef.header, h.getContext())}
-                          <Icon className="size-3" aria-hidden />
-                        </button>
+                        {help ? (
+                          <span className={`inline-flex items-center gap-1 ${dir ? "text-ink" : "text-muted"}`}>
+                            <Term term={help.term} definition={help.definition} />
+                            <button
+                              type="button"
+                              onClick={h.column.getToggleSortingHandler()}
+                              className="inline-flex items-center hover:text-ink"
+                              aria-label={`Ordenar por ${help.term}`}
+                            >
+                              <Icon className="size-3" aria-hidden />
+                            </button>
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={h.column.getToggleSortingHandler()}
+                            className={`inline-flex items-center gap-1 ${tone}`}
+                          >
+                            {flexRender(h.column.columnDef.header, h.getContext())}
+                            <Icon className="size-3" aria-hidden />
+                          </button>
+                        )}
                       </th>
                     );
                   })}
@@ -211,7 +253,7 @@ function BreakdownTableInner() {
             </tbody>
           </table>
         </div>
-      )}
+      </AsyncBody>
     </PanelContent>
   );
 }

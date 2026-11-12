@@ -6,6 +6,7 @@ import logging
 import time
 
 from app.agent import llm, local
+from app.agent.reading import response_llm, response_local
 from app.config import Settings
 from app.repository import Repository
 from app.schemas import ChatRequest, ChatResponse
@@ -23,9 +24,11 @@ def _acceptable(text: str | None) -> bool:
 
 
 def chat(req: ChatRequest, repo: Repository, settings: Settings, use_llm: bool = True) -> ChatResponse:
-    """`use_llm=False` (cota do cliente esgotada) responde só com as regras locais."""
+    """`use_llm=False` (cota esgotada ou engine=local) responde só com as regras locais."""
     f = req.filters
-    if use_llm and settings.llm_enabled and repo.metrics(f)["orders"] > 0:
+    local_reading = local.build_reading(req.question, repo, f, history=req.history)
+    # engine=local não entra na cadeia: a leitura já está pronta e a cota fica intacta.
+    if use_llm and req.engine != "local" and settings.llm_enabled and local_reading.n > 0:
         deadline = time.monotonic() + settings.chat_budget_s
         tools_deadline = deadline - settings.chat_budget_s * _CONTEXT_RESERVE
         try:
@@ -34,7 +37,7 @@ def chat(req: ChatRequest, repo: Repository, settings: Settings, use_llm: bool =
             )
             if result and _acceptable(result[0]):
                 text, used = result
-                return ChatResponse(answer=text, mode="llm-tools", model=settings.openrouter_model, tools_used=used)
+                return response_llm(text, "llm-tools", settings.openrouter_model, used, local_reading, repo, f)
             if result:
                 log.warning("LLM com tools respondeu sem **Ação:**; tentando contexto")
         except Exception as exc:  # noqa: BLE001 — falha do LLM cai no próximo modo, não derruba a resposta
@@ -44,21 +47,15 @@ def chat(req: ChatRequest, repo: Repository, settings: Settings, use_llm: bool =
         # se o prazo real não acabou. Só o deadline encerra a cadeia.
         if time.monotonic() < deadline:
             try:
-                text = llm.answer_with_context(req.question, req.history, repo, f, settings, deadline=deadline)
-                if _acceptable(text):
-                    return ChatResponse(
-                        answer=text, mode="llm-context", model=settings.openrouter_model, tools_used=[]
-                    )
-                if text:
+                context = llm.answer_with_context(req.question, req.history, repo, f, settings, deadline=deadline)
+                if context and _acceptable(context[0]):
+                    text, used = context
+                    return response_llm(text, "llm-context", settings.openrouter_model, used, local_reading, repo, f)
+                if context and context[0]:
                     log.warning("LLM com contexto respondeu sem **Ação:**; usando agente local")
             except Exception as exc:  # noqa: BLE001 — falha do LLM cai nas regras locais
                 log.warning("LLM com contexto falhou, usando agente local: %s", exc)
         else:
             log.warning("Budget de tempo esgotado antes do modo contexto")
 
-    return ChatResponse(
-        answer=local.answer(req.question, repo, f, history=req.history),
-        mode="local",
-        model=None,
-        tools_used=[],
-    )
+    return response_local(local_reading)

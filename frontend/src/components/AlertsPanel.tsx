@@ -4,12 +4,14 @@
  * faixa larga logo abaixo do trilho, com a ação impressa. Uma aberta por vez;
  * a aberta também publica a evidência dela ($evidence) para KPIs e gráficos.
  */
+import { useStore } from "@nanostores/react";
 import { ChevronDown, ChevronUp, CircleSlash, Filter, LineChart, MessageSquareText, ShieldCheck } from "lucide-react";
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
 import type { Alert } from "@/lib/api/client";
-import { askAgentAbout } from "@/lib/agentBridge";
+import { $agentComandas, askAgentAbout, scopeKey } from "@/lib/agentBridge";
+import { AgentOpenBand, AgentStub } from "./agent/AgentComanda";
 import { $evidence, EVIDENCE_ANCHOR, showEvidence } from "@/lib/evidence";
-import { applyDrilldown } from "@/lib/filters";
+import { $filters, applyDrilldown } from "@/lib/filters";
 import { prefersReducedMotion } from "@/lib/media";
 import { island, useRecorteQuery } from "@/lib/query";
 import { SEVERITY } from "./ui/EvidenceTag";
@@ -93,6 +95,8 @@ function TicketHead({
 function Stub({
   alert,
   index,
+  total,
+  tabIndex,
   selected,
   bandMounted,
   printing,
@@ -101,6 +105,8 @@ function Stub({
 }: {
   alert: Alert;
   index: number;
+  total: number;
+  tabIndex: number;
   selected: boolean;
   bandMounted: boolean;
   printing: boolean;
@@ -125,9 +131,10 @@ function Stub({
       <button
         ref={buttonRef}
         type="button"
+        tabIndex={tabIndex}
         aria-expanded={selected}
         aria-controls={bandMounted ? BAND_ID : undefined}
-        aria-label={`${alert.title} · ${SEVERITY[alert.severity].label} · ${num(index)}, ${CATEGORY[alert.category]}`}
+        aria-label={`${alert.title}, comanda ${index + 1} de ${total}, ${SEVERITY[alert.severity].label}, ${num(index)} ${CATEGORY[alert.category]}`}
         onClick={onToggle}
         className={`group ticket flex h-full w-full flex-col justify-start px-4 pt-4 pb-3.5 text-left transition-colors duration-(--duration-quick) ease-(--ease-smooth-out) ${
           selected ? "bg-surface" : "bg-surface/60 hover:bg-surface"
@@ -201,7 +208,7 @@ function OpenBand({
             {alert.title}
           </h3>
           <p className="mt-1.5 max-w-[68ch] text-body leading-relaxed text-pretty text-ink/85">{alert.detail}</p>
-          <div className="no-print mt-3 flex flex-wrap gap-2">
+          <div className="comanda-actions no-print mt-3 flex flex-wrap gap-2">
             {alert.drilldown && (
               <button type="button" className="btn-primary max-lg:min-h-11 lg:min-h-9" onClick={() => applyDrilldown(alert.drilldown!.filters)}>
                 <Filter className="size-3.5" aria-hidden /> {alert.drilldown.label}
@@ -227,7 +234,7 @@ function OpenBand({
             </button>
           </div>
         </div>
-        <div className="self-start rounded-card bg-ink px-4 py-3.5 text-surface max-lg:order-first lg:mt-0.5">
+        <div className="self-start action-block rounded-card px-4 py-3.5 max-lg:order-first lg:mt-0.5">
           <p className="text-aux font-semibold opacity-70">Ação</p>
           <p className="mt-1 text-body leading-snug text-pretty">{alert.action}</p>
         </div>
@@ -346,12 +353,17 @@ function AlertsSkeleton() {
 function AlertsPanelInner() {
   const { data, error, isPending, refetch, isPlaceholderData } = useRecorteQuery("/api/alerts");
   const alerts = data?.alerts ?? [];
+  const railAgents = useStore($agentComandas);
+  const filters = useStore($filters);
+  const scope = scopeKey(filters);
   // undefined = o operador ainda não escolheu (abre a primeira); null = recolheu todas
   const [openId, setOpenId] = useState<string | null | undefined>(undefined);
   const [folding, setFolding] = useState<string | null>(null);
   const [expanding, setExpanding] = useState(false);
   const [openedFromCollapsed, setOpenedFromCollapsed] = useState(false);
   const [focusRequest, setFocusRequest] = useState<FocusRequest>(null);
+  // Última comanda focada no trilho: só ela entra na ordem do Tab.
+  const [railCursor, setRailCursor] = useState<string | null>(null);
   const [printKey, setPrintKey] = useState(0);
   const [printing, setPrinting] = useState(false);
   const [seenData, setSeenData] = useState(data);
@@ -369,7 +381,11 @@ function AlertsPanelInner() {
     setFolding(null);
     setExpanding(false);
     setOpenedFromCollapsed(false);
-    const kept = typeof openId === "string" && alerts.some((a) => a.id === openId) ? openId : undefined;
+    const kept =
+      typeof openId === "string" &&
+      (alerts.some((a) => a.id === openId) || railAgents.some((ticket) => ticket.id === openId))
+        ? openId
+        : undefined;
     setOpenId(kept);
     // A reimpressão remonta o trilho. Se o foco estava nele (ex.: drill-down da comanda), ele vai para o
     // título da comanda aberta no recorte novo, em vez de cair no body. Fora disso, não rouba o foco.
@@ -380,17 +396,33 @@ function AlertsPanelInner() {
   const effectiveOpen = openId === undefined ? (alerts[0]?.id ?? null) : openId;
   const openIndex = alerts.findIndex((a) => a.id === effectiveOpen);
   const open = openIndex >= 0 ? alerts[openIndex] : null;
+  const agentOpen = open ? null : (railAgents.find((ticket) => ticket.id === effectiveOpen) ?? null);
 
-  // a comanda aberta publica a evidência; recolhida (ou sem evidência), os gráficos voltam ao normal
+  // a comanda de alerta publica a evidência; a do agente não mexe nos gráficos
   useEffect(() => {
+    if (agentOpen && folding !== agentOpen.id) {
+      $evidence.set(null);
+      return;
+    }
     $evidence.set(
       open?.evidence && folding !== open.id
         ? { alertId: open.id, number: num(openIndex), title: open.title, severity: open.severity, evidence: open.evidence }
         : null,
     );
-  }, [open, openIndex, folding]);
+  }, [agentOpen, open, openIndex, folding]);
 
-  const marker = useRailMarker(railRef, folding ? null : effectiveOpen, `${printKey}:${alerts.length}`);
+  // Tirou da fila, ou a comanda sumiu: fecha a faixa sem reabrir a primeira.
+  useEffect(() => {
+    if (typeof openId !== "string") return;
+    const alive = alerts.some((alert) => alert.id === openId) || railAgents.some((ticket) => ticket.id === openId);
+    if (!alive) setOpenId(null);
+  }, [openId, alerts, railAgents]);
+
+  const marker = useRailMarker(
+    railRef,
+    folding ? null : effectiveOpen,
+    `${printKey}:${alerts.length}:${railAgents.length}`,
+  );
 
   // Se abriu a partir de um estado totalmente recolhido, faz o flip 0fr → 1fr no frame seguinte
   useLayoutEffect(() => {
@@ -452,15 +484,59 @@ function AlertsPanelInner() {
   };
   const isRequested = (id: string, on: "title" | "stub") => focusRequest?.id === id && focusRequest.on === on;
 
+  const railIds = [...alerts.map((a) => a.id), ...railAgents.map((ticket) => ticket.id)];
+  const tabRailId =
+    (railCursor && railIds.includes(railCursor) ? railCursor : null) ??
+    (effectiveOpen && railIds.includes(effectiveOpen) ? effectiveOpen : null) ??
+    railIds[0];
+
+  const onRailKeyDown = (e: KeyboardEvent<HTMLOListElement>) => {
+    const buttons = [...(railRef.current?.querySelectorAll<HTMLButtonElement>(":scope > li > button") ?? [])];
+    const i = buttons.indexOf(document.activeElement as HTMLButtonElement);
+    if (i < 0) return;
+    const last = buttons.length - 1;
+    let next = i;
+    switch (e.key) {
+      case "ArrowRight":
+      case "ArrowDown":
+      case "ArrowLeft":
+      case "ArrowUp": {
+        const forward = e.key === "ArrowRight" || e.key === "ArrowDown";
+        next = forward ? (i === last ? i : i + 1) : i === 0 ? i : i - 1;
+        break;
+      }
+      case "Home":
+        next = 0;
+        break;
+      case "End":
+        next = last;
+        break;
+      default:
+        return;
+    }
+    if (next === i) return;
+    e.preventDefault();
+    const btn = buttons[next];
+    const id = btn.closest<HTMLElement>("[data-alert]")?.dataset.alert ?? null;
+    if (id) setRailCursor(id);
+    btn.focus();
+    btn.scrollIntoView({ block: "nearest", inline: "nearest" });
+  };
+
   // texto anunciado por leitor de tela quando o trilho muda (sem anunciar a lista inteira)
   const noOrders = data?.orders === 0;
-  const countText = alerts.length === 1 ? "1 comanda aberta" : `${alerts.length} comandas abertas`;
+  const total = alerts.length + railAgents.length;
+  const countText = total === 1 ? "1 comanda aberta" : `${total} comandas abertas`;
   const highText = high === 0 ? "nenhuma crítica" : high === 1 ? "1 crítica" : `${high} críticas`;
   const mediumText = medium === 0 ? "" : ` · ${medium} em atenção`;
+  const agentSide = railAgents.length === 0 ? "" : railAgents.length === 1 ? "1 do agente" : `${railAgents.length} do agente`;
+  const agentStatus = agentSide ? `, ${agentSide}` : "";
   const status = !data
     ? ""
-    : alerts.length > 0
-      ? `${countText}, ${highText}${mediumText}`
+    : total > 0
+      ? alerts.length > 0
+        ? `${countText}, ${highText}${mediumText}${agentStatus}`
+        : `${countText}, ${agentSide}`
       : noOrders
         ? "Sem pedidos neste recorte."
         : "Nenhuma comanda aberta neste recorte.";
@@ -469,12 +545,19 @@ function AlertsPanelInner() {
     <section ref={sectionRef} aria-labelledby="comandas-title" className={`transition-opacity ${isPlaceholderData ? "opacity-60" : ""}`}>
       <header className="mb-2 flex items-baseline justify-between gap-2 px-0.5">
         <h2 id="comandas-title" className="cond text-body font-semibold text-ink tabular-nums">
-          Comandas abertas{data ? ` · ${alerts.length}` : ""}
+          Comandas abertas{data ? ` · ${total}` : ""}
         </h2>
-        {data && alerts.length > 0 ? (
+        {data && total > 0 ? (
           <p className="text-aux text-muted">
-            {highText}
-            {mediumText}
+            {alerts.length > 0 ? (
+              <>
+                {highText}
+                {mediumText}
+                {agentSide ? ` · ${agentSide}` : ""}
+              </>
+            ) : (
+              agentSide
+            )}
           </p>
         ) : (
           !data && <div className="skeleton h-3.5 w-28 max-sm:hidden" aria-hidden />
@@ -489,7 +572,7 @@ function AlertsPanelInner() {
         <div className="tile p-4">
           <ErrorState error={error} onRetry={() => refetch()} />
         </div>
-      ) : alerts.length === 0 ? (
+      ) : alerts.length === 0 && railAgents.length === 0 ? (
         <div className="ticket flex items-center gap-3 bg-surface px-5 pt-5 pb-4">
           {noOrders ? (
             <CircleSlash className="size-5 shrink-0 text-muted" aria-hidden />
@@ -511,6 +594,11 @@ function AlertsPanelInner() {
           <ol
             ref={railRef}
             aria-label="Trilho de comandas"
+            onKeyDown={onRailKeyDown}
+            onFocus={(e) => {
+              const id = (e.target as HTMLElement).closest<HTMLElement>("[data-alert]")?.dataset.alert;
+              if (id) setRailCursor(id);
+            }}
             className="comanda-rail relative grid snap-x auto-cols-[minmax(12rem,1fr)] grid-flow-col gap-2 overflow-x-auto overflow-y-hidden overscroll-x-contain pb-2 max-sm:auto-cols-[15rem] print:grid-flow-row print:grid-cols-2 print:overflow-visible"
           >
             {alerts.map((a, i) => (
@@ -518,11 +606,28 @@ function AlertsPanelInner() {
                 key={a.id}
                 alert={a}
                 index={i}
+                total={total}
+                tabIndex={a.id === tabRailId ? 0 : -1}
                 selected={a.id === effectiveOpen && folding !== a.id}
-                bandMounted={Boolean(open)}
+                bandMounted={Boolean(open || agentOpen)}
                 printing={printing}
                 focusOnMount={isRequested(a.id, "stub")}
                 onToggle={() => toggle(a.id)}
+              />
+            ))}
+            {railAgents.map((ticket, index) => (
+              <AgentStub
+                key={ticket.id}
+                ticket={ticket}
+                stale={ticket.scope !== scope}
+                index={alerts.length + index}
+                total={total}
+                tabIndex={ticket.id === tabRailId ? 0 : -1}
+                selected={ticket.id === effectiveOpen && folding !== ticket.id}
+                bandMounted={Boolean(open || agentOpen)}
+                printing={printing}
+                focusOnMount={isRequested(ticket.id, "stub")}
+                onToggle={() => toggle(ticket.id)}
               />
             ))}
             <li
@@ -533,7 +638,7 @@ function AlertsPanelInner() {
               style={{ translate: `${marker?.x ?? 0}px 0`, width: marker?.w ?? 0 }}
             />
           </ol>
-          {open && (
+          {(open || agentOpen) && (
             // keyed na comanda: trocar de comanda imprime a faixa de novo (desdobra de cima para baixo)
             <div
               className="band-collapse"
@@ -545,14 +650,25 @@ function AlertsPanelInner() {
               }}
             >
               <div>
-                <OpenBand
-                  key={open.id}
-                  alert={open}
-                  index={openIndex}
-                  motion={printing ? "print" : openedFromCollapsed ? "none" : "open"}
-                  focusOnMount={isRequested(open.id, "title")}
-                  onCollapse={() => collapse(open.id)}
-                />
+                {agentOpen ? (
+                  <AgentOpenBand
+                    key={agentOpen.id}
+                    ticket={agentOpen}
+                    stale={agentOpen.scope !== scope}
+                    motion={MOTION_CLASS[printing ? "print" : openedFromCollapsed ? "none" : "open"]}
+                    focusOnMount={isRequested(agentOpen.id, "title")}
+                    onCollapse={() => collapse(agentOpen.id)}
+                  />
+                ) : open ? (
+                  <OpenBand
+                    key={open.id}
+                    alert={open}
+                    index={openIndex}
+                    motion={printing ? "print" : openedFromCollapsed ? "none" : "open"}
+                    focusOnMount={isRequested(open.id, "title")}
+                    onCollapse={() => collapse(open.id)}
+                  />
+                ) : null}
               </div>
             </div>
           )}

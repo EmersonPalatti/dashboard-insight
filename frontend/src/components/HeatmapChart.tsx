@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { EVIDENCE_DIM } from "@/lib/evidence";
 import { fmt, WEEKDAYS } from "@/lib/format";
 import { island, useRecorteQuery } from "@/lib/query";
 import { HeatmapChart } from "echarts/charts";
@@ -7,7 +8,7 @@ import * as echarts from "echarts/core";
 import { EChart, type Tokens } from "./charts/EChart";
 import { AskAgentButton } from "./ui/AskAgentButton";
 import { EvidenceTag, useEvidence } from "./ui/EvidenceTag";
-import { Empty, ErrorState, panelFallback, PanelContent, Segmented, Skeleton } from "./ui/Panel";
+import { AsyncBody, Empty, panelFallback, PanelContent, Segmented } from "./ui/Panel";
 
 // Módulos deste gráfico: mapa de calor e visualMap (escala de cor). O resto fica em charts/EChart.tsx.
 echarts.use([HeatmapChart, VisualMapComponent]);
@@ -36,7 +37,7 @@ const CHART_H = 300;
 
 function HeatmapChartInner() {
   const [metric, setMetric] = useState<Metric>("orders");
-  const { data, error, isPending, refetch, isPlaceholderData } = useRecorteQuery("/api/heatmap");
+  const { data, error, isPending, refetch, isPlaceholderData, waking, down } = useRecorteQuery("/api/heatmap");
   // comanda aberta que aponta para horas: o mapa passa para a métrica dela, as horas ficam cheias e o resto recua
   const focus = useEvidence("heatmap");
   const focusMetric = focus?.evidence.metric;
@@ -99,7 +100,16 @@ function HeatmapChartInner() {
         series: [
           {
             type: "heatmap",
-            data: peak.size ? values.map((v) => ({ value: v, itemStyle: { opacity: peak.has(v[0]) ? 1 : 0.22 } })) : values,
+            data: peak.size
+              ? values.map((v) => ({
+                  value: v,
+                  itemStyle: {
+                    opacity: peak.has(v[0]) ? 1 : EVIDENCE_DIM,
+                    borderWidth: peak.has(v[0]) ? 2 : 1,
+                    borderColor: peak.has(v[0]) ? t.ink : t.surface,
+                  },
+                }))
+              : values,
             itemStyle: { borderColor: t.surface, borderWidth: 1 },
             emphasis: { itemStyle: { borderColor: t.ink, borderWidth: 1 } },
           },
@@ -126,38 +136,37 @@ function HeatmapChartInner() {
         </>
       }
     >
-      {isPending ? (
-        <Skeleton height={CHART_H} />
-      ) : error ? (
-        <div className="flex items-center justify-center" style={{ minHeight: CHART_H }}>
-          <ErrorState error={error} onRetry={() => refetch()} />
-        </div>
-      ) : (
-        <div className="content-reveal min-w-0">
-          {usable.length === 0 ? (
-            // Mesma altura do gráfico: trocar de estado não empurra o layout.
-            <div className="flex items-center justify-center" style={{ height: CHART_H }}>
-              <Empty>
-                {/* Empty é flex em linha: um único filho bloco mantém as duas linhas empilhadas. */}
-                <span className="block">
-                  <span className="block font-semibold text-balance text-ink">
-                    {cells.length === 0
-                      ? "Sem pedidos neste recorte para montar o mapa de calor."
-                      : `Nenhuma faixa de dia e hora chega a ${MIN_ORDERS} pedidos neste recorte.`}
-                  </span>
-                  <span className="mt-1 block text-pretty text-aux">
-                    {cells.length === 0
-                      ? "Afrouxe o período ou tire um filtro de hub, loja ou cidade para ver as faixas."
-                      : "Troque a métrica para Pedidos ou amplie o período para as taxas aparecerem."}
-                  </span>
+      <AsyncBody
+        waking={waking}
+        pending={isPending}
+        error={error}
+        down={down}
+        onRetry={() => refetch()}
+        what="o mapa dia × hora"
+        height={CHART_H}
+        empty={
+          usable.length === 0 ? (
+            <Empty>
+              <span className="block">
+                <span className="block font-semibold text-balance text-ink">
+                  {cells.length === 0
+                    ? "Sem pedidos neste recorte para montar o mapa de calor."
+                    : `Nenhuma faixa de dia e hora chega a ${MIN_ORDERS} pedidos neste recorte.`}
                 </span>
-              </Empty>
-            </div>
-          ) : (
-            <EChart option={option} height={CHART_H} ariaLabel={`Mapa de calor de ${METRICS[metric].label} por dia e hora`} />
-          )}
+                <span className="mt-1 block text-pretty text-aux">
+                  {cells.length === 0
+                    ? "Afrouxe o período ou tire um filtro de hub, loja ou cidade para ver as faixas."
+                    : "Troque a métrica para Pedidos ou amplie o período para as taxas aparecerem."}
+                </span>
+              </span>
+            </Empty>
+          ) : null
+        }
+      >
+        <div className="content-reveal min-w-0">
+          <EChart option={option} height={CHART_H} ariaLabel={`Mapa de calor de ${METRICS[metric].label} por dia e hora`} />
         </div>
-      )}
+      </AsyncBody>
     </PanelContent>
   );
 }

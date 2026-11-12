@@ -4,6 +4,67 @@
  * Sempre com guarda prefers-reduced-motion.
  */
 
+/* Primeiro foco da página: some até receber Tab. Superfície e tinta, nos dois temas. */
+.skip-link {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.skip-link:focus {
+  position: fixed;
+  top: 0.75rem;
+  left: 0.75rem;
+  z-index: 50;
+  width: auto;
+  height: auto;
+  margin: 0;
+  clip: auto;
+  overflow: visible;
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  color: var(--ink);
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+  font-weight: 600;
+  font-size: 0.85rem;
+  line-height: 1.2;
+}
+
+/* O destino do atalho recebe foco por script: o anel precisa aparecer mesmo sem :focus-visible. */
+#comandas:focus,
+#filtros:focus {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+/*
+ * Abaixo de lg o agente fica fixo no canto inferior direito. A coluna de botões
+ * da comanda aberta fica mais estreita que ele, e o foco rola para cima da faixa.
+ */
+@media (max-width: 1023px) {
+  .comanda-actions {
+    width: calc(100% - 7rem - env(safe-area-inset-right));
+    max-width: calc(100% - 7rem - env(safe-area-inset-right));
+  }
+
+  .comanda-actions :is(button, a) {
+    min-width: 0;
+    scroll-margin-bottom: calc(4.75rem + env(safe-area-inset-bottom));
+  }
+
+  html {
+    scroll-padding-bottom: calc(4.75rem + env(safe-area-inset-bottom));
+  }
+}
+
 /*
  * Folha de recorte (mobile): native <dialog> que sobe de baixo. A saída usa
  * transition-behavior allow-discrete: o dialog segue na top layer até a

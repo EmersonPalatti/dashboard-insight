@@ -38,6 +38,9 @@ class Meta(BaseModel):
     modals: list[Option]
     llm_enabled: bool
     llm_model: str | None
+    csv_max_rows: int = Field(
+        description="Teto de pedidos no CSV deste servidor. Acima disso a exportação recusa.",
+    )
 
 
 class Metrics(BaseModel):
@@ -52,6 +55,9 @@ class Metrics(BaseModel):
     measured: int = Field(description="Entregues com ciclo e sem presos: base do SLA e da mediana")
     low_sample: bool = Field(
         description="Base medida abaixo do mínimo do painel (MIN_MEASURED): SLA e ciclo mediano não são firmes",
+    )
+    volume_low_sample: bool = Field(
+        description="Menos de MIN_MEASURED pedidos no total: a variação de pedidos, GMV e ticket não é firme",
     )
     cycle_p50: float | None = Field(description="Mediana do ciclo (min), sem pedidos presos")
     cycle_p90: float | None
@@ -74,11 +80,43 @@ class Period(BaseModel):
     end: date
 
 
+HeroVerdict = Literal["within", "attention", "critical"]
+HeroKey = Literal["sla_rate", "cycle_p50", "cancel_rate"]
+
+
+class HeroReading(BaseModel):
+    """Veredito e referência de um KPI de operação. A régua é a das comandas do recorte."""
+
+    key: HeroKey
+    verdict: HeroVerdict | None = Field(
+        description=(
+            "within, attention ou critical. Null sem base firme, sem a métrica, "
+            "ou quando pedido preso impede ler o SLA. Ciclo mediano não tem veredito: não há meta da mediana."
+        ),
+    )
+    reference: str | None = Field(
+        default=None,
+        description=(
+            "Frase pt-BR, sem o veredito. Rede no período ('2,4 p.p. abaixo da rede', '3,1 min acima da rede') "
+            "ou faixa dos hubs ('hubs de 80,0% a 93,4%'). Null em amostra pequena."
+        ),
+    )
+    network_value: float | None = Field(
+        default=None,
+        description=(
+            "Valor da rede no mesmo período, na unidade da métrica. "
+            "Ausente quando o recorte já é a rede ou a base não sustenta o vão. "
+            "O minigráfico só desenha o traço se o valor cabe na escala da série."
+        ),
+    )
+
+
 class KpiResponse(BaseModel):
     period: Period
     current: Metrics
     previous_period: Period | None
     previous: Metrics | None
+    heroes: list[HeroReading]
 
 
 class TimePoint(BaseModel):
@@ -206,17 +244,45 @@ class ChatTurn(BaseModel):
     content: str = Field(max_length=2000)
 
 
+class ReadingBase(BaseModel):
+    """Base que sustenta a leitura do agente. `n` é o total de pedidos; `measured` entra no SLA e no ciclo."""
+
+    n: int
+    measured: int
+    low_sample: bool
+
+
 class ChatRequest(BaseModel):
     question: str = Field(min_length=1, max_length=800)
     filters: Filters = Field(default_factory=Filters)
     history: list[ChatTurn] = Field(default_factory=list, max_length=8)
+    engine: Literal["auto", "local"] = Field(
+        default="auto",
+        description=(
+            "local devolve a leitura pelas regras na hora e não consome a cota do LLM. "
+            "auto segue a cadeia LLM e cai nas regras."
+        ),
+    )
 
 
 class ChatResponse(BaseModel):
     answer: str
     mode: Literal["llm-tools", "llm-context", "local"]
     model: str | None
-    tools_used: list[str]
+    tools_used: list[str] = Field(description="Nomes internos das consultas. A tela usa tool_labels.")
+    title: str = Field(description="Manchete curta da comanda.")
+    diagnosis: str = Field(description="O que os números do recorte mostram, sem a ação.")
+    action: str = Field(description="Quem faz o quê, onde e quando.")
+    drilldowns: list[DrillDown] = Field(
+        default_factory=list,
+        description="Atalhos de filtro. Só entram entidades que existem neste recorte.",
+    )
+    base: ReadingBase
+    source: Literal["local", "llm"] = Field(description="Quem fechou a leitura: regras locais ou o modelo.")
+    tool_labels: list[str] = Field(
+        default_factory=list,
+        description="Consultas usadas, em português, sem o nome da função.",
+    )
 
 
 class Health(BaseModel):

@@ -35,7 +35,11 @@
   --shell-warn: #f0a93b;
   --series: #7a1e3d;
   --series-deep: #4a0f25;
-  --series-soft: #e7b3c4;
+  /* Mais claro da rampa de vinho, ainda com 3:1 sobre a superfície. */
+  --series-soft: #c07d93;
+  /* Bloco Ação. No claro é a inversão tinta/papel. O escuro troca o valor para não brilhar mais que o vermelho. */
+  --action: #1a1a1a;
+  --on-action: #ffffff;
   color-scheme: light;
 
   /*
@@ -85,7 +89,11 @@
   --on-wine: #e6c3cf;
   --series: #e0789a;
   --series-deep: #f4b8cb;
-  --series-soft: #5c2337;
+  /* Ainda o degrau mais escuro da rampa, claro o bastante para 3:1 sobre a superfície. */
+  --series-soft: #a3516c;
+  /* Âncora da comanda: vinho legível, mais escuro que o vermelho crítico (#ff5d50). */
+  --action: #925a6e;
+  --on-action: #ffffff;
   color-scheme: dark;
 }
 
@@ -373,4 +381,53 @@ button.ticket:focus-visible {
   .animate-pulse {
     animation: none !important;
   }
+}
+
+/*
+ * O bloco Ação da comanda era bg-ink. No escuro --ink é quase branco e o
+ * retângulo fica mais claro que o botão vermelho. Estes tokens trocam só esse
+ * bloco (classe action-block). O rótulo "Ação"
+ * perde a opacidade no escuro para o texto continuar legível sobre o vinho.
+ */
+.action-block {
+  background-color: var(--action);
+  color: var(--on-action);
+}
+
+:root[data-theme="dark"] .action-block > p:first-child {
+  opacity: 1;
+}
+
+/* Atalho de teclado dos gráficos: some até receber foco, aí vira um botão.
+   Fora de camada para ganhar do btn-ghost, que também define tamanho. */
+.chart-key {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+.chart-key:focus,
+.chart-key:focus-visible {
+  position: static;
+  width: auto;
+  height: auto;
+  padding: 0.375rem 0.75rem;
+  margin: 0;
+  overflow: visible;
+  clip: auto;
+  clip-path: none;
+  white-space: normal;
+  border-width: 1px;
+}
+
+/* O ranking é o destino do atalho do gráfico de lojas. O id sai do título na casca. */
+#painel-ranking-do-recorte {
+  scroll-margin-top: 8rem;
 }

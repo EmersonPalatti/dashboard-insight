@@ -279,7 +279,7 @@ export function MultiSelect<V extends string | number>({
           }`}
         >
           {searchable && (
-            <div className="mb-1 flex items-center gap-1.5 rounded-[4px] border border-rule px-2 py-1">
+            <div className="mb-1 flex items-center gap-1.5 rounded-[4px] border border-rule px-2 py-1 focus-within:border-ink max-lg:min-h-11">
               <Search className="size-3.5 text-muted" aria-hidden />
               <input
                 ref={inputRef}
@@ -296,7 +296,7 @@ export function MultiSelect<V extends string | number>({
                   setActiveKey(null);
                 }}
                 placeholder={`Buscar ${label.toLowerCase()}`}
-                className="w-full bg-transparent text-body outline-none placeholder:text-muted"
+                className="w-full bg-transparent text-body placeholder:text-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
               />
             </div>
           )}
@@ -308,7 +308,7 @@ export function MultiSelect<V extends string | number>({
             aria-label={label}
             tabIndex={searchable ? -1 : 0}
             aria-activedescendant={searchable ? undefined : activeDescendant}
-            className="max-h-72 overflow-auto outline-none"
+            className="max-h-72 overflow-auto focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ink"
           >
             {visible.map((o, i) => {
               const on = selected.has(o.value);
@@ -323,7 +323,7 @@ export function MultiSelect<V extends string | number>({
                     setActiveKey(String(o.value));
                     toggle(o.value);
                   }}
-                  className={`flex w-full items-center gap-2 rounded-[4px] px-2 py-1.5 text-body font-medium transition-colors duration-(--duration-quick) hover:bg-sunken ${
+                  className={`flex w-full items-center gap-2 rounded-[4px] px-2 py-1.5 text-body font-medium transition-colors duration-(--duration-quick) hover:bg-sunken max-lg:min-h-11 ${
                     active ? "bg-sunken outline outline-1 -outline-offset-1 outline-ink" : ""
                   }`}
                 >
@@ -356,7 +356,7 @@ export function MultiSelect<V extends string | number>({
             <p className="px-2 py-1.5 text-pretty text-meta text-muted">+{ordered.length - maxVisible} opções. Refine a busca.</p>
           )}
           {value.length > 0 && (
-            <button type="button" onClick={clear} className="btn mt-1 w-full justify-center text-muted hover:text-ink">
+            <button type="button" onClick={clear} className="btn mt-1 w-full justify-center text-muted hover:text-ink max-lg:min-h-11">
               <X className="size-3.5" aria-hidden /> Limpar {label.toLowerCase()}
             </button>
           )}

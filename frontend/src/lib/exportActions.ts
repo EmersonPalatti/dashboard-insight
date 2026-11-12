@@ -9,6 +9,7 @@ import { useEffect, useRef, useState } from "react";
 import { apiGet, apiUrl, type AlertsResponse, type KpiResponse } from "@/lib/api/client";
 import { $filters, shareUrl, toQuery, type Recorte } from "@/lib/filters";
 import { fmt } from "@/lib/format";
+import { useMeta, useRecorteQuery } from "@/lib/query";
 
 /** O estado "copiado" (link e briefing) dura 1,8 s e volta sozinho ao normal. */
 export const FEEDBACK_MS = 1800;
@@ -93,16 +94,56 @@ export function csvHref(filters: Recorte): string {
 
 export type CsvState = "idle" | "busy" | "error";
 
+/** Acima disto o arquivo pede um segundo clique. O teto real vem de meta.csv_max_rows. */
+const CSV_LARGE_ROWS = 10_000;
+
+function describeCsv(orders: number | null, cap: number | null, armed: boolean, pending: boolean): string {
+  const base = "Uma linha por pedido, com o recorte atual.";
+  if (orders == null) return pending ? `${base} Contando os pedidos deste recorte…` : base;
+  const n = fmt.int(orders);
+  if (cap != null && orders > cap) {
+    return `Este recorte tem ${n} pedidos, acima do limite de ${fmt.int(cap)}. Afine o filtro para exportar.`;
+  }
+  if (orders > CSV_LARGE_ROWS) {
+    const limit = cap != null ? ` O servidor aceita até ${fmt.int(cap)}.` : "";
+    return armed
+      ? `Arquivo grande: ${n} pedidos.${limit} Clique de novo para baixar.`
+      : `Este recorte tem ${n} pedidos. O arquivo pode ser grande.${limit}`;
+  }
+  const limit = cap != null ? ` Limite de ${fmt.int(cap)}.` : "";
+  return `${base} ${n} pedidos neste recorte.${limit}`;
+}
+
 /**
- * Baixa o CSV do recorte. Se a API recusar (recorte grande demais, cota),
+ * Baixa o CSV do recorte. Acima do teto do servidor o clique não baixa.
+ * Entre 10 mil e o teto, o primeiro clique só arma o aviso. Se a API recusar,
  * devolve a mensagem em pt-BR em vez de salvar o JSON de erro como arquivo.
  */
 export function useCsvDownload() {
   const filters = useStore($filters);
+  const kpis = useRecorteQuery("/api/kpis");
+  const meta = useMeta();
+  const orders = kpis.isPlaceholderData ? null : (kpis.data?.current.orders ?? null);
+  const cap = meta.data?.csv_max_rows ?? null;
+  const pending = orders == null && (kpis.isPending || kpis.waking || kpis.isPlaceholderData);
+  const blocked = orders != null && cap != null && orders > cap;
+  const large = orders != null && orders > CSV_LARGE_ROWS && !blocked;
   const [state, setState] = useState<CsvState>("idle");
   const [message, setMessage] = useState<string | null>(null);
+  const [armed, setArmed] = useState(false);
+
+  useEffect(() => {
+    setArmed(false);
+    setMessage(null);
+    setState("idle");
+  }, [filters]);
 
   const download = async (): Promise<boolean> => {
+    if (blocked) return false;
+    if (large && !armed) {
+      setArmed(true);
+      return false;
+    }
     setState("busy");
     setMessage(null);
     try {
@@ -129,6 +170,7 @@ export function useCsvDownload() {
       anchor.remove();
       URL.revokeObjectURL(url);
       setState("idle");
+      setArmed(false);
       return true;
     } catch {
       setState("error");
@@ -137,13 +179,24 @@ export function useCsvDownload() {
     }
   };
 
+  const title =
+    state === "busy"
+      ? "Exportando CSV…"
+      : state === "error"
+        ? "Não deu para exportar"
+        : blocked
+          ? "CSV acima do limite"
+          : armed
+            ? "Baixar mesmo assim"
+            : EXPORT_ACTIONS.csv.title;
+
   return {
     download,
     busy: state === "busy",
     error: state === "error",
-    title:
-      state === "busy" ? "Exportando CSV…" : state === "error" ? "Não deu para exportar" : EXPORT_ACTIONS.csv.title,
-    detail: message ?? EXPORT_ACTIONS.csv.detail,
+    blocked,
+    title,
+    detail: message ?? describeCsv(orders, cap, armed, pending),
   };
 }
 

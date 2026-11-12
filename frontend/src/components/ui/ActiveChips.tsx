@@ -18,7 +18,7 @@ export function ActiveChips({ chips }: { chips: Chip[] }) {
             type="button"
             aria-label={`Remover ${c.dim}: ${c.value}`}
             onClick={c.remove}
-            className="inline-flex size-6 shrink-0 items-center justify-center rounded-[4px] text-muted transition-colors duration-(--duration-quick) hover:bg-sunken hover:text-ink"
+            className="inline-flex size-6 shrink-0 items-center justify-center rounded-[4px] text-muted transition-colors duration-(--duration-quick) hover:bg-sunken hover:text-ink max-lg:size-11"
           >
             <X className="size-3.5" aria-hidden />
           </button>

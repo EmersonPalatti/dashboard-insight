@@ -122,9 +122,11 @@ function FilterBarInner() {
               }
             >
               <div className="grid gap-5">
-                <div className="grid gap-2">
-                  <p className="text-aux font-semibold text-ink">Período</p>
-                  <PeriodFields m={m} variant="sheet" />
+                <div className="grid min-w-0 gap-2">
+                  <p id="periodo-titulo" className="text-aux font-semibold text-ink">
+                    Período
+                  </p>
+                  <PeriodFields m={m} variant="sheet" labelId="periodo-titulo" />
                 </div>
                 <div className="grid gap-1.5">
                   <PlaceFields m={m} />
@@ -137,7 +139,7 @@ function FilterBarInner() {
                     <ActiveChips chips={m.chips} />
                   )}
                   {m.active > 0 && (
-                    <button type="button" className="btn-ghost justify-self-start" onClick={resetFilters}>
+                    <button type="button" className="btn-ghost min-h-11 justify-self-start px-3" onClick={resetFilters}>
                       <RotateCcw className="size-3.5" aria-hidden /> Limpar recorte
                     </button>
                   )}

@@ -1,7 +1,7 @@
 import { useStore } from "@nanostores/react";
 import { CalendarCheck } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { $filters, patchFilters } from "@/lib/filters";
+import { $filters, $view, patchFilters, setView, type TrendGrain, type TrendView } from "@/lib/filters";
 import { fmt } from "@/lib/format";
 import { island, useRecorteQuery } from "@/lib/query";
 import { BarChart, LineChart } from "echarts/charts";
@@ -9,7 +9,7 @@ import { DataZoomComponent, LegendComponent } from "echarts/components";
 import * as echarts from "echarts/core";
 import { EChart, type ECInstance, type Tokens } from "./charts/EChart";
 import { AskAgentButton } from "./ui/AskAgentButton";
-import { Empty, ErrorState, panelFallback, PanelContent, Segmented, Skeleton } from "./ui/Panel";
+import { AsyncBody, Empty, panelFallback, PanelContent, Segmented } from "./ui/Panel";
 
 // Módulos deste gráfico: barras, linhas, zoom (interno e barra) e legenda. O resto fica em charts/EChart.tsx.
 echarts.use([BarChart, LineChart, DataZoomComponent, LegendComponent]);
@@ -17,25 +17,22 @@ echarts.use([BarChart, LineChart, DataZoomComponent, LegendComponent]);
 /** Altura do gráfico e do skeleton: a mesma nos três estados, para o layout não pular. */
 const CHART_H = 340;
 
-type Grain = "hour" | "day" | "week";
-type View = "volume" | "sla" | "cancel";
-
-const GRAIN_LABEL: Record<Grain, string> = { hour: "Hora", day: "Dia", week: "Semana" };
-const VIEW_LABEL: Record<View, string> = { volume: "Volume", sla: "SLA e ciclo", cancel: "Cancelamento" };
+const GRAIN_LABEL: Record<TrendGrain, string> = { hour: "Hora", day: "Dia", week: "Semana" };
+const VIEW_LABEL: Record<TrendView, string> = { volume: "Volume", sla: "SLA e ciclo", cancel: "Cancelamento" };
 // Cauda da pergunta ao agente por métrica: "picos" e "cancelamento" caem nas regras certas do agente local.
-const ASK_TAIL: Record<View, string> = {
+const ASK_TAIL: Record<TrendView, string> = {
   volume: "onde estão os picos e o que fazer?",
   sla: "quando piora e o que fazer?",
   cancel: "onde estão os picos e o que fazer?",
 };
 
 function TrendChartInner() {
-  const [grain, setGrain] = useState<Grain>("day");
-  const [view, setView] = useState<View>("volume");
+  const grain = useStore($view).grain;
+  const view = useStore($view).trend;
   const [zoom, setZoom] = useState<{ start: string; end: string } | null>(null);
   const filters = useStore($filters);
   const chart = useRef<ECInstance | null>(null);
-  const { data, error, isPending, refetch, isPlaceholderData } = useRecorteQuery("/api/timeseries", { grain });
+  const { data, error, isPending, refetch, isPlaceholderData, waking, down } = useRecorteQuery("/api/timeseries", { grain });
   const points = data ?? [];
 
   // O zoom pertence à faixa que está na tela. Recorte, granularidade, métrica ou
@@ -181,14 +178,14 @@ function TrendChartInner() {
           <Segmented
             label="Métrica"
             value={view}
-            onChange={setView}
-            options={(Object.keys(VIEW_LABEL) as View[]).map((value) => ({ value, label: VIEW_LABEL[value] }))}
+            onChange={(value) => setView({ trend: value })}
+            options={(Object.keys(VIEW_LABEL) as TrendView[]).map((value) => ({ value, label: VIEW_LABEL[value] }))}
           />
           <Segmented
             label="Granularidade"
             value={grain}
-            onChange={setGrain}
-            options={(Object.keys(GRAIN_LABEL) as Grain[]).map((value) => ({ value, label: GRAIN_LABEL[value] }))}
+            onChange={(value) => setView({ grain: value })}
+            options={(Object.keys(GRAIN_LABEL) as TrendGrain[]).map((value) => ({ value, label: GRAIN_LABEL[value] }))}
           />
           <AskAgentButton
             subject={`a tendência de ${VIEW_LABEL[view].toLowerCase()}`}
@@ -197,17 +194,16 @@ function TrendChartInner() {
         </>
       }
     >
-      {isPending ? (
-        <Skeleton height={CHART_H} />
-      ) : error ? (
-        <div className="flex items-center justify-center" style={{ minHeight: CHART_H }}>
-          <ErrorState error={error} onRetry={() => refetch()} />
-        </div>
-      ) : points.length === 0 ? (
-        <div className="flex items-center justify-center" style={{ minHeight: CHART_H }}>
-          <Empty />
-        </div>
-      ) : (
+      <AsyncBody
+        waking={waking}
+        pending={isPending}
+        error={error}
+        down={down}
+        onRetry={() => refetch()}
+        what="a tendência"
+        height={CHART_H}
+        empty={points.length === 0 ? <Empty /> : null}
+      >
         <div className="content-reveal min-w-0">
           <EChart
             option={option}
@@ -217,7 +213,7 @@ function TrendChartInner() {
             ariaLabel={`Série ${VIEW_LABEL[view]} por ${GRAIN_LABEL[grain].toLowerCase()} no recorte`}
           />
         </div>
-      )}
+      </AsyncBody>
     </PanelContent>
   );
 }

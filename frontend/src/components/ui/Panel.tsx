@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, type KeyboardEvent, type ReactNode } from "react";
 import { LoaderCircle, TriangleAlert } from "lucide-react";
+import { queryClient } from "@/lib/query";
 
 interface PanelContentProps {
   /** Ações à direita do título (Segmented, Pergunte ao agente…). */
@@ -67,19 +68,101 @@ export function Skeleton({ height = 280 }: { height?: number }) {
   return <div className="skeleton w-full" style={{ height }} aria-hidden />;
 }
 
-export function ErrorState({ error, onRetry }: { error: unknown; onRetry?: () => void }) {
-  const message = error instanceof Error ? error.message : "Falha ao consultar a API";
+/** Espera do cold start. A frase é a mesma do cabeçalho quando o servidor ainda não respondeu. */
+export function WakingState({ height }: { height?: number }) {
   return (
-    <div className="flex min-h-32 flex-col items-center justify-center gap-2 text-center transition-opacity duration-(--duration-fast) starting:opacity-0 motion-reduce:transition-none">
-      <TriangleAlert className="size-5 text-crit" aria-hidden />
-      <p className="label text-pretty">Não deu para carregar: {message}</p>
-      {onRetry && (
-        <button type="button" className="btn-ghost" onClick={onRetry}>
+    <div
+      className="flex flex-col items-center justify-center px-4 text-center"
+      style={height ? { minHeight: height } : undefined}
+      role="status"
+    >
+      <p className="label text-pretty">Acordando o servidor (até ~40 s)…</p>
+    </div>
+  );
+}
+
+export function ErrorState({
+  error,
+  onRetry,
+  what = "estes dados",
+  down = false,
+}: {
+  error: unknown;
+  onRetry?: () => void;
+  /** O que não carregou, em pt-BR, no meio da frase ("os indicadores"). */
+  what?: string;
+  /** O health esgotou as tentativas: o problema é o servidor, não este painel. */
+  down?: boolean;
+}) {
+  const detail = error instanceof Error ? error.message.trim() : "";
+  const headline = down
+    ? `O servidor não respondeu, então não deu para carregar ${what}. Espere um pouco e tente de novo.`
+    : `Não deu para carregar ${what}. Tente de novo.`;
+  const retry = () => {
+    if (down) {
+      void queryClient.refetchQueries({ queryKey: ["/api/health"] });
+      return;
+    }
+    onRetry?.();
+  };
+  return (
+    <div className="flex min-h-32 flex-col items-center justify-center gap-2 px-4 text-center transition-opacity duration-(--duration-fast) starting:opacity-0 motion-reduce:transition-none">
+      <TriangleAlert className="size-5 text-ink" aria-hidden />
+      <p className="max-w-md text-pretty text-aux text-ink">{headline}</p>
+      {(onRetry || down) && (
+        <button type="button" className="btn-ghost" onClick={retry}>
           Tentar de novo
         </button>
       )}
+      {detail && (
+        <details className="max-w-md text-left">
+          <summary className="cursor-pointer text-meta text-muted">Detalhe técnico</summary>
+          <p className="mt-1 text-pretty text-meta break-all text-muted">{detail}</p>
+        </details>
+      )}
     </div>
   );
+}
+
+/** Espera, esqueleto, erro ou vazio, na mesma altura do gráfico carregado. */
+export function AsyncBody({
+  waking,
+  pending,
+  error,
+  down = false,
+  onRetry,
+  what,
+  height,
+  empty = null,
+  children,
+}: {
+  waking: boolean;
+  pending: boolean;
+  error: unknown;
+  down?: boolean;
+  onRetry?: () => void;
+  what: string;
+  height: number;
+  empty?: ReactNode | null;
+  children: ReactNode;
+}) {
+  if (waking) return <WakingState height={height} />;
+  if (pending) return <Skeleton height={height} />;
+  if (error) {
+    return (
+      <div className="flex items-center justify-center" style={{ minHeight: height }}>
+        <ErrorState error={error} onRetry={onRetry} what={what} down={down} />
+      </div>
+    );
+  }
+  if (empty) {
+    return (
+      <div className="flex items-center justify-center" style={{ minHeight: height }}>
+        {empty}
+      </div>
+    );
+  }
+  return children;
 }
 
 export function Empty({ children = "Sem dados no recorte." }: { children?: ReactNode }) {

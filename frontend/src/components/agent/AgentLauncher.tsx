@@ -66,7 +66,7 @@ export function AgentAskButton() {
       onKeyDown={onKeyDown}
       onPointerEnter={prefetchAgentChat}
       onFocus={prefetchAgentChat}
-      className={`agent-ask flex h-10 min-w-0 items-center gap-2 rounded-card border px-3 text-left text-body whitespace-nowrap transition-colors duration-(--duration-quick) @6xl:w-[20.5rem] ${
+      className={`agent-ask flex h-10 min-w-0 items-center gap-2 rounded-card border px-3 text-left text-body whitespace-nowrap transition-colors duration-(--duration-quick) @6xl:w-[22rem] ${
         open ? "border-series bg-sunken" : "border-series bg-surface hover:bg-sunken"
       }`}
     >
@@ -74,11 +74,11 @@ export function AgentAskButton() {
       {/* estreito (painel lateral aberto, janela menor): só "Agente"; largo: o convite, ou "Conversa aberta" */}
       <span className="min-w-0 flex-1 truncate font-medium text-ink @6xl:hidden">Agente</span>
       <span className={`hidden min-w-0 flex-1 truncate @6xl:inline ${open ? "text-ink" : "text-muted"}`}>
-        {open ? "Conversa aberta" : "Pergunte sobre este recorte…"}
+        {open ? "Conversa aberta" : "Pergunte ao agente sobre este recorte…"}
       </span>
       <ActivityDot activity={activity} />
       {activity !== "idle" && <span className="sr-only">: {ACTIVITY_TEXT[activity]}</span>}
-      <kbd aria-hidden className="hidden shrink-0 rounded-tick border border-rule px-1 font-sans text-meta text-muted @6xl:inline">
+      <kbd aria-hidden className="shrink-0 rounded-tick border border-rule px-1 font-sans text-meta text-muted">
         {shortcutLabel()}
       </kbd>
     </button>
@@ -95,13 +95,17 @@ export function AgentFab() {
       data-agent-launcher
       aria-controls="agente"
       aria-expanded={open}
+      aria-keyshortcuts="Control+K Meta+K"
       onClick={toggleAgent}
       onPointerEnter={prefetchAgentChat}
       onFocus={prefetchAgentChat}
-      className="agent-fab no-print btn fixed right-4 bottom-[calc(1rem+env(safe-area-inset-bottom))] z-30 min-h-12 border border-wine-raised bg-wine px-4 text-white hover:bg-wine-raised"
+      className="agent-fab no-print btn fixed right-4 bottom-[calc(1rem+env(safe-area-inset-bottom))] z-30 min-h-12 border border-wine-raised bg-wine px-4 text-white hover:bg-wine-raised focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-on-wine"
     >
       <Bot className="size-4 text-on-wine" aria-hidden />
-      Agente
+      <span className="flex flex-col items-start leading-none">
+        <span>Agente</span>
+        <kbd className="border-0 bg-transparent p-0 font-sans text-meta font-medium text-on-wine">{shortcutLabel()}</kbd>
+      </span>
       <ActivityDot activity={activity} onWine />
       {activity !== "idle" && <span className="sr-only">: {ACTIVITY_TEXT[activity]}</span>}
     </button>

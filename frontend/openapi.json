@@ -2127,6 +2127,11 @@
             "title": "Low Sample",
             "description": "Base medida abaixo do mínimo do painel (MIN_MEASURED): SLA e ciclo mediano não são firmes"
           },
+          "volume_low_sample": {
+            "type": "boolean",
+            "title": "Volume Low Sample",
+            "description": "Menos de MIN_MEASURED pedidos no total: a variação de pedidos, GMV e ticket não é firme"
+          },
           "cycle_p50": {
             "anyOf": [
               {
@@ -2315,6 +2320,7 @@
           "cancel_rate",
           "measured",
           "low_sample",
+          "volume_low_sample",
           "cycle_p50",
           "cycle_p90",
           "sla_rate",
@@ -2397,6 +2403,16 @@
             "type": "array",
             "maxItems": 8,
             "title": "History"
+          },
+          "engine": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "local"
+            ],
+            "title": "Engine",
+            "description": "local devolve a leitura pelas regras na hora e não consome a cota do LLM. auto segue a cadeia LLM e cai nas regras.",
+            "default": "auto"
           }
         },
         "type": "object",
@@ -2436,7 +2452,51 @@
               "type": "string"
             },
             "type": "array",
-            "title": "Tools Used"
+            "title": "Tools Used",
+            "description": "Nomes internos das consultas. A tela usa tool_labels."
+          },
+          "title": {
+            "type": "string",
+            "title": "Title",
+            "description": "Manchete curta da comanda."
+          },
+          "diagnosis": {
+            "type": "string",
+            "title": "Diagnosis",
+            "description": "O que os números do recorte mostram, sem a ação."
+          },
+          "action": {
+            "type": "string",
+            "title": "Action",
+            "description": "Quem faz o quê, onde e quando."
+          },
+          "drilldowns": {
+            "items": {
+              "$ref": "#/components/schemas/DrillDown"
+            },
+            "type": "array",
+            "title": "Drilldowns",
+            "description": "Atalhos de filtro. Só entram entidades que existem neste recorte."
+          },
+          "base": {
+            "$ref": "#/components/schemas/ReadingBase"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "local",
+              "llm"
+            ],
+            "title": "Source",
+            "description": "Quem fechou a leitura: regras locais ou o modelo."
+          },
+          "tool_labels": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Tool Labels",
+            "description": "Consultas usadas, em português, sem o nome da função."
           }
         },
         "type": "object",
@@ -2444,7 +2504,12 @@
           "answer",
           "mode",
           "model",
-          "tools_used"
+          "tools_used",
+          "title",
+          "diagnosis",
+          "action",
+          "base",
+          "source"
         ],
         "title": "ChatResponse"
       },
@@ -2795,6 +2860,67 @@
         ],
         "title": "HeatCell"
       },
+      "HeroReading": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "enum": [
+              "sla_rate",
+              "cycle_p50",
+              "cancel_rate"
+            ],
+            "title": "Key"
+          },
+          "verdict": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "within",
+                  "attention",
+                  "critical"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verdict",
+            "description": "within, attention ou critical. Null sem base firme, sem a métrica, ou quando pedido preso impede ler o SLA. Ciclo mediano não tem veredito: não há meta da mediana."
+          },
+          "reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference",
+            "description": "Frase pt-BR, sem o veredito. Rede no período ('2,4 p.p. abaixo da rede', '3,1 min acima da rede') ou faixa dos hubs ('hubs de 80,0% a 93,4%'). Null em amostra pequena."
+          },
+          "network_value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Network Value",
+            "description": "Valor da rede no mesmo período, na unidade da métrica. Ausente quando o recorte já é a rede ou a base não sustenta o vão. O minigráfico só desenha o traço se o valor cabe na escala da série."
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "verdict"
+        ],
+        "title": "HeroReading",
+        "description": "Veredito e referência de um KPI de operação. A régua é a das comandas do recorte."
+      },
       "KpiResponse": {
         "properties": {
           "period": {
@@ -2822,6 +2948,13 @@
                 "type": "null"
               }
             ]
+          },
+          "heroes": {
+            "items": {
+              "$ref": "#/components/schemas/HeroReading"
+            },
+            "type": "array",
+            "title": "Heroes"
           }
         },
         "type": "object",
@@ -2829,7 +2962,8 @@
           "period",
           "current",
           "previous_period",
-          "previous"
+          "previous",
+          "heroes"
         ],
         "title": "KpiResponse"
       },
@@ -2913,6 +3047,11 @@
               }
             ],
             "title": "Llm Model"
+          },
+          "csv_max_rows": {
+            "type": "integer",
+            "title": "Csv Max Rows",
+            "description": "Teto de pedidos no CSV deste servidor. Acima disso a exportação recusa."
           }
         },
         "type": "object",
@@ -2929,7 +3068,8 @@
           "channel_types",
           "modals",
           "llm_enabled",
-          "llm_model"
+          "llm_model",
+          "csv_max_rows"
         ],
         "title": "Meta"
       },
@@ -2982,6 +3122,11 @@
             "type": "boolean",
             "title": "Low Sample",
             "description": "Base medida abaixo do mínimo do painel (MIN_MEASURED): SLA e ciclo mediano não são firmes"
+          },
+          "volume_low_sample": {
+            "type": "boolean",
+            "title": "Volume Low Sample",
+            "description": "Menos de MIN_MEASURED pedidos no total: a variação de pedidos, GMV e ticket não é firme"
           },
           "cycle_p50": {
             "anyOf": [
@@ -3130,6 +3275,7 @@
           "cancel_rate",
           "measured",
           "low_sample",
+          "volume_low_sample",
           "cycle_p50",
           "cycle_p90",
           "sla_rate",
@@ -3387,6 +3533,30 @@
           "end"
         ],
         "title": "Period"
+      },
+      "ReadingBase": {
+        "properties": {
+          "n": {
+            "type": "integer",
+            "title": "N"
+          },
+          "measured": {
+            "type": "integer",
+            "title": "Measured"
+          },
+          "low_sample": {
+            "type": "boolean",
+            "title": "Low Sample"
+          }
+        },
+        "type": "object",
+        "required": [
+          "n",
+          "measured",
+          "low_sample"
+        ],
+        "title": "ReadingBase",
+        "description": "Base que sustenta a leitura do agente. `n` é o total de pedidos; `measured` entra no SLA e no ciclo."
       },
       "TimePoint": {
         "properties": {
