@@ -41,8 +41,8 @@ function ActivityDot({ activity, onWine = false }: { activity: AgentActivity; on
  * Entrada do agente na barra de filtros (lg e acima). Tem cara de campo de
  * pergunta, porque é isso que o agente faz: responde sobre o recorte na tela.
  * É um botão: clicar (ou Ctrl K) abre o painel; começar a digitar aqui abre o
- * painel com a letra já no campo. Largo, mostra o convite; estreito (painel
- * lateral aberto ou janela menor, pela container query da barra), vira "Agente".
+ * painel com a letra já no campo. O slot cede largura antes do nome do lugar:
+ * abaixo de 22rem o rótulo visível é "Agente" (o nome acessível continua inteiro).
  */
 export function AgentAskButton() {
   const open = useStore($agentOpen);
@@ -66,15 +66,15 @@ export function AgentAskButton() {
       onKeyDown={onKeyDown}
       onPointerEnter={prefetchAgentChat}
       onFocus={prefetchAgentChat}
-      className={`agent-ask flex h-10 min-w-0 items-center gap-2 rounded-card border px-3 text-left text-body whitespace-nowrap transition-colors duration-(--duration-quick) @6xl:w-[22rem] ${
+      className={`agent-ask @container/ask flex h-10 w-full min-w-0 items-center gap-2 rounded-card border px-3 text-left text-body whitespace-nowrap transition-colors duration-(--duration-quick) ${
         open ? "border-series bg-sunken" : "border-series bg-surface hover:bg-sunken"
       }`}
     >
       <Bot className="size-4 shrink-0 text-series" aria-hidden />
-      {/* estreito (painel lateral aberto, janela menor): só "Agente"; largo: o convite, ou "Conversa aberta" */}
-      <span className="min-w-0 flex-1 truncate font-medium text-ink @6xl:hidden">Agente</span>
-      <span className={`hidden min-w-0 flex-1 truncate @6xl:inline ${open ? "text-ink" : "text-muted"}`}>
-        {open ? "Conversa aberta" : "Pergunte ao agente sobre este recorte…"}
+      {/* o slot estreito (a barra cedeu a largura ao lugar) mostra "Agente"; 18rem+ de miolo: o convite */}
+      <span className="min-w-0 flex-1 truncate font-medium text-ink @min-[18rem]/ask:hidden">Agente</span>
+      <span className={`hidden min-w-0 flex-1 truncate @min-[18rem]/ask:inline ${open ? "text-ink" : "text-muted"}`}>
+        {open ? "Conversa aberta" : "Pergunte sobre este recorte…"}
       </span>
       <ActivityDot activity={activity} />
       {activity !== "idle" && <span className="sr-only">: {ACTIVITY_TEXT[activity]}</span>}

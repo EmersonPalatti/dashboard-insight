@@ -8,7 +8,7 @@ import { useStore } from "@nanostores/react";
 import { ChevronDown, ChevronUp, CircleSlash, Filter, LineChart, MessageSquareText, ShieldCheck } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
 import type { Alert } from "@/lib/api/client";
-import { $agentComandas, askAgentAbout, scopeKey } from "@/lib/agentBridge";
+import { $railAgentComandas, askAgentAbout, openComandaCount, scopeKey } from "@/lib/agentBridge";
 import { AgentOpenBand, AgentStub } from "./agent/AgentComanda";
 import { $evidence, EVIDENCE_ANCHOR, showEvidence } from "@/lib/evidence";
 import { $filters, applyDrilldown } from "@/lib/filters";
@@ -353,7 +353,7 @@ function AlertsSkeleton() {
 function AlertsPanelInner() {
   const { data, error, isPending, refetch, isPlaceholderData } = useRecorteQuery("/api/alerts");
   const alerts = data?.alerts ?? [];
-  const railAgents = useStore($agentComandas);
+  const railAgents = useStore($railAgentComandas);
   const filters = useStore($filters);
   const scope = scopeKey(filters);
   // undefined = o operador ainda não escolheu (abre a primeira); null = recolheu todas
@@ -525,7 +525,7 @@ function AlertsPanelInner() {
 
   // texto anunciado por leitor de tela quando o trilho muda (sem anunciar a lista inteira)
   const noOrders = data?.orders === 0;
-  const total = alerts.length + railAgents.length;
+  const total = openComandaCount(alerts.length, railAgents.length);
   const countText = total === 1 ? "1 comanda aberta" : `${total} comandas abertas`;
   const highText = high === 0 ? "nenhuma crítica" : high === 1 ? "1 crítica" : `${high} críticas`;
   const mediumText = medium === 0 ? "" : ` · ${medium} em atenção`;

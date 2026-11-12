@@ -2,6 +2,7 @@ import { Check, ChevronDown, Search, X } from "lucide-react";
 import {
   useEffect,
   useId,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -56,12 +57,17 @@ export function MultiSelect<V extends string | number>({
     setWasOpen(open);
     setClosing(!open);
   }
+  const [yieldLabel, setYieldLabel] = useState(false);
   const [term, setTerm] = useState("");
   // Guarda a opção ativa pelo valor (não pelo índice): ao marcar, a opção sobe
   // para o topo (selecionados primeiro) e o foco do teclado deve acompanhá-la.
   const [activeKey, setActiveKey] = useState<string | null>(null);
   const root = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const rowRef = useRef<HTMLSpanElement>(null);
+  const labelMeasure = useRef<HTMLSpanElement>(null);
+  const valueMeasure = useRef<HTMLSpanElement>(null);
+  // O rótulo mudo ("Hub") sai quando o nome não cabe. O nome acessível continua nos dois ids.
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
   const uid = useId();
@@ -231,6 +237,22 @@ export function MultiSelect<V extends string | number>({
 
   const activeDescendant = activeIdx >= 0 ? optionId(activeIdx) : undefined;
 
+  // Compara as larguras inteiras (não as cortadas): se rótulo + valor não cabem, o rótulo sai.
+  useLayoutEffect(() => {
+    const row = rowRef.current;
+    const labelEl = labelMeasure.current;
+    const valueEl = valueMeasure.current;
+    if (!row || !labelEl || !valueEl) return;
+    const check = () => {
+      const gap = 6;
+      setYieldLabel(labelEl.offsetWidth + valueEl.offsetWidth + gap > row.clientWidth + 1);
+    };
+    check();
+    const ro = new ResizeObserver(check);
+    ro.observe(row);
+    return () => ro.disconnect();
+  }, [summary, label]);
+
   return (
     <div ref={root} className="relative" onBlur={onRootBlur}>
       <button
@@ -247,8 +269,12 @@ export function MultiSelect<V extends string | number>({
           value.length ? "border-ink bg-surface" : "border-rule bg-surface hover:border-muted"
         }`}
       >
-        <span className="flex min-w-0 flex-1 items-baseline gap-1.5">
-          <span id={labelId} className="shrink-0 text-muted">
+        <span ref={rowRef} className="relative flex min-w-0 flex-1 items-baseline gap-1.5 overflow-hidden">
+          <span aria-hidden className="pointer-events-none invisible absolute top-0 left-0 whitespace-nowrap">
+            <span ref={labelMeasure} className="inline-block">{label}</span>
+            <span ref={valueMeasure} className="inline-block">{summary}</span>
+          </span>
+          <span id={labelId} className={yieldLabel ? "sr-only" : "shrink-0 text-muted"}>
             {label}
           </span>
           <span id={summaryId} className="min-w-0 flex-1 truncate text-left text-ink">

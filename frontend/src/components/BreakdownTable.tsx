@@ -43,6 +43,12 @@ const ASK_SUBJECT: Record<Tab, string> = {
 
 const col = createColumnHelper<BreakdownRow>();
 
+function sortPhrase(dir: false | "asc" | "desc") {
+  if (dir === "asc") return "ordem crescente";
+  if (dir === "desc") return "ordem decrescente";
+  return "sem ordem";
+}
+
 const HEADER_HELP: Partial<Record<string, { term: string; definition: string }>> = {
   gmv: { term: "GMV", definition: GLOSS.gmv },
   subsidy: { term: "Subsídio", definition: GLOSS.subsidy },
@@ -178,7 +184,7 @@ function BreakdownTableInner() {
         <div
           id="ranking-recorte"
           tabIndex={-1}
-          className="content-reveal relative max-h-[420px] min-w-0 scroll-mt-32 overflow-auto rounded-tick border border-rule"
+          className="content-reveal relative max-h-[420px] min-w-0 overflow-auto rounded-tick border border-rule"
         >
           <table className="w-full border-collapse text-aux tabular-nums">
             <thead className="sticky top-0 z-10 bg-sunken">
@@ -202,8 +208,8 @@ function BreakdownTableInner() {
                             <button
                               type="button"
                               onClick={h.column.getToggleSortingHandler()}
-                              className="inline-flex items-center hover:text-ink"
-                              aria-label={`Ordenar por ${help.term}`}
+                              className="hit-target inline-flex items-center hover:text-ink"
+                              aria-label={`Ordenar por ${help.term}, ${sortPhrase(dir)}`}
                             >
                               <Icon className="size-3" aria-hidden />
                             </button>
@@ -212,10 +218,11 @@ function BreakdownTableInner() {
                           <button
                             type="button"
                             onClick={h.column.getToggleSortingHandler()}
-                            className={`inline-flex items-center gap-1 ${tone}`}
+                            className={`hit-target inline-flex items-center gap-1 ${tone}`}
                           >
                             {flexRender(h.column.columnDef.header, h.getContext())}
                             <Icon className="size-3" aria-hidden />
+                            <span className="sr-only">, {sortPhrase(dir)}</span>
                           </button>
                         )}
                       </th>
