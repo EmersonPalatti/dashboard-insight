@@ -31,14 +31,19 @@ DEFAULT_RAW = ROOT / "data" / "raw"
 DEFAULT_OUT = ROOT / "data" / "orders.parquet"
 TABLES = ["orders", "deliveries", "payments", "stores", "hubs", "drivers", "channels"]
 
-SQL = """
+# Decisões de limpeza que mudam número. O rodapé e o README repetem estes valores.
+TZ_OFFSET_HOURS = 3  # UTC para Brasília (sem horário de verão desde 2019)
+STUCK_CYCLE_MIN = 240  # ciclo acima disso (4h) é pedido preso
+AMOUNT_OUTLIER = 5000  # valor acima disso (R$) fica fora do GMV
+
+SQL = f"""
 create or replace table fact as
 with del as (
     select
         delivery_order_id,
         count(*) as delivery_attempts,
         arg_max(
-            {'driver_id': driver_id, 'distance': delivery_distance_meters},
+            {{'driver_id': driver_id, 'distance': delivery_distance_meters}},
             (delivery_status = 'DELIVERED')::bigint * 10000000000 + delivery_id
         ) as pick
     from deliveries
@@ -56,7 +61,7 @@ pay as (
 base as (
     select
         o.order_id,
-        o.order_moment_created - interval 3 hour as created_at,
+        o.order_moment_created - interval {TZ_OFFSET_HOURS} hour as created_at,
         case o.order_status when 'FINISHED' then 'delivered' else 'canceled' end as status,
         o.order_amount as amount,
         o.order_delivery_fee as delivery_fee,
@@ -111,8 +116,8 @@ select
     round(expedition_min, 2) as expedition_min,
     round(transit_min, 2) as transit_min,
     round(cycle_min, 2) as cycle_min,
-    coalesce(cycle_min > 240, false) as cycle_outlier,
-    amount > 5000 as amount_outlier
+    coalesce(cycle_min > {STUCK_CYCLE_MIN}, false) as cycle_outlier,
+    amount > {AMOUNT_OUTLIER} as amount_outlier
 from base
 where cast(created_at as date) >= date '2021-01-01'
 order by created_at

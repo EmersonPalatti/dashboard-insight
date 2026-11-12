@@ -125,10 +125,11 @@ function BreakdownTableInner() {
 
   const canDrill = tab === "hub" || tab === "store" || tab === "city" || tab === "modal";
   const drill = (r: BreakdownRow) => {
+    if (r.key == null) return;
     if (tab === "hub") applyDrilldown({ hub: [Number(r.key)] });
     else if (tab === "store") applyDrilldown({ store: [Number(r.key)] });
     else if (tab === "city") applyDrilldown({ city: [String(r.key)] });
-    else if (tab === "modal") patchFilters({ modal: [r.key as "moto" | "bike"] });
+    else if (tab === "modal" && (r.key === "moto" || r.key === "bike")) patchFilters({ modal: [r.key] });
   };
 
   return (
@@ -192,15 +193,17 @@ function BreakdownTableInner() {
                   ))}
                   {canDrill && (
                     <td className="px-2 py-1 text-right">
-                      <button
-                        type="button"
-                        onClick={() => drill(row.original)}
-                        className="rounded-[4px] p-1 text-muted hover:bg-sunken-strong hover:text-ink"
-                        aria-label={`Filtrar por ${row.original.label}`}
-                        title="Filtrar o painel por este grupo"
-                      >
-                        <Filter className="size-3.5" aria-hidden />
-                      </button>
+                      {row.original.key != null && (
+                        <button
+                          type="button"
+                          onClick={() => drill(row.original)}
+                          className="rounded-[4px] p-1 text-muted hover:bg-sunken-strong hover:text-ink"
+                          aria-label={`Filtrar por ${row.original.label}`}
+                          title="Filtrar o painel por este grupo"
+                        >
+                          <Filter className="size-3.5" aria-hidden />
+                        </button>
+                      )}
                     </td>
                   )}
                 </tr>

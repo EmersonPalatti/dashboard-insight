@@ -1,8 +1,6 @@
-import { useStore } from "@nanostores/react";
 import { Check, ChevronDown, ClipboardCopy, FileSpreadsheet, Link2, Printer, Share2 } from "lucide-react";
 import { useEffect, useId, useRef, type KeyboardEvent } from "react";
-import { EXPORT_ACTIONS, csvHref, printAfterClose, useBriefingCopy, useCopyLink } from "@/lib/exportActions";
-import { $filters } from "@/lib/filters";
+import { EXPORT_ACTIONS, printAfterClose, useBriefingCopy, useCopyLink, useCsvDownload } from "@/lib/exportActions";
 import { iconSwap } from "../ui/swap";
 import { useDisclosure } from "./useDisclosure";
 
@@ -33,7 +31,7 @@ export function ShareMenu() {
   const d = useDisclosure();
   const link = useCopyLink();
   const briefing = useBriefingCopy();
-  const filters = useStore($filters);
+  const csv = useCsvDownload();
   const panelRef = useRef<HTMLDivElement>(null);
   const uid = useId();
   const panelId = `${uid}-menu`;
@@ -70,7 +68,13 @@ export function ShareMenu() {
   };
 
   // o aviso para leitores de tela segue o feedback visível
-  const announce = briefing.state === "done" ? EXPORT_ACTIONS.briefing.doneTitle : link.copied ? EXPORT_ACTIONS.link.copiedTitle : "";
+  const announce = csv.error
+    ? csv.detail
+    : briefing.state === "done"
+      ? EXPORT_ACTIONS.briefing.doneTitle
+      : link.copied
+        ? EXPORT_ACTIONS.link.copiedTitle
+        : "";
 
   return (
     <div ref={d.rootRef} className="relative flex min-w-0" onKeyDown={onKeyDown} onBlur={d.onBlur}>
@@ -117,10 +121,19 @@ export function ShareMenu() {
             />
           </button>
 
-          <a role="menuitem" className={itemClass} href={csvHref(filters)} download onClick={() => d.dismiss(true)}>
+          <button
+            type="button"
+            role="menuitem"
+            className={itemClass}
+            disabled={csv.busy}
+            onClick={async () => {
+              const ok = await csv.download();
+              if (ok) d.dismiss(true);
+            }}
+          >
             <FileSpreadsheet className="mt-0.5 size-4 shrink-0 text-series" aria-hidden />
-            <ItemText title={EXPORT_ACTIONS.csv.title} detail={EXPORT_ACTIONS.csv.detail} />
-          </a>
+            <ItemText title={csv.title} detail={csv.detail} />
+          </button>
 
           <button type="button" role="menuitem" className={itemClass} onClick={briefing.copy} disabled={briefing.state === "busy"}>
             <span className="mt-0.5 grid size-4 shrink-0 place-items-center" aria-hidden>

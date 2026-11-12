@@ -64,7 +64,9 @@ class Metrics(BaseModel):
     distance_p50_km: float | None
     fee_avg: float | None
     cost_avg: float | None
-    subsidy: float | None = Field(description="Custo logístico menos frete cobrado, por pedido entregue")
+    subsidy: float | None = Field(
+        description="Custo logístico menos frete cobrado, por entrega com os dois valores preenchidos",
+    )
 
 
 class Period(BaseModel):
@@ -99,7 +101,7 @@ class HeatCell(BaseModel):
 
 
 class BreakdownRow(Metrics):
-    key: str | int
+    key: str | int | None
     label: str
     parent: str | None
     sla_below: bool = Field(

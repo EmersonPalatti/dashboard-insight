@@ -326,11 +326,11 @@ export interface components {
             cost_avg: number | null;
             /**
              * Subsidy
-             * @description Custo logístico menos frete cobrado, por pedido entregue
+             * @description Custo logístico menos frete cobrado, por entrega com os dois valores preenchidos
              */
             subsidy: number | null;
             /** Key */
-            key: string | number;
+            key: string | number | null;
             /** Label */
             label: string;
             /** Parent */
@@ -615,7 +615,7 @@ export interface components {
             cost_avg: number | null;
             /**
              * Subsidy
-             * @description Custo logístico menos frete cobrado, por pedido entregue
+             * @description Custo logístico menos frete cobrado, por entrega com os dois valores preenchidos
              */
             subsidy: number | null;
         };
@@ -1017,7 +1017,10 @@ export interface operations {
                 /** @description Status do pedido: delivered ou canceled */
                 status?: ("delivered" | "canceled")[];
             };
-            header?: never;
+            header?: {
+                /** @description Obrigatório só se AUTOMATION_TOKEN estiver definido no servidor. */
+                "x-automation-token"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -1060,7 +1063,10 @@ export interface operations {
                 /** @description Status do pedido: delivered ou canceled */
                 status?: ("delivered" | "canceled")[];
             };
-            header?: never;
+            header?: {
+                /** @description Obrigatório só se AUTOMATION_TOKEN estiver definido no servidor. */
+                "x-automation-token"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
