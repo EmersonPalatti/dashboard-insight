@@ -144,7 +144,8 @@ components:
   filter-bar:
     backgroundColor: "{colors.surface}"
     textColor: "{colors.ink}"
-    height: "80px"
+    height: "104px"
+    padding: "12px 0"
   agent-ask-field:
     backgroundColor: "{colors.surface}"
     textColor: "{colors.ink}"
@@ -247,7 +248,7 @@ The mark is "Carimbo Nº": the `Nº` drawn in one stroke inside a receipt whose 
 - **Wine FAB** (`agent-fab`): the only wine-filled button. It is the agent's opener below `lg`, in the thumb zone: a 48px square with the Bot icon only (the name lives in its accessible label), so it covers as little of the open comanda and the KPIs as possible. Its status dot sits in the top-right corner. It hides while the sheet is open.
 
 ### Filter bar
-The desktop bar (`lg` and up) has two rows with separate jobs. Row 1 defines the recorte: its controls are 40px tall, with `card` corners and a 1px border. Row 2 shows the recorte itself and is 32px tall, growing only if the chips wrap. The bar is 80px in all: row 1, 8px, row 2. Controls in one group sit 8px apart, and groups sit 16px apart.
+The desktop bar (`lg` and up) has two rows with separate jobs. Row 1 defines the recorte: its controls are 40px tall, with `card` corners and a 1px border. Row 2 shows the recorte itself and is 32px tall, growing only if the chips wrap. The bar is 104px in all: 12px, row 1, 8px, row 2, 12px. The top and bottom 12px keep the controls off the wine band and the hairline. Controls in one group sit 8px apart, and groups sit 16px apart.
 - **Período**: one segmented control, "Tudo | 30 dias | 7 dias | Datas", with one sliding indicator. **Datas**, its fourth segment, opens a popover with the same component and motion as Mais filtros, anchored left. The popover holds Início and Fim as two 40px fields, each opening the pt-BR calendar. Once a range is chosen, the segment shows it ("01/03 – 15/03", "desde 01/03", "até 15/03") and the indicator sits on it. In the mobile sheet, Datas expands the two fields inline below the control instead, at 44px each.
 - **Cidade**, **Hub** and **Loja**: equal-width selects with the label inline and muted inside the box ("Cidade  Curitiba ▾"). An active select takes an ink border.
 - **Mais filtros**: sized to its text, with the active count after it ("Mais filtros · 2"). It takes an ink border when any extra filter is active.
