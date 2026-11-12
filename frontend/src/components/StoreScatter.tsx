@@ -1,16 +1,19 @@
 import { Filter, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { BreakdownRow } from "@/lib/api/client";
+import { EVIDENCE_DIM } from "@/lib/evidence";
 import { patchFilters } from "@/lib/filters";
 import { fmt } from "@/lib/format";
+import { STORE_NAMES_HINT } from "@/lib/glossary";
 import { island, useRecorteQuery } from "@/lib/query";
 import { ScatterChart } from "echarts/charts";
 import { BrushComponent, ToolboxComponent } from "echarts/components";
 import * as echarts from "echarts/core";
+import { ChartAccess, openStoreRanking } from "./charts/ChartAccess";
 import { EChart, type ECInstance, type Tokens } from "./charts/EChart";
 import { AskAgentButton } from "./ui/AskAgentButton";
 import { EvidenceTag, useEvidence } from "./ui/EvidenceTag";
-import { Empty, ErrorState, panelFallback, PanelContent, Segmented, Skeleton } from "./ui/Panel";
+import { AsyncBody, Empty, panelFallback, PanelContent, Segmented } from "./ui/Panel";
 
 // Módulos deste gráfico: dispersão, caixa de seleção (brush) e barra de ferramentas que a abriga.
 echarts.use([ScatterChart, BrushComponent, ToolboxComponent]);
@@ -34,7 +37,7 @@ const ASK_BY_Y: Record<Y, string> = {
 function StoreScatterInner() {
   const [y, setY] = useState<Y>("cancel_rate");
   const [picked, setPicked] = useState<BreakdownRow[]>([]);
-  const { data, error, isPending, refetch, isPlaceholderData } = useRecorteQuery("/api/breakdown", {
+  const { data, error, isPending, refetch, isPlaceholderData, waking, down } = useRecorteQuery("/api/breakdown", {
     by: "store",
     sort: "orders",
     limit: 1000,
@@ -61,6 +64,15 @@ function StoreScatterInner() {
   // poucas lojas marcadas: o nome aparece ao lado do ponto
   const nameMarked = markedCount > 0 && markedCount <= 3;
   const maxGmv = useMemo(() => Math.max(1, ...rows.map((r) => r.gmv)), [rows]);
+  const hi = rows.reduce((best, row) => ((row[y] as number) > (best[y] as number) ? row : best), rows[0]);
+  const lo = rows.reduce((best, row) => ((row[y] as number) < (best[y] as number) ? row : best), rows[0]);
+  const axis = Y_AXIS[y];
+  const summary =
+    rows.length === 0
+      ? ""
+      : hi === lo
+        ? `${hi.label}: ${axis.format(hi[y] as number)} em ${axis.label}.`
+        : `Maior ${axis.label}: ${hi.label}, ${axis.format(hi[y] as number)}. Menor: ${lo.label}, ${axis.format(lo[y] as number)}.`;
 
   const option = useCallback(
     (t: Tokens) => ({
@@ -97,13 +109,16 @@ function StoreScatterInner() {
             const on = isMarked(r);
             return {
               value: [r.orders, r[y]],
-              itemStyle: on ? { color: t.ink, opacity: 1, borderColor: t.surface, borderWidth: 1.5 } : { opacity: 0.16 },
+              symbol: on ? "diamond" : "circle",
+              itemStyle: on
+                ? { color: t.ink, opacity: 1, borderColor: t.ink, borderWidth: 1.5 }
+                : { opacity: EVIDENCE_DIM },
               label: on && nameMarked ? { show: true, position: "right", formatter: r.label, color: t.ink, fontWeight: "bold" } : undefined,
               z: on ? 3 : 2,
             };
           }),
           symbolSize: (_: unknown, p: { dataIndex: number }) => 5 + 18 * Math.sqrt((rows[p.dataIndex]?.gmv ?? 0) / maxGmv),
-          itemStyle: { color: t.series, opacity: 0.55, borderColor: t.seriesDeep, borderWidth: 0.5 },
+          itemStyle: { color: t.series, opacity: markedCount ? 1 : 0.55, borderColor: t.seriesDeep, borderWidth: 0.5 },
           emphasis: { itemStyle: { opacity: 1 } },
           large: rows.length > 2000,
         },
@@ -130,6 +145,7 @@ function StoreScatterInner() {
           />
         )
       }
+      hint={STORE_NAMES_HINT}
       busy={isPlaceholderData}
       actions={
         <>
@@ -146,17 +162,16 @@ function StoreScatterInner() {
         </>
       }
     >
-      {isPending ? (
-        <Skeleton height={CHART_H} />
-      ) : error ? (
-        <div className="flex items-center justify-center" style={{ minHeight: CHART_H }}>
-          <ErrorState error={error} onRetry={() => refetch()} />
-        </div>
-      ) : rows.length === 0 ? (
-        <div className="flex items-center justify-center" style={{ minHeight: CHART_H }}>
-          <Empty>Nenhuma loja com 30+ pedidos no recorte.</Empty>
-        </div>
-      ) : (
+      <AsyncBody
+        waking={waking}
+        pending={isPending}
+        error={error}
+        down={down}
+        onRetry={() => refetch()}
+        what="o gráfico de lojas"
+        height={CHART_H}
+        empty={rows.length === 0 ? <Empty>Nenhuma loja com 30+ pedidos no recorte.</Empty> : null}
+      >
         <div className="content-reveal min-w-0">
           <EChart
             key={y}
@@ -164,6 +179,16 @@ function StoreScatterInner() {
             height={CHART_H}
             onEvents={{ brushselected: onBrush }}
             ariaLabel={`Dispersão de lojas: pedidos contra ${Y_AXIS[y].label}`}
+          />
+          <ChartAccess
+            summary={summary}
+            items={[
+              {
+                key: "ranking",
+                label: "Filtrar uma loja no ranking, em Lojas",
+                onSelect: openStoreRanking,
+              },
+            ]}
           />
           {picked.length > 0 && (
             <div className="mt-2 flex flex-wrap items-center gap-2 rounded-card bg-sunken px-3 py-2">
@@ -193,9 +218,9 @@ function StoreScatterInner() {
             </div>
           )}
         </div>
-      )}
+      </AsyncBody>
     </PanelContent>
   );
 }
 
-export default island(StoreScatterInner, panelFallback(CHART_H));
+export default island(StoreScatterInner, panelFallback(CHART_H, { hint: true }));

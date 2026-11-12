@@ -34,48 +34,55 @@ const repoUrl = "https://github.com/EmersonPalatti/dashboard-insight";
 >
   <!-- #page: o painel do agente no mobile deixa tudo isto inerte (folha modal) -->
   <div id="page">
+    <a class="skip-link" href="#comandas">Pular para as comandas</a>
+    <a class="skip-link" href="#filtros">Pular para os filtros</a>
     <!-- no escuro o vinho (#26060F) quase some no campo (#111): um fio de wine-raised marca a borda da faixa -->
-    <header class="bg-wine text-white dark:border-b dark:border-wine-raised">
-      <!-- abaixo de sm a barra vira uma linha só (~56px): subtítulo e links somem; o agente abre pelo botão flutuante -->
-      <div class="mx-auto flex max-w-[1440px] flex-wrap items-center justify-between gap-x-6 gap-y-2 px-4 py-3 sm:px-6 sm:py-3.5 lg:py-4.5 lg:flex-nowrap">
-        <div class="flex min-w-0 flex-col justify-center gap-1 sm:gap-1.5 lg:flex-1">
-          <div class="flex items-center gap-2.5">
-            <OpsLogo size={28} class="text-on-wine" />
-            <h1 class="header-reveal-title shrink-0 font-slab text-figure leading-none font-bold text-white">
+    <!-- sm+: 64px com a promessa do recorte. Abaixo de sm: 56px, uma linha; o título trunca e a promessa desce para o fluxo. -->
+    <header class="h-14 bg-wine text-white sm:h-16 dark:border-b dark:border-wine-raised">
+      <div class="mx-auto flex h-full max-w-[1440px] min-w-0 items-center gap-2 px-4 sm:gap-3 sm:px-6">
+        <div class="flex min-w-0 flex-1 items-center gap-2.5">
+          <OpsLogo size={28} class="text-on-wine" />
+          <div class="min-w-0 flex-1">
+            <h1 class="header-reveal-title truncate font-slab text-figure leading-none font-bold text-white">
               Central de Operações
             </h1>
-          </div>
-          <!-- Subtítulo e telemetria do recorte com stagger reveal suave -->
-          <div class="header-reveal-sub max-sm:hidden flex flex-wrap items-center gap-x-3 gap-y-1.5 text-aux text-on-wine/90">
-            <span class="truncate">Alertas e agente sobre o recorte filtrado</span>
-            <span class="inline-flex items-center gap-1.5 rounded-full border border-on-wine/15 bg-wine-raised/60 px-2.5 py-0.5 text-meta font-medium text-on-wine dark:bg-white/10">
-              <span>Delivery Center</span>
-              <span class="opacity-50">·</span>
-              <span class="tabular-nums">jan–abr 2021</span>
-              <span class="opacity-50">·</span>
-              <span class="tabular-nums font-semibold text-white">368.990 pedidos</span>
-            </span>
+            <div class="header-reveal-sub mt-1 hidden min-w-0 items-center gap-2 sm:flex">
+              <p class="min-w-0 truncate text-meta leading-none text-on-wine/90">
+                KPIs, comandas e o agente respondem sobre o mesmo recorte.
+              </p>
+              <span class="hidden shrink-0 items-center gap-1.5 rounded-full border border-on-wine/15 bg-wine-raised/60 px-2.5 py-0.5 text-meta leading-none font-medium text-on-wine xl:inline-flex dark:bg-white/10">
+                <span>Delivery Center</span>
+                <span class="opacity-50">·</span>
+                <span class="tabular-nums">jan–abr 2021</span>
+                <span class="opacity-50">·</span>
+                <span class="tabular-nums font-semibold text-white">368.990 pedidos</span>
+              </span>
+            </div>
           </div>
         </div>
-        <div class="no-print flex shrink-0 flex-wrap items-center gap-1.5">
-          <a class="max-sm:hidden rounded-card px-3 py-1.5 text-aux text-on-wine transition-colors duration-(--duration-quick) ease-(--ease-smooth-out) hover:bg-wine-raised hover:text-white" href={`${apiUrl}/docs`} target="_blank" rel="noopener">API (Swagger)</a>
-          <span class="ml-1"><TopBarStatus client:load /></span>
+        <div class="no-print flex shrink-0 items-center gap-1">
+          <a class="hidden shrink-0 rounded-card px-2 py-1.5 text-aux text-on-wine transition-colors duration-(--duration-quick) ease-(--ease-smooth-out) hover:bg-wine-raised hover:text-white sm:inline" href={`${apiUrl}/docs`} target="_blank" rel="noopener">API (Swagger)</a>
+          <TopBarStatus client:load />
         </div>
       </div>
     </header>
 
-    <div data-filter-bar class="no-print sticky top-0 z-20 border-b border-rule bg-surface">
+    <p class="mx-auto max-w-[1440px] px-4 pt-3 text-pretty text-aux leading-snug text-ink sm:hidden">
+      KPIs, comandas e o agente respondem sobre o mesmo recorte.
+    </p>
+
+    <search id="filtros" data-filter-bar aria-label="Filtros do recorte" tabindex="-1" class="no-print sticky top-0 z-20 block border-b border-rule bg-surface">
       <div class="mx-auto max-w-[1440px] px-4 py-2 sm:px-6">
         <FilterBar client:load />
       </div>
-    </div>
+    </search>
 
     <main class="mx-auto grid max-w-[1440px] grid-cols-[minmax(0,1fr)] gap-5 px-4 pt-5 pb-16 max-lg:pb-24 sm:px-6">
       <!--
         Trilho de comandas no topo: as comandas penduradas lado a lado e a aberta numa faixa larga.
         KPIs e tendência ganham a largura toda logo abaixo. O agente fica fora da grade (AgentDock).
       -->
-      <div id="comandas" class="min-w-0 scroll-mt-16 lg:scroll-mt-28">
+      <div id="comandas" tabindex="-1" aria-labelledby="comandas-title" class="min-w-0 scroll-mt-16 lg:scroll-mt-28">
         <AlertsPanel client:load />
       </div>
 
@@ -122,7 +129,10 @@ const repoUrl = "https://github.com/EmersonPalatti/dashboard-insight";
           <p class="text-pretty font-semibold text-ink">Como os números são calculados</p>
           <p class="text-pretty">
             Horários convertidos de UTC para Brasília. SLA: food ≤ 60 min, goods ≤ 120 min. Pedidos com ciclo &gt; 4h contam como
-            "presos" e ficam fora de medianas e SLA. Valores &gt; R$ 5 mil ficam fora do GMV.
+            "presos" e ficam fora de medianas e SLA. Valores &gt; R$ 5 mil ficam fora do GMV. A faixa de KPI usa a mesma régua das
+            comandas: atenção abaixo de 85% no prazo (crítico abaixo de 80%) e cancelamento acima de 6% (crítico a partir de 9%).
+            Recorte menor que a rede compara com a rede no mesmo período; a rede inteira mostra a faixa entre os hubs. Não há meta de SLA em percentual.
+            Pedidos, GMV e ticket só comparam período com 100 pedidos ou mais em cada lado.
           </p>
         </div>
         <div>
@@ -135,4 +145,31 @@ const repoUrl = "https://github.com/EmersonPalatti/dashboard-insight";
   </div>
 
   <AgentDock client:load />
+  <!--
+    Painéis client:visible não têm botão até hidratar. Enquanto isso, a moldura entra no Tab
+    (o foco rola a seção para a vista e a ilha monta). Com controles dentro, sai da ordem.
+  -->
+  <script is:inline>
+    (function () {
+      var focusable = "a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled])";
+      function sync() {
+        var sections = document.querySelectorAll("section.panel-frame");
+        for (var i = 0; i < sections.length; i++) {
+          var section = sections[i];
+          var nodes = section.querySelectorAll(focusable);
+          var found = false;
+          for (var j = 0; j < nodes.length; j++) {
+            var el = nodes[j];
+            if (el.closest("[aria-hidden='true']") || el.closest("[inert]")) continue;
+            found = true;
+            break;
+          }
+          var next = found ? -1 : 0;
+          if (section.tabIndex !== next) section.tabIndex = next;
+        }
+      }
+      sync();
+      new MutationObserver(sync).observe(document.body, { childList: true, subtree: true });
+    })();
+  </script>
 </Base>

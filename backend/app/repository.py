@@ -46,6 +46,7 @@ METRICS_SQL = f"""
     avg((status = 'canceled')::int) as cancel_rate,
     count(*) filter (where {_MEASURED})::int as measured,
     count(*) filter (where {_MEASURED}) < {MIN_MEASURED} as low_sample,
+    count(*) < {MIN_MEASURED} as volume_low_sample,
     median(cycle_min) filter (where {_VALID}) as cycle_p50,
     quantile_cont(cycle_min, 0.9) filter (where {_VALID}) as cycle_p90,
     avg(on_time(segment, cycle_min)::int) filter (where {_MEASURED}) as sla_rate,

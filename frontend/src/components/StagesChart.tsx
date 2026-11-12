@@ -1,14 +1,16 @@
 import { useCallback } from "react";
 import { applyDrilldown } from "@/lib/filters";
+import { EVIDENCE_DIM } from "@/lib/evidence";
 import { fmt } from "@/lib/format";
 import { island, useRecorteQuery } from "@/lib/query";
 import { BarChart } from "echarts/charts";
 import { LegendComponent } from "echarts/components";
 import * as echarts from "echarts/core";
+import { ChartAccess } from "./charts/ChartAccess";
 import { EChart, type Tokens } from "./charts/EChart";
 import { AskAgentButton } from "./ui/AskAgentButton";
 import { EvidenceTag, useEvidence } from "./ui/EvidenceTag";
-import { Empty, ErrorState, panelFallback, PanelContent, Skeleton } from "./ui/Panel";
+import { AsyncBody, Empty, panelFallback, PanelContent } from "./ui/Panel";
 
 // Módulos deste gráfico: barras empilhadas e legenda. O resto fica em charts/EChart.tsx.
 echarts.use([BarChart, LegendComponent]);
@@ -28,23 +30,49 @@ const STAGES = [
 
 const TOP_HUBS = 14;
 
+type StageRow = {
+  key: string | number | null;
+  label: string;
+  production_p50: number | null;
+  collected_p50: number | null;
+  expedition_p50: number | null;
+  transit_p50: number | null;
+};
+
+/** Soma das medianas das quatro etapas. Serve para dizer qual hub é o mais lento. */
+function stageTotal(row: StageRow) {
+  return STAGES.reduce((sum, stage) => sum + (row[stage.key] ?? 0), 0);
+}
+
 function StagesChartInner() {
-  const { data, error, isPending, refetch, isPlaceholderData } = useRecorteQuery("/api/breakdown", {
+  const { data, error, isPending, refetch, isPlaceholderData, waking, down } = useRecorteQuery("/api/breakdown", {
     by: "hub",
     sort: "orders",
     limit: 60,
     min_orders: 200,
   });
-  // comanda aberta que aponta para um hub: ele fica cheio e os outros recuam
+  // comanda aberta que aponta para um hub: ele fica no topo, cheio, e os outros recuam
   const focus = useEvidence("stages");
   const marked = new Set((focus?.evidence.hubs ?? []).map(String));
-  // Os 14 hubs com mais pedidos; o hub da comanda entra no fim se estiver fora deles.
+  // Os 14 hubs com mais pedidos; o hub da comanda entra se estiver fora deles.
   const withCycle = (data?.rows ?? []).filter((r) => r.cycle_p50 !== null);
   const top = withCycle.slice(0, TOP_HUBS);
   const extra = withCycle.slice(TOP_HUBS).filter((r) => marked.has(String(r.key)));
-  const rows = [...top, ...extra].reverse();
-  const anyMarked = rows.some((r) => marked.has(String(r.key)));
+  const pool = [...top, ...extra];
+  const pinned = pool.filter((r) => marked.has(String(r.key)));
+  const others = pool.filter((r) => !marked.has(String(r.key)));
+  // No ECharts o índice 0 fica embaixo. Inverter os demais e depois os marcados põe o hub da comanda no topo.
+  const rows = [...others].reverse().concat([...pinned].reverse());
+  const anyMarked = pinned.length > 0;
   const markedKey = [...marked].join(",");
+  const slowest = rows.reduce((best, row) => (stageTotal(row) > stageTotal(best) ? row : best), rows[0]);
+  const fastest = rows.reduce((best, row) => (stageTotal(row) < stageTotal(best) ? row : best), rows[0]);
+  const summary =
+    rows.length === 0
+      ? ""
+      : slowest === fastest
+        ? `${slowest.label}: ${fmt.min(stageTotal(slowest))} somando as medianas das etapas.`
+        : `Mais lento: ${slowest.label}, ${fmt.min(stageTotal(slowest))}. Mais rápido: ${fastest.label}, ${fmt.min(stageTotal(fastest))}. Soma das medianas das etapas.`;
 
   const option = useCallback(
     (t: Tokens) => {
@@ -63,8 +91,12 @@ function StagesChartInner() {
           data: rows.map((r) => r.label),
           axisLabel: {
             color: anyMarked ? t.muted : t.ink,
-            formatter: (v: string, i: number) => (anyMarked && marked.has(String(rows[i]?.key ?? "")) ? `{hl|${v}}` : v),
-            rich: { hl: { color: t.ink, fontWeight: "bold" } },
+            formatter: (v: string, i: number) =>
+              anyMarked && marked.has(String(rows[i]?.key ?? "")) ? `{dot|●} {hl|${v}}` : v,
+            rich: {
+              dot: { color: t.ink, fontSize: 10, padding: [0, 4, 0, 0] },
+              hl: { color: t.ink, fontWeight: "bold" },
+            },
           },
         },
         series: STAGES.map((s, i) => ({
@@ -75,7 +107,7 @@ function StagesChartInner() {
           barMaxWidth: 18,
           data: rows.map((r) => ({
             value: r[s.key],
-            itemStyle: { opacity: anyMarked && !marked.has(String(r.key)) ? 0.28 : 1 },
+            itemStyle: { opacity: anyMarked && !marked.has(String(r.key)) ? EVIDENCE_DIM : 1 },
           })),
           itemStyle: { color: colors[i] },
           emphasis: { focus: "series" },
@@ -103,17 +135,16 @@ function StagesChartInner() {
         />
       }
     >
-      {isPending ? (
-        <Skeleton height={CHART_H} />
-      ) : error ? (
-        <div className="flex items-center justify-center" style={{ minHeight: CHART_H }}>
-          <ErrorState error={error} onRetry={() => refetch()} />
-        </div>
-      ) : rows.length === 0 ? (
-        <div className="flex items-center justify-center" style={{ minHeight: CHART_H }}>
-          <Empty>Nenhum hub com 200+ pedidos no recorte.</Empty>
-        </div>
-      ) : (
+      <AsyncBody
+        waking={waking}
+        pending={isPending}
+        error={error}
+        down={down}
+        onRetry={() => refetch()}
+        what="as etapas por hub"
+        height={CHART_H}
+        empty={rows.length === 0 ? <Empty>Nenhum hub com 200+ pedidos no recorte.</Empty> : null}
+      >
         <div className="content-reveal min-w-0" style={{ minHeight: CHART_H }}>
           <EChart
             option={option}
@@ -126,8 +157,22 @@ function StagesChartInner() {
               },
             }}
           />
+          <ChartAccess
+            summary={summary}
+            items={[...rows].reverse().flatMap((row) =>
+              row.key == null
+                ? []
+                : [
+                    {
+                      key: String(row.key),
+                      label: `Filtrar hub ${row.label}`,
+                      onSelect: () => applyDrilldown({ hub: [Number(row.key)] }),
+                    },
+                  ],
+            )}
+          />
         </div>
-      )}
+      </AsyncBody>
     </PanelContent>
   );
 }

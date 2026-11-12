@@ -298,7 +298,7 @@ def answer_with_context(
     f: Filters,
     settings: Settings,
     deadline: float | None = None,
-) -> str | None:
+) -> tuple[str, list[str]] | None:
     remaining = (deadline - time.monotonic()) if deadline is not None else settings.chat_budget_s
     if remaining <= 0:
         log.warning("Budget de tempo esgotado antes de answer_with_context")
@@ -329,4 +329,4 @@ def answer_with_context(
         timeout=per_call_timeout,
     )
     text = (response.choices[0].message.content or "").strip()
-    return text or None
+    return (text, runner.used) if text else None

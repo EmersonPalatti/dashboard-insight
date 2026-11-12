@@ -22,6 +22,43 @@ export const queryClient = new QueryClient({
 });
 
 /**
+ * Um só sinal de saúde, o mesmo do cabeçalho. Oito tentativas a cada 4 s
+ * cobrem o cold start (~40 s) sem cada painel repetir essa espera.
+ */
+const HEALTH_QUERY = {
+  queryKey: ["/api/health"] as const,
+  queryFn: ({ signal }: { signal: AbortSignal }) => apiGet("/api/health", {}, signal),
+  retry: 8,
+  retryDelay: 4000,
+  staleTime: 60_000,
+};
+
+export function useApiHealth() {
+  return useQuery(HEALTH_QUERY);
+}
+
+/** `waking` enquanto o health não fechou; `down` só quando as tentativas acabaram. */
+export function useApiGate() {
+  const health = useApiHealth();
+  const waking = !health.isSuccess && (health.isFetching || !health.isError);
+  const down = health.isError && !health.isFetching;
+  return { waking, down, up: health.isSuccess, error: health.error };
+}
+
+type GatedQuery = { isPending: boolean; error: unknown };
+
+/** Enquanto o servidor não respondeu, a query fica parada e o painel mostra a espera, não o erro. */
+export function gated<T extends GatedQuery>(gate: ReturnType<typeof useApiGate>, query: T) {
+  return {
+    ...query,
+    waking: gate.waking,
+    down: gate.down,
+    isPending: gate.down ? false : gate.waking || query.isPending,
+    error: gate.down ? (gate.error ?? query.error) : gate.waking ? null : query.error,
+  };
+}
+
+/**
  * O SSR do Astro não conhece a URL nem o cache do cliente. Para não haver
  * hydration mismatch, a ilha renderiza o mesmo skeleton no servidor e no
  * primeiro render do navegador, e só depois monta o conteúdo real.
@@ -61,18 +98,23 @@ type ApiPath = Parameters<typeof apiGet>[0];
 export function useRecorteQuery<P extends ApiPath>(path: P, extra: Query = {}, enabled = true) {
   const filters = useStore($filters);
   const ready = useStore($ready);
-  return useQuery<GetResponse<P>>({
+  const gate = useApiGate();
+  const query = useQuery<GetResponse<P>>({
     queryKey: [path, filters, extra],
     queryFn: ({ signal }) => apiGet(path, { ...toQuery(filters), ...extra }, signal),
-    enabled: ready && enabled,
+    enabled: ready && enabled && gate.up,
     placeholderData: keepPreviousData,
   });
+  return gated(gate, query);
 }
 
 export function useMeta() {
-  return useQuery({
+  const gate = useApiGate();
+  const query = useQuery({
     queryKey: ["/api/meta"],
     queryFn: ({ signal }) => apiGet("/api/meta", {}, signal),
+    enabled: gate.up,
     staleTime: Infinity,
   });
+  return gated(gate, query);
 }

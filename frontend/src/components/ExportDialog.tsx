@@ -105,7 +105,7 @@ export function ExportDialog({ open, onClose }: Props) {
           </button>
         </div>
         <div className="grid gap-2">
-          <button type="button" className="btn-ghost justify-start py-3 text-left" onClick={() => void csv.download()} disabled={csv.busy}>
+          <button type="button" className="btn-ghost justify-start py-3 text-left" onClick={() => void csv.download()} disabled={csv.busy || csv.blocked}>
             <FileSpreadsheet className="size-4 text-series" aria-hidden />
             <span>
               <span className="block font-semibold">{csv.title}</span>

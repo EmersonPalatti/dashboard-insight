@@ -12,9 +12,10 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react"
 import { apiGet, type OrderRow } from "@/lib/api/client";
 import { $filters, $ready, patchFilters, toQuery, type Recorte } from "@/lib/filters";
 import { fmt, label } from "@/lib/format";
-import { island, useMeta } from "@/lib/query";
+import { STORE_NAMES_HINT } from "@/lib/glossary";
+import { gated, island, useApiGate, useMeta } from "@/lib/query";
 import { AskAgentButton } from "./ui/AskAgentButton";
-import { ErrorState, PanelContent, panelFallback, Skeleton } from "./ui/Panel";
+import { AsyncBody, PanelContent, panelFallback } from "./ui/Panel";
 
 // Pergunta pela coluna de ordenação atual (ids de SORTABLE); "Resumo" é o fallback do agente.
 const ASK_BY_SORT: Record<string, string> = {
@@ -237,19 +238,21 @@ function ColumnFilterPopover<V extends string | number>({
 function OrdersTableInner() {
   const filters = useStore($filters);
   const ready = useStore($ready);
+  const gate = useApiGate();
   const { data: meta } = useMeta();
   const [sort, setSort] = useState<{ id: string; desc: boolean }>({ id: "created_at", desc: true });
   const scroller = useRef<HTMLDivElement>(null);
 
-  const query = useInfiniteQuery({
+  const pages = useInfiniteQuery({
     queryKey: ["/api/orders", filters, sort],
-    enabled: ready,
+    enabled: ready && gate.up,
     placeholderData: keepPreviousData,
     initialPageParam: 0,
     queryFn: ({ pageParam, signal }) =>
       apiGet("/api/orders", { ...toQuery(filters), offset: pageParam, limit: PAGE, sort: sort.id, desc: sort.desc }, signal),
     getNextPageParam: (last) => (last.offset + last.limit < last.total ? last.offset + last.limit : undefined),
   });
+  const query = gated(gate, pages);
 
   const rows = useMemo(() => query.data?.pages.flatMap((p) => p.rows) ?? [], [query.data]);
   const total = query.data?.pages[0]?.total ?? 0;
@@ -316,8 +319,8 @@ function OrdersTableInner() {
     <PanelContent
       hint={
         query.data
-          ? `${fmt.int(total)} pedidos · ${fmt.int(rows.length)} carregados. Role para buscar mais; clique para ordenar ou filtrar nas colunas.`
-          : "Paginação e ordenação no servidor."
+          ? `${fmt.int(total)} pedidos · ${fmt.int(rows.length)} carregados. Role para buscar mais; clique para ordenar ou filtrar nas colunas. ${STORE_NAMES_HINT}`
+          : `Paginação e ordenação no servidor. ${STORE_NAMES_HINT}`
       }
       busy={query.isFetching && !query.isFetchingNextPage && Boolean(query.data)}
       actions={
@@ -327,11 +330,15 @@ function OrdersTableInner() {
         />
       }
     >
-      {query.isPending ? (
-        <Skeleton height={460} />
-      ) : query.error ? (
-        <ErrorState error={query.error} onRetry={() => query.refetch()} />
-      ) : (
+      <AsyncBody
+        waking={query.waking}
+        pending={query.isPending}
+        error={query.error}
+        down={query.down}
+        onRetry={() => query.refetch()}
+        what="os pedidos"
+        height={460}
+      >
         <div ref={scroller} className="content-reveal relative h-[460px] min-w-0 overflow-auto rounded-tick border border-rule" role="region" aria-label="Tabela de pedidos" tabIndex={0}>
           <div style={{ width, minWidth: "100%" }} className="text-aux tabular-nums" role="table" aria-rowcount={total}>
             <div className="sticky top-0 z-10 flex border-b border-rule bg-sunken" role="row">
@@ -436,7 +443,7 @@ function OrdersTableInner() {
             {query.isFetchingNextPage && <p className="label px-2 py-2">Carregando mais pedidos…</p>}
           </div>
         </div>
-      )}
+      </AsyncBody>
     </PanelContent>
   );
 }

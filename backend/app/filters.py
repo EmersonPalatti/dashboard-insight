@@ -88,3 +88,10 @@ class Filters(BaseModel):
 
     def with_period(self, start: date, end: date) -> Filters:
         return self.model_copy(update={"start": start, "end": end})
+
+    def is_full_network(self) -> bool:
+        """True quando só o período restringe. A referência do KPI é a rede nesse período."""
+        return not (
+            self.city or self.hub or self.store or self.segment
+            or self.channel_type or self.modal or self.status
+        )

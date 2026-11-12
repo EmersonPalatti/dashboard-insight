@@ -18,6 +18,7 @@ def test_meta_lists_dynamic_options(client):
     assert {c["value"] for c in meta["cities"]} == {"São Paulo", "Curitiba"}
     assert len(meta["hubs"]) == 4
     assert meta["llm_enabled"] is False
+    assert meta["csv_max_rows"] == 50_000
 
 
 def test_filters_change_every_kpi(client):

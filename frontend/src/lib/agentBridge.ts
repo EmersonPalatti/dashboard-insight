@@ -17,6 +17,94 @@ export const $agentOpen = atom(false);
 export type AgentActivity = "idle" | "pending" | "unread";
 export const $agentActivity = atom<AgentActivity>("idle");
 
+/** Comanda do agente. Série própria (`Nº A01`), só nesta aba, fora da fila de alertas do servidor. */
+export interface AgentDrill {
+  label: string;
+  filters: Record<string, (string | number)[]>;
+}
+
+export type AgentReadingStatus = "rules" | "upgraded" | "cancelled" | "failed";
+
+export interface AgentTicket {
+  id: string;
+  series: number;
+  title: string;
+  detail: string;
+  action: string;
+  drilldowns: AgentDrill[];
+  n: number;
+  measured: number;
+  lowSample: boolean;
+  source: "local" | "llm";
+  status: AgentReadingStatus;
+  toolLabels: string[];
+  /** `JSON.stringify` do recorte no momento da pergunta. */
+  scope: string;
+  onRail: boolean;
+}
+
+export interface AgentMessage {
+  id: number;
+  role: "user" | "assistant";
+  content: string;
+  scope: string;
+  comanda?: AgentTicket;
+  error?: boolean;
+}
+
+const STORAGE_KEY = "central-ops:agent-messages";
+
+function restoreMessages(): AgentMessage[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.sessionStorage.getItem(STORAGE_KEY);
+    const parsed: unknown = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? (parsed as AgentMessage[]).slice(-40) : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Conversa da aba. A fila de comandas do agente sai daqui: some com a sessão, não com o servidor. */
+export const $agentMessages = atom<AgentMessage[]>(restoreMessages());
+
+export const $agentComandas = atom<AgentTicket[]>([]);
+
+function projectComandas(list: readonly AgentMessage[]): AgentTicket[] {
+  return list.flatMap((message) => (message.comanda?.onRail ? [message.comanda] : []));
+}
+
+$agentMessages.listen((list) => {
+  try {
+    if (list.length) window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(list.slice(-40)));
+    else window.sessionStorage.removeItem(STORAGE_KEY);
+  } catch {
+    // storage cheio ou bloqueado: a conversa continua em memória
+  }
+  const tickets = projectComandas(list);
+  // Fora do render de quem gravou a mensagem: a fila é outra ilha.
+  queueMicrotask(() => $agentComandas.set(tickets));
+});
+
+$agentComandas.set(projectComandas($agentMessages.get()));
+
+export function scopeKey(filters: object): string {
+  return JSON.stringify(filters);
+}
+
+/** Tira a comanda da fila. A mensagem continua na conversa. */
+export function dismissAgentComanda(id: string) {
+  $agentMessages.set(
+    $agentMessages.get().map((message) =>
+      message.comanda?.id === id ? { ...message, comanda: { ...message.comanda, onRail: false } } : message,
+    ),
+  );
+}
+
+export function agentStamp(series: number) {
+  return `Nº A${String(series).padStart(2, "0")}`;
+}
+
 type ChatModule = typeof import("@/components/AgentChat");
 let chatModule: Promise<ChatModule> | null = null;
 

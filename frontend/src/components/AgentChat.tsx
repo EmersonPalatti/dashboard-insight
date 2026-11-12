@@ -1,54 +1,23 @@
 import { useStore } from "@nanostores/react";
-import { useMutation } from "@tanstack/react-query";
-import { Bot, ChevronDown, Cpu, RotateCcw, SendHorizontal, Wrench, X } from "lucide-react";
-import { atom } from "nanostores";
-import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { $agentActivity, $agentDraft } from "@/lib/agentBridge";
-import { askAgent, type ChatResponse } from "@/lib/api/client";
+import { Bot, ChevronDown, RotateCcw, SendHorizontal, X } from "lucide-react";
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  $agentActivity,
+  $agentDraft,
+  $agentMessages,
+  scopeKey,
+  type AgentMessage,
+  type AgentReadingStatus,
+  type AgentTicket,
+} from "@/lib/agentBridge";
+import { askAgent, ApiError, type ChatResponse, type ChatTurn } from "@/lib/api/client";
 import { $activeCount, $filters, toBody, type Recorte } from "@/lib/filters";
 import { prefersReducedMotion } from "@/lib/media";
-import { useMeta } from "@/lib/query";
+import { useApiHealth, useMeta } from "@/lib/query";
 import { ActiveChips } from "./ui/ActiveChips";
 import { useFilterModel } from "./filters/useFilterModel";
-
-interface Message {
-  id: number;
-  role: "user" | "assistant";
-  content: string;
-  scope: string;
-  meta?: Pick<ChatResponse, "mode" | "model" | "tools_used">;
-  error?: boolean;
-}
-
-/**
- * Histórico vive num átomo: sobrevive a abrir e fechar o painel. Também fica na
- * sessionStorage da aba, então recarregar a página não perde a conversa.
- * Sem storage (aba privada, bloqueio), segue só em memória.
- */
-const STORAGE_KEY = "central-ops:agent-messages";
-
-function restore(): Message[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = window.sessionStorage.getItem(STORAGE_KEY);
-    const parsed: unknown = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? (parsed as Message[]).slice(-40) : [];
-  } catch {
-    return [];
-  }
-}
-
-const $messages = atom<Message[]>(restore());
-let nextId = $messages.get().reduce((max, m) => Math.max(max, m.id), 0) + 1;
-
-$messages.listen((list) => {
-  try {
-    if (list.length) window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(list.slice(-40)));
-    else window.sessionStorage.removeItem(STORAGE_KEY);
-  } catch {
-    // storage cheio ou bloqueado: a conversa continua em memória
-  }
-});
+import { AgentChatComanda } from "./agent/AgentComanda";
+import { Markdown, clip, plainText } from "./agent/markdown";
 
 const SUGGESTIONS = [
   "Quais os alertas e o que fazer hoje?",
@@ -60,150 +29,52 @@ const SUGGESTIONS = [
 /** Quantas sugestões aparecem de início; o resto fica atrás de "Mais perguntas". */
 const SUGGESTIONS_SHOWN = 3;
 
-/**
- * Um tokenizador para o markdown inline. Ordem importa: código, negrito, depois itálico.
- * _itálico_ só abre e fecha em fronteira de palavra, então snake_case (tools_used) fica intacto.
- */
-const INLINE =
-  /`([^`\n]+)`|\*\*([^*\n]+?)\*\*|(?<![\p{L}\p{N}])_([^_\s](?:[^_\n]*[^_\s])?)_(?![\p{L}\p{N}])|\*([^*\s](?:[^*\n]*[^*\s])?)\*/gu;
-
-/** Markdown inline como ReactNode, sem innerHTML. Asterisco solto ("5 * 3") continua literal. */
-function inline(text: string): ReactNode[] {
-  const out: ReactNode[] = [];
-  let last = 0;
-  for (const m of text.matchAll(INLINE)) {
-    const at = m.index ?? 0;
-    if (at > last) out.push(text.slice(last, at));
-    const key = out.length;
-    const [, code, bold, underscore, star] = m;
-    if (code !== undefined) {
-      out.push(
-        <code key={key} className="rounded-[4px] bg-sunken px-1 text-[0.9em]">
-          {code}
-        </code>,
-      );
-    } else if (bold !== undefined) {
-      out.push(<strong key={key}>{inline(bold)}</strong>);
-    } else {
-      out.push(<em key={key}>{inline(underscore ?? star)}</em>);
-    }
-    last = at + m[0].length;
-  }
-  if (last < text.length) out.push(text.slice(last));
-  return out;
+let nextId = 1;
+let nextSeries = 1;
+for (const message of $agentMessages.get()) {
+  nextId = Math.max(nextId, message.id + 1);
+  if (message.comanda) nextSeries = Math.max(nextSeries, message.comanda.series + 1);
 }
 
-/** Remove os marcadores inline, mantendo o conteúdo. */
-function stripMarks(text: string): string {
-  return text.replace(INLINE, (_m, code, bold, underscore, star) => code ?? stripMarks(bold ?? underscore ?? star));
+function historyOf(list: AgentMessage[]): ChatTurn[] {
+  return list
+    .filter((message) => !message.error)
+    .slice(-8)
+    .map((message) => ({ role: message.role, content: message.content.slice(0, 2000) }));
 }
 
-/** Texto puro para leitor de tela: sem marcadores, títulos, marcas de lista ou tabela. */
-function plainText(md: string): string {
-  const flat = md
-    .replace(/^\s*(?:#{1,4}\s+|[-*•]\s+|\d+\.\s+)/gm, "")
-    .replace(/^\s*\|[\s:|-]+\|\s*$/gm, "")
-    .replace(/\|/g, " ");
-  return stripMarks(flat).replace(/\s+/g, " ").trim();
+function failureDetail(err: unknown): string {
+  if (err instanceof ApiError || err instanceof Error) return err.message;
+  return "erro";
 }
 
-function clip(text: string, max = 200): string {
-  return text.length > max ? `${text.slice(0, max).trimEnd()}…` : text;
-}
-
-function Markdown({ text }: { text: string }) {
-  const blocks: ReactNode[] = [];
-  let list: string[] = [];
-  const flush = () => {
-    if (list.length) {
-      blocks.push(
-        <ul key={`ul-${blocks.length}`} className="ml-4 list-disc space-y-0.5">
-          {list.map((li, i) => (
-            <li key={i}>{inline(li)}</li>
-          ))}
-        </ul>,
-      );
-      list = [];
-    }
+function toTicket(
+  res: ChatResponse,
+  messageId: number,
+  series: number,
+  scope: string,
+  status: AgentReadingStatus,
+): AgentTicket {
+  return {
+    id: `agent-${messageId}`,
+    series,
+    title: res.title,
+    detail: res.diagnosis,
+    action: res.action,
+    drilldowns: res.drilldowns ?? [],
+    n: res.base.n,
+    measured: res.base.measured,
+    lowSample: res.base.low_sample,
+    source: res.source,
+    status,
+    toolLabels: res.tool_labels ?? [],
+    scope,
+    onRail: true,
   };
-  let table: string[][] = [];
-  const flushTable = () => {
-    if (!table.length) return;
-    const [head, ...body] = table;
-    blocks.push(
-      <div key={`t-${blocks.length}`} className="overflow-x-auto">
-        <table className="w-full text-aux tabular-nums">
-          <thead>
-            <tr>
-              {head.map((c, i) => (
-                <th key={i} className="border-b border-rule px-1.5 py-1 text-left font-semibold">
-                  {inline(c)}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {body.map((r, i) => (
-              <tr key={i}>
-                {r.map((c, j) => (
-                  <td key={j} className="border-b border-rule/60 px-1.5 py-1">
-                    {inline(c)}
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>,
-    );
-    table = [];
-  };
-  for (const raw of text.split("\n")) {
-    const line = raw.trimEnd();
-    if (/^\s*\|.*\|\s*$/.test(line)) {
-      flush();
-      if (!/^\s*\|[\s:|-]+\|\s*$/.test(line)) table.push(line.trim().slice(1, -1).split("|").map((c) => c.trim()));
-      continue;
-    }
-    flushTable();
-    if (/^\s*(-{3,}|\*{3,})\s*$/.test(line)) continue;
-    const item = line.match(/^\s*(?:[-*•]|\d+\.)\s+(.*)$/);
-    if (item) {
-      list.push(item[1]);
-      continue;
-    }
-    flush();
-    if (!line.trim()) continue;
-    const heading = line.match(/^#{1,4}\s+(.*)$/);
-    blocks.push(
-      <p key={`p-${blocks.length}`} className={heading ? "font-semibold" : ""}>
-        {inline(heading ? heading[1] : line)}
-      </p>,
-    );
-  }
-  flush();
-  flushTable();
-  return <div className="space-y-1.5">{blocks}</div>;
 }
 
-function ModeTag({ meta }: { meta: NonNullable<Message["meta"]> }) {
-  if (meta.mode === "local") {
-    return (
-      <span className="inline-flex items-center gap-1 text-meta text-muted">
-        <Cpu className="size-3" aria-hidden /> regras locais
-      </span>
-    );
-  }
-  return (
-    <span className="inline-flex flex-wrap items-center gap-1 text-meta text-muted" title={meta.model ?? ""}>
-      <Wrench className="size-3" aria-hidden />
-      {meta.mode === "llm-tools" ? `LLM consultou: ${meta.tools_used.join(", ") || "nenhuma ferramenta"}` : "LLM com contexto do recorte"}
-    </span>
-  );
-}
-
-function scopeKey(f: Recorte) {
-  return JSON.stringify(f);
+function replaceMessage(messageId: number, next: (message: AgentMessage) => AgentMessage) {
+  $agentMessages.set($agentMessages.get().map((message) => (message.id === messageId ? next(message) : message)));
 }
 
 interface ConversationProps {
@@ -212,57 +83,57 @@ interface ConversationProps {
   onClose: () => void;
 }
 
+type Phase = "idle" | "local" | "model";
+
 /** Conversa com o agente. O contêiner (lateral, flutuante ou folha) é do AgentDock. */
 export function AgentConversation({ visible, onClose }: ConversationProps) {
-  const messages = useStore($messages);
+  const messages = useStore($agentMessages);
   const filters = useStore($filters);
   const active = useStore($activeCount);
   const draft = useStore($agentDraft);
   const { data: meta } = useMeta();
+  const health = useApiHealth();
   const [input, setInput] = useState(() => $agentDraft.get() ?? "");
   const [elapsed, setElapsed] = useState(0);
+  const [slow, setSlow] = useState(false);
   const [moreSuggestions, setMoreSuggestions] = useState(false);
+  const [phase, setPhase] = useState<Phase>("idle");
+  const [upgradingId, setUpgradingId] = useState<number | null>(null);
+  const [turn, setTurn] = useState(0);
+  const [undo, setUndo] = useState<AgentMessage[] | null>(null);
   const { chips } = useFilterModel();
   const logRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const phaseRef = useRef<Phase>("idle");
+  const generationRef = useRef(0);
+  const scrolled = useRef<string | null>(null);
   /** Rascunho cujo caret vai ao fim assim que o React gravar esse valor no campo. */
   const caretAfter = useRef<string | null>(null);
+  const llmEnabledRef = useRef(meta?.llm_enabled);
+  const asleepRef = useRef(false);
+  llmEnabledRef.current = meta?.llm_enabled;
+  asleepRef.current = health.isError || slow;
 
-  const mutation = useMutation({
-    mutationFn: (vars: { question: string; history: Message[]; filters: Recorte }) =>
-      askAgent({
-        question: vars.question,
-        filters: toBody(vars.filters),
-        history: vars.history
-          .filter((m) => !m.error)
-          .slice(-8) // limites do ChatRequest: 8 turnos, 2000 caracteres
-          .map((m) => ({ role: m.role, content: m.content.slice(0, 2000) })),
-      }),
-    onSuccess: (res, vars) =>
-      $messages.set([
-        ...$messages.get(),
-        { id: nextId++, role: "assistant", content: res.answer, scope: scopeKey(vars.filters), meta: res },
-      ]),
-    onError: (err, vars) =>
-      $messages.set([
-        ...$messages.get(),
-        {
-          id: nextId++,
-          role: "assistant",
-          content: `Não consegui responder agora (${err instanceof Error ? err.message : "erro"}). Se o servidor estava dormindo, tente de novo em alguns segundos.`,
-          scope: scopeKey(vars.filters),
-          error: true,
-        },
-      ]),
-  });
+  const setBusy = (next: Phase) => {
+    phaseRef.current = next;
+    setPhase(next);
+  };
 
-  // O log rola por dentro do painel: mensagem nova ou espera leva ao fim. Fechado, vai direto, sem animar.
+  const scopeNow = scopeKey(filters);
+  const latestAnswer = [...messages].reverse().find((message) => message.role === "assistant");
+  const scrollKey = phase === "local" ? `pending-${turn}` : latestAnswer ? String(latestAnswer.id) : "";
+
+  // O log rola até o começo da resposta nova. Trocar a mesma comanda pelo modelo não mexe na rolagem.
   useEffect(() => {
+    if (!scrollKey || scrolled.current === scrollKey) return;
     const log = logRef.current;
-    if (!log) return;
-    const reduced = prefersReducedMotion();
-    log.scrollTo({ top: log.scrollHeight, behavior: visible && !reduced ? "smooth" : "auto" });
-  }, [messages.length, mutation.isPending, visible]);
+    const el = log?.querySelector<HTMLElement>(`[data-answer="${CSS.escape(scrollKey)}"]`);
+    if (!log || !el) return;
+    const top = el.getBoundingClientRect().top - log.getBoundingClientRect().top + log.scrollTop;
+    log.scrollTo({ top: Math.max(0, top), behavior: visible && !prefersReducedMotion() ? "smooth" : "auto" });
+    scrolled.current = scrollKey;
+  }, [scrollKey, visible, messages.length]);
 
   // Foco no campo ao abrir o painel. A pergunta pronta de uma comanda tem o próprio efeito abaixo.
   useEffect(() => {
@@ -270,25 +141,34 @@ export function AgentConversation({ visible, onClose }: ConversationProps) {
   }, [visible]);
 
   // O botão de abrir mostra a espera e a resposta que chegou com o painel fechado.
-  const answers = messages.filter((m) => m.role === "assistant").length;
+  const answers = messages.filter((message) => message.role === "assistant").length;
   const seenAnswers = useRef(answers);
   useEffect(() => {
-    if (mutation.isPending) $agentActivity.set("pending");
-    else if (!visible && answers > seenAnswers.current) $agentActivity.set("unread");
-    else if (visible || $agentActivity.get() === "pending") $agentActivity.set("idle");
+    const current = $agentActivity.get();
+    let next = current;
+    if (phase !== "idle") next = "pending";
+    else if (!visible && answers > seenAnswers.current) next = "unread";
+    else if (visible || current === "pending") next = "idle";
+    if (next !== current) $agentActivity.set(next);
     if (visible) seenAnswers.current = answers;
-  }, [mutation.isPending, answers, visible]);
+  }, [phase, answers, visible]);
 
-  // Tempo decorrido na espera. O cliente não sabe as etapas reais da ferramenta, então só mostra segundos.
+  // Segundos só na espera da leitura local. A linha do servidor dormindo depende do /api/health.
   useEffect(() => {
-    if (!mutation.isPending) return;
+    if (health.isSuccess) return setSlow(false);
+    const timer = window.setTimeout(() => setSlow(true), 2500);
+    return () => window.clearTimeout(timer);
+  }, [health.isSuccess]);
+
+  useEffect(() => {
+    if (phase !== "local") return;
     const started = Date.now();
     const id = window.setInterval(() => setElapsed(Math.floor((Date.now() - started) / 1000)), 1000);
     return () => {
       window.clearInterval(id);
       setElapsed(0);
     };
-  }, [mutation.isPending]);
+  }, [phase]);
 
   // Ponte com a comanda: preenche o campo e foca, mas não envia. O operador revisa e aperta Enviar.
   useEffect(() => {
@@ -308,21 +188,145 @@ export function AgentConversation({ visible, onClose }: ConversationProps) {
     el.setSelectionRange(input.length, input.length);
   }, [input]);
 
-  const send = (question: string) => {
-    const q = question.trim();
-    if (!q || mutation.isPending) return;
-    const history = $messages.get();
-    $messages.set([...history, { id: nextId++, role: "user", content: q, scope: scopeKey(filters) }]);
-    setInput("");
-    mutation.mutate({ question: q, history, filters });
+  // O campo cresce com o texto, até 10rem, para a pergunta pronta caber inteira.
+  useLayoutEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+  }, [input]);
+
+  const cancel = () => abortRef.current?.abort();
+
+  const run = async (question: string, history: ChatTurn[], recorte: Recorte, scope: string, gen: number) => {
+    const localCtrl = new AbortController();
+    abortRef.current = localCtrl;
+    setBusy("local");
+    let local: ChatResponse;
+    try {
+      local = await askAgent(
+        { question, filters: toBody(recorte), history, engine: "local" },
+        localCtrl.signal,
+      );
+    } catch (err) {
+      if (gen !== generationRef.current) return;
+      setBusy("idle");
+      if (localCtrl.signal.aborted) return;
+      const detail = failureDetail(err);
+      const content = asleepRef.current
+        ? `Não consegui responder agora (${detail}). O servidor está acordando. Tente de novo em alguns segundos.`
+        : `Não consegui responder agora (${detail}). Tente de novo.`;
+      $agentMessages.set([
+        ...$agentMessages.get(),
+        { id: nextId++, role: "assistant", content, scope, error: true },
+      ]);
+      return;
+    }
+    if (gen !== generationRef.current || localCtrl.signal.aborted) {
+      if (gen === generationRef.current) setBusy("idle");
+      return;
+    }
+    const assistantId = nextId++;
+    const series = nextSeries++;
+    $agentMessages.set([
+      ...$agentMessages.get(),
+      {
+        id: assistantId,
+        role: "assistant",
+        content: local.answer,
+        scope,
+        comanda: toTicket(local, assistantId, series, scope, "rules"),
+      },
+    ]);
+    if (llmEnabledRef.current === false) {
+      setBusy("idle");
+      return;
+    }
+    const llmCtrl = new AbortController();
+    abortRef.current = llmCtrl;
+    setUpgradingId(assistantId);
+    setBusy("model");
+    try {
+      const llm = await askAgent(
+        { question, filters: toBody(recorte), history, engine: "auto" },
+        llmCtrl.signal,
+      );
+      if (gen !== generationRef.current) return;
+      if (llmCtrl.signal.aborted) {
+        replaceMessage(assistantId, (message) =>
+          message.comanda ? { ...message, comanda: { ...message.comanda, status: "cancelled" } } : message,
+        );
+        return;
+      }
+      if (llm.source === "llm") {
+        replaceMessage(assistantId, (message) =>
+          message.comanda
+            ? {
+                ...message,
+                content: llm.answer,
+                comanda: {
+                  ...toTicket(llm, assistantId, message.comanda.series, message.comanda.scope, "upgraded"),
+                  onRail: message.comanda.onRail,
+                },
+              }
+            : message,
+        );
+      }
+    } catch {
+      if (gen !== generationRef.current) return;
+      const status: AgentReadingStatus = llmCtrl.signal.aborted ? "cancelled" : "failed";
+      replaceMessage(assistantId, (message) =>
+        message.comanda ? { ...message, comanda: { ...message.comanda, status } } : message,
+      );
+    } finally {
+      if (gen === generationRef.current) {
+        setUpgradingId(null);
+        setBusy("idle");
+      }
+    }
   };
 
-  const scopeChanged = messages.length > 0 && messages.at(-1)!.scope !== scopeKey(filters);
+  const send = (question: string) => {
+    const q = question.trim();
+    if (!q || phaseRef.current !== "idle") return;
+    setUndo(null);
+    const history = historyOf($agentMessages.get());
+    const scope = scopeKey(filters);
+    phaseRef.current = "local";
+    const gen = generationRef.current + 1;
+    generationRef.current = gen;
+    const nextTurn = turn + 1;
+    setTurn(nextTurn);
+    $agentMessages.set([...$agentMessages.get(), { id: nextId++, role: "user", content: q, scope }]);
+    setInput("");
+    void run(q, history, filters, scope, gen);
+  };
 
-  // Só a última resposta do agente vai para o leitor de tela, e só quando ela muda.
+  const wipe = () => {
+    const current = $agentMessages.get();
+    if (!current.length) return;
+    generationRef.current += 1;
+    abortRef.current?.abort();
+    setBusy("idle");
+    setUpgradingId(null);
+    setUndo(current);
+    $agentMessages.set([]);
+  };
+
+  const restore = () => {
+    if (!undo) return;
+    $agentMessages.set(undo);
+    setUndo(null);
+  };
+
+  const scopeChanged = messages.length > 0 && messages.at(-1)!.scope !== scopeNow;
+  const serverAsleep = health.isError || slow;
+
+  // Só a última resposta vai para o leitor de tela, e só quando o texto muda.
   const announcement = useMemo(() => {
-    const latest = messages.filter((m) => m.role === "assistant").at(-1);
+    const latest = [...messages].reverse().find((message) => message.role === "assistant");
     if (!latest) return "";
+    if (latest.comanda) return `Comanda do agente: ${latest.comanda.title}. Ação: ${latest.comanda.action}`;
     const text = clip(plainText(latest.content));
     return latest.error ? text : `Resposta do agente: ${text}`;
   }, [messages]);
@@ -336,7 +340,7 @@ export function AgentConversation({ visible, onClose }: ConversationProps) {
           </h2>
           <div className="flex items-center gap-1">
             {messages.length > 0 && (
-              <button type="button" className="btn-ghost px-2 py-1 text-meta max-lg:min-h-11" onClick={() => $messages.set([])}>
+              <button type="button" className="btn-ghost px-2 py-1 text-meta max-lg:min-h-11" onClick={wipe}>
                 <RotateCcw className="size-3.5" aria-hidden /> Nova conversa
               </button>
             )}
@@ -368,11 +372,19 @@ export function AgentConversation({ visible, onClose }: ConversationProps) {
       <div ref={logRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain p-4" role="log" aria-live="off" aria-label="Conversa com o agente">
         {messages.length === 0 && (
           <div className="space-y-2">
+            {undo && (
+              <div className="flex items-center justify-between gap-2 rounded-card bg-sunken px-3 py-2">
+                <p className="text-body">Conversa apagada.</p>
+                <button type="button" className="btn-ghost px-2 py-1 text-meta max-lg:min-h-11" onClick={restore}>
+                  Desfazer
+                </button>
+              </div>
+            )}
             <p className="label">Comece por uma destas ou escreva a sua:</p>
             <div className="grid gap-1.5">
-              {(moreSuggestions ? SUGGESTIONS : SUGGESTIONS.slice(0, SUGGESTIONS_SHOWN)).map((s) => (
-                <button key={s} type="button" className="btn-ghost justify-start text-left max-lg:min-h-11" onClick={() => send(s)}>
-                  {s}
+              {(moreSuggestions ? SUGGESTIONS : SUGGESTIONS.slice(0, SUGGESTIONS_SHOWN)).map((suggestion) => (
+                <button key={suggestion} type="button" className="btn-ghost justify-start text-left max-lg:min-h-11" onClick={() => send(suggestion)}>
+                  {suggestion}
                 </button>
               ))}
             </div>
@@ -381,7 +393,7 @@ export function AgentConversation({ visible, onClose }: ConversationProps) {
                 type="button"
                 className="btn-ghost px-2 py-1 text-meta max-lg:min-h-11"
                 aria-expanded={moreSuggestions}
-                onClick={() => setMoreSuggestions((v) => !v)}
+                onClick={() => setMoreSuggestions((value) => !value)}
               >
                 <ChevronDown className={`size-3.5 transition-transform duration-(--duration-fast) ease-(--ease-smooth-out) motion-reduce:transition-none ${moreSuggestions ? "rotate-180" : ""}`} aria-hidden />
                 Mais perguntas
@@ -389,47 +401,52 @@ export function AgentConversation({ visible, onClose }: ConversationProps) {
             )}
           </div>
         )}
-        {messages.map((m, i) => {
-          const prev = messages[i - 1];
+        {messages.map((message, index) => {
+          const prev = messages[index - 1];
           return (
-            <Fragment key={m.id}>
-              {prev && m.role === "user" && prev.scope !== m.scope && (
+            <Fragment key={message.id}>
+              {prev && message.role === "user" && prev.scope !== message.scope && (
                 <p className="border-t border-dashed border-rule pt-2 text-center text-meta text-muted">
                   recorte mudou: as respostas abaixo usam os filtros novos
                 </p>
               )}
-              {m.role === "user" ? (
-                <div className="ml-8 rounded-card bg-sunken px-3 py-2 text-body">
-                  {m.content}
+              {message.role === "user" ? (
+                <div className="ml-8 rounded-card bg-sunken px-3 py-2 text-body">{message.content}</div>
+              ) : message.comanda ? (
+                <div
+                  data-answer={message.id}
+                  className="transition-[opacity,translate,filter] duration-(--duration-fast) ease-(--ease-smooth-out) starting:translate-y-(--distance-micro) starting:opacity-0 starting:blur-(--blur-small) motion-reduce:transition-none"
+                >
+                  <AgentChatComanda
+                    ticket={message.comanda}
+                    stale={message.comanda.scope !== scopeNow}
+                    waiting={phase === "model" && upgradingId === message.id}
+                    onCancel={cancel}
+                  />
                 </div>
               ) : (
-                // Chegada discreta: a resposta entra com fade, 4px de subida e um desfoque leve. Reduzido, aparece direto.
                 <div
-                  className={`mr-2 rounded-card border bg-surface px-3 py-2.5 text-body transition-[opacity,translate,filter] duration-(--duration-fast) ease-(--ease-smooth-out) starting:translate-y-(--distance-micro) starting:opacity-0 starting:blur-(--blur-small) motion-reduce:transition-none ${m.error ? "border-warn" : "border-rule"}`}
+                  data-answer={message.id}
+                  className={`mr-2 rounded-card border bg-surface px-3 py-2.5 text-body transition-[opacity,translate,filter] duration-(--duration-fast) ease-(--ease-smooth-out) starting:translate-y-(--distance-micro) starting:opacity-0 starting:blur-(--blur-small) motion-reduce:transition-none ${message.error ? "border-warn" : "border-rule"}`}
                 >
-                  <Markdown text={m.content} />
-                  {m.meta && (
-                    <div className="mt-1.5">
-                      <ModeTag meta={m.meta} />
-                    </div>
-                  )}
+                  <Markdown text={message.content} />
                 </div>
               )}
             </Fragment>
           );
         })}
-        {mutation.isPending && (
-          <div role="status" className="mr-2 px-3 text-muted">
-            <div className="text-aux">
-              <p className="tabular-nums">
-                {/* Brilho sem JS; o texto real fica no DOM uma vez (o pseudo-elemento não é lido). */}
-                <span className="shimmer-text" data-text="Consultando o recorte…">
-                  Consultando o recorte…
-                </span>
-                {elapsed >= 5 && <span aria-hidden> {elapsed} s</span>}
-              </p>
-              {elapsed >= 5 && <p className="text-meta">Se o servidor estava dormindo, a primeira resposta leva até ~40 s.</p>}
-            </div>
+        {phase === "local" && (
+          <div data-answer={`pending-${turn}`} role="status" className="mr-2 px-3 text-muted">
+            <p className="text-aux tabular-nums">
+              <span className="shimmer-text" data-text="Consultando o recorte…">
+                Consultando o recorte…
+              </span>
+              {elapsed >= 5 && <span aria-hidden> {elapsed} s</span>}
+            </p>
+            {serverAsleep && <p className="text-meta">O servidor está acordando. A primeira leitura leva até ~40 s.</p>}
+            <button type="button" className="btn-ghost mt-1 px-2 py-1 text-meta max-lg:min-h-11" onClick={cancel}>
+              Cancelar
+            </button>
           </div>
         )}
       </div>
@@ -438,32 +455,40 @@ export function AgentConversation({ visible, onClose }: ConversationProps) {
         {announcement}
       </p>
 
-      {scopeChanged && !mutation.isPending && (
+      {scopeChanged && phase === "idle" && (
         <p className="mx-4 mb-2 rounded-card bg-sunken px-3 py-1.5 text-meta text-muted">
           Os filtros mudaram desde a última resposta. A próxima pergunta já usa o recorte novo.
         </p>
       )}
 
       <form
-        className="flex gap-2 border-t border-rule p-3"
-        onSubmit={(e) => {
-          e.preventDefault();
+        className="flex items-end gap-2 border-t border-rule p-3"
+        onSubmit={(event) => {
+          event.preventDefault();
           send(input);
         }}
       >
         <label className="sr-only" htmlFor="agent-input">
           Pergunta para o agente
         </label>
-        <input
+        <textarea
           id="agent-input"
           ref={inputRef}
+          rows={1}
           value={input}
           maxLength={800}
-          onChange={(e) => setInput(e.target.value)}
+          onChange={(event) => setInput(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key !== "Enter" || event.shiftKey) return;
+            const native = event.nativeEvent as { isComposing?: boolean; keyCode?: number };
+            if (native.isComposing || native.keyCode === 229) return;
+            event.preventDefault();
+            send(input);
+          }}
           placeholder="Pergunte sobre este recorte…"
-          className="min-w-0 flex-1 rounded-card border border-rule bg-surface px-3 py-2 text-body outline-none placeholder:text-muted focus:border-ink max-lg:min-h-11"
+          className="max-h-40 min-h-11 w-full min-w-0 flex-1 resize-none overflow-y-auto rounded-card border border-rule bg-surface px-3 py-2 text-body outline-none placeholder:text-muted focus:border-ink lg:min-h-10"
         />
-        <button type="submit" className="btn-ink max-lg:min-h-11 max-lg:min-w-11 max-lg:justify-center" disabled={!input.trim() || mutation.isPending} aria-label="Enviar">
+        <button type="submit" className="btn-ink max-lg:min-h-11 max-lg:min-w-11 max-lg:justify-center" disabled={!input.trim() || phase !== "idle"} aria-label="Enviar">
           <SendHorizontal className="size-4" aria-hidden />
         </button>
       </form>

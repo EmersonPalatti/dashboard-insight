@@ -21,7 +21,7 @@ from fastapi.responses import FileResponse, JSONResponse
 
 from app.agent import service as agent
 from app.agent.local import briefing as briefing_text
-from app.alerts import detect_alerts
+from app.alerts import detect_alerts, hero_readings
 from app.config import Settings, get_settings
 from app.filters import Filters
 from app.repository import Repository
@@ -297,7 +297,8 @@ def register_routes(app: FastAPI) -> None:
     @app.get("/api/meta", response_model=Meta, tags=["recorte"])
     def meta(repo: Repo, settings: Annotated[Settings, Depends(get_settings)]):
         return {**repo.meta(), "llm_enabled": settings.llm_enabled,
-                "llm_model": settings.openrouter_model if settings.llm_enabled else None}
+                "llm_model": settings.openrouter_model if settings.llm_enabled else None,
+                "csv_max_rows": settings.csv_export_max_rows}
 
     @app.get("/api/kpis", response_model=KpiResponse, tags=["analytics"])
     def kpis(repo: Repo, f: F):
@@ -308,6 +309,7 @@ def register_routes(app: FastAPI) -> None:
             "current": repo.metrics(f),
             "previous_period": {"start": prev[0], "end": prev[1]} if prev else None,
             "previous": repo.metrics(f.with_period(*prev)) if prev else None,
+            "heroes": hero_readings(repo, f),
         }
 
     @app.get("/api/timeseries", response_model=list[TimePoint], tags=["analytics"])
@@ -408,7 +410,9 @@ def register_routes(app: FastAPI) -> None:
         settings: Annotated[Settings, Depends(get_settings)],
         request: Request,
     ):
-        return agent.chat(req, repo, settings, use_llm=llm_allowed(request, settings))
+        # engine=local não passa no limitador: a cota é só da chamada ao modelo.
+        use_llm = req.engine != "local" and llm_allowed(request, settings)
+        return agent.chat(req, repo, settings, use_llm=use_llm)
 
 
 app = create_app()

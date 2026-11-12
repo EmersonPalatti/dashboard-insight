@@ -19,7 +19,7 @@ colors:
   on-wine: "#F1DBE3"
   series: "#7A1E3D"
   series-deep: "#4A0F25"
-  series-soft: "#E7B3C4"
+  series-soft: "#C07D93"
   shell-good: "#9BC75A"
   shell-crit: "#FF6A5E"
   shell-warn: "#F0A93B"
@@ -298,7 +298,7 @@ Tokens live in `:root` (`--duration-*`, `--ease-*`, `--distance-*`, `--scale-*`,
 - The agent's wait is a shimmer over "Consultando o recorte…"; its answer rises 4px into place in 250ms.
 
 ### KPI grid
-Three operation cells joined by 1px rule gaps, each with a sentence-case label, figure, delta, a daily trail drawn in ink from the recorte's own time series, and a muted footnote that wraps, never truncates. When the backend flags the measured base as small (`low_sample`), SLA and ciclo keep their figure and swap the delta for a `warn` note ("base: 20 entregas · amostra pequena"). Volume KPIs sit in one tile below, inline.
+Three operation cells joined by 1px rule gaps, each with a sentence-case label, figure, one status line, a daily trail in series wine, and a muted footnote that wraps, never truncates. The status line leads with the verdict (Dentro, Atenção, Crítico — dash in `good`, hollow ring in `warn`, filled dot in `crit`) and the reference, then the previous-period delta when it exists. It stays one line and truncates. A hairline marks the network value on the trail only when that value already sits inside the series scale. When the backend flags the measured base as small (`low_sample`), SLA and ciclo keep their figure and swap the status line for a `warn` note ("base: 20 entregas · amostra pequena"). Volume KPIs sit in one tile below, inline, and swap their delta for "amostra pequena" when either period has fewer than 100 orders.
 
 ## Do's and Don'ts
 
