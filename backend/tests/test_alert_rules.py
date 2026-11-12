@@ -11,6 +11,7 @@ import pytest
 
 from app.alerts import THIN_SLA_ACTION, _hours_label, _weighted_sla, detect_alerts
 from app.filters import Filters
+from app.repository import MIN_MEASURED
 
 HEALTHY_STORES = [18, 26]  # lojas no prazo, sem cancelamento: hub 1 e hub 2
 BANNED_ANALYSIS_ACTIONS = ("Separar cancelamento", "Cruzar a queda", "Revisar frete mínimo nas lojas")
@@ -34,8 +35,18 @@ def test_sla_hub_fires_on_slow_hub_not_on_healthy(repo):
     assert not any(a.startswith("sla-hub") for a in _by_id(repo, Filters(store=HEALTHY_STORES)))
 
 
-def test_cancel_recorte_fires_on_broken_store_not_on_healthy(repo):
-    assert _by_id(repo, Filters(store=[30]))["cancel-recorte"].severity == "high"
+def test_cancel_recorte_fires_on_hot_slice_not_on_healthy(repo):
+    assert _by_id(repo, Filters(store=[25, 18]))["cancel-recorte"].severity == "high"
+    assert "cancel-recorte" not in _by_id(repo, Filters(store=[18]))
+
+
+def test_single_broken_store_takes_offline_instead_of_cancel_recorte(repo):
+    # Loja 30 cancela tudo. Sozinha, a ação é tirar do ar — sem o recorte de ruptura.
+    alone = _by_id(repo, Filters(store=[30]))
+    assert alone["cancel-store-30"].severity == "high"
+    assert alone["cancel-store-30"].title.startswith("Loja sem entregas")
+    assert "Tirar" in alone["cancel-store-30"].action
+    assert "cancel-recorte" not in alone
     assert "cancel-recorte" not in _by_id(repo, Filters(store=[18]))
 
 
@@ -97,9 +108,13 @@ def test_small_sample_downgrades_sla_and_cancel_to_low(repo):
 
 
 def test_cancel_gate_uses_total_orders_not_measured(repo):
-    # Loja 30 cancela 100% de 771 pedidos e tem 0 entregas medidas. O cancelamento é firme e segue alto.
-    f = Filters(store=[30])
-    assert repo.metrics(f)["low_sample"] is True
+    # Loja 13: 280 cancelados e 40 medidos. low_sample é verdadeiro, mas o total passa de 100
+    # e a taxa fica abaixo de 90%, então o cancelamento do recorte segue alto.
+    f = Filters(store=[13])
+    metrics = repo.metrics(f)
+    assert metrics["low_sample"] is True
+    assert metrics["orders"] >= MIN_MEASURED
+    assert metrics["cancel_rate"] < 0.9
     assert _by_id(repo, f)["cancel-recorte"].severity == "high"
 
 
@@ -181,3 +196,153 @@ def test_freight_action_names_store_from_data(repo):
 def test_no_analysis_only_actions(repo, f):
     for alert in detect_alerts(repo, f):
         assert not any(phrase in alert.action for phrase in BANNED_ANALYSIS_ACTIONS), alert.id
+
+
+# Loja a 90% sai do ar mesmo sozinha e mesmo com o recorte já alto -------------------
+
+
+def test_broken_store_is_absolute_even_when_the_slice_is_that_store(repo):
+    alone = _by_id(repo, Filters(store=[33]))
+    metrics = repo.metrics(Filters(store=[33]))
+    assert metrics["orders"] >= 150 and metrics["cancel_rate"] == pytest.approx(1.0)
+    assert alone["cancel-store-33"].title.startswith("Loja sem entregas")
+    assert "Tirar" in alone["cancel-store-33"].action
+    assert "cancel-recorte" not in alone
+
+
+def test_broken_store_survives_when_two_and_a_half_times_exceeds_100_percent(repo):
+    # 33 a 100% e 34 a 50%: o recorte cancela 75%, e 2,5× passa de 100%.
+    both_f = Filters(store=[33, 34])
+    metrics = repo.metrics(both_f)
+    assert metrics["cancel_rate"] == pytest.approx(0.75)
+    assert 2.5 * metrics["cancel_rate"] > 1
+    both = _by_id(repo, both_f)
+    assert "Tirar" in both["cancel-store-33"].action
+    assert "cancel-store-34" not in both
+    assert "cancel-recorte" in both
+
+
+# Segmento concentrado: base mínima e participação nos cancelamentos -----------------
+
+
+def test_tiny_segment_is_not_called_concentrated(repo):
+    # Food 20/150 cancelados, goods 2/2. A maior taxa é goods; os cancelamentos estão no food.
+    f = Filters(store=[27, 47])
+    alert = _by_id(repo, f)["cancel-recorte"]
+    assert "Concentrado" not in alert.detail
+    assert "goods" not in alert.detail
+
+
+def test_only_segment_in_the_slice_is_not_called_concentrated(repo):
+    alert = _by_id(repo, Filters(store=[27]))["cancel-recorte"]
+    assert "Concentrado" not in alert.detail
+
+
+def test_full_dataset_still_names_the_segment_that_concentrates_cancels(repo):
+    assert "Concentrado no segmento food" in _by_id(repo, Filters())["cancel-recorte"].detail
+
+
+# Amostra fina: taxa extrema não rebaixa; período fechado não manda ampliar --------
+
+
+def test_extreme_thin_cancel_is_not_downgraded(repo):
+    f = Filters(store=[35])
+    metrics = repo.metrics(f)
+    assert metrics["orders"] == 89 and metrics["delivered"] == 0
+    alert = _by_id(repo, f)["cancel-recorte"]
+    assert alert.severity == "high"
+    assert "ampliar o período" not in alert.action
+    assert "Ligar hoje" in alert.action
+    dated = _by_id(repo, Filters(store=[35], start=date(2021, 3, 3), end=date(2021, 3, 3)))
+    assert dated["cancel-recorte"].severity == "high"
+    assert "ampliar o período" not in dated["cancel-recorte"].action
+
+
+def test_thin_sample_with_no_date_filter_does_not_ask_to_widen(repo):
+    f = Filters(store=[36])
+    metrics = repo.metrics(f)
+    assert metrics["orders"] < MIN_MEASURED
+    assert 0 < metrics["cancel_rate"] < 0.9
+    assert metrics["delivered"] > 0
+    alerts = _by_id(repo, f)
+    assert alerts["cancel-recorte"].severity == "low"
+    assert alerts["sla-recorte"].severity == "low"
+    assert "ampliar o período" not in alerts["cancel-recorte"].action
+    assert "ampliar o período" not in alerts["sla-recorte"].action
+    assert "todo o período dos dados" in alerts["cancel-recorte"].action
+    assert "todo o período dos dados" in alerts["sla-recorte"].action
+
+    closed = Filters(store=[36], start=repo.min_date, end=repo.max_date)
+    closed_alerts = _by_id(repo, closed)
+    assert "ampliar o período" not in closed_alerts["cancel-recorte"].action
+
+    one_day = _by_id(repo, Filters(store=[36], start=date(2021, 3, 3), end=date(2021, 3, 3)))
+    assert one_day["cancel-recorte"].action.startswith("Não ligar")
+    assert "ampliar o período" in one_day["cancel-recorte"].action
+    assert one_day["sla-recorte"].action == THIN_SLA_ACTION
+
+
+# Recorte preso: o SLA não pede frota; o alerta de dado leva o número ---------------
+
+
+def test_stuck_recorte_folds_sla_into_the_data_alert(repo):
+    f = Filters(store=[28])
+    metrics = repo.metrics(f)
+    assert metrics["stuck_rate"] > 0.30
+    assert metrics["measured"] >= MIN_MEASURED
+    assert metrics["sla_rate"] < 0.80
+    alerts = _by_id(repo, f)
+    assert "sla-recorte" not in alerts
+    assert "sla-pico" not in alerts
+    data = alerts["dados-presos"]
+    assert data.severity == "medium"
+    assert "finalização" in data.action
+    assert "frota" not in data.action.lower()
+    assert "reforçar" not in data.action.lower()
+    assert "SLA medido" in data.detail
+    assert "não cobrar prazo nem reforçar frota" in data.detail
+
+
+# Fator do hub usa vírgula decimal --------------------------------------------------
+
+
+def test_hub_cancel_ratio_uses_decimal_comma(repo):
+    f = Filters(store=[38, 43])
+    alert = _by_id(repo, f)["cancel-hub-3"]
+    factor = alert.detail.split("×")[0].rsplit("(", 1)[-1]
+    assert factor == "1,7"
+    assert "." not in factor
+
+
+# Bordas: mais de 5 pontos, acima de 1,6× e pelo menos 6% ---------------------------
+
+
+def test_hub_exactly_five_points_below_is_not_a_slow_hub(repo):
+    f = Filters(store=[24, 44])
+    base = repo.metrics(f)
+    hubs = {int(h["key"]): h for h in repo.breakdown(f, "hub", min_orders=300)}
+    assert hubs[2]["sla_rate"] == pytest.approx(0.75)
+    assert base["sla_rate"] == pytest.approx(0.80)
+    assert hubs[2]["sla_rate"] == pytest.approx(base["sla_rate"] - 0.05)
+    assert "sla-hub-2" not in _by_id(repo, f)
+    assert hubs[2]["sla_below"] is False
+
+
+def test_hub_exactly_one_point_six_times_is_not_a_cancel_outlier(repo):
+    f = Filters(store=[37, 49])
+    base = repo.metrics(f)
+    hubs = {int(h["key"]): h for h in repo.breakdown(f, "hub", min_orders=300)}
+    assert hubs[3]["cancel_rate"] == pytest.approx(base["cancel_rate"] * 1.6)
+    assert hubs[3]["cancel_rate"] > 0.06
+    assert "cancel-hub-3" not in _by_id(repo, f)
+    assert hubs[3]["cancel_above"] is False
+
+
+def test_cancel_of_exactly_six_percent_is_flagged_when_the_ratio_is_higher(repo):
+    f = Filters(store=[39, 48])
+    base = repo.metrics(f)
+    hubs = {int(h["key"]): h for h in repo.breakdown(f, "hub", min_orders=0)}
+    assert hubs[3]["cancel_rate"] == pytest.approx(0.06)
+    assert base["cancel_rate"] * 1.6 < 0.06
+    assert hubs[3]["cancel_above"] is True
+    assert hubs[4]["cancel_above"] is False

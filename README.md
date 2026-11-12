@@ -28,7 +28,7 @@ flowchart LR
 
 <img src="assets/n8n-telegram.png" alt="Telegram recebendo o briefing de 22/02/2021, duas mensagens encaminhadas por responsável e o aviso de API indisponível" width="360">
 
-O n8n roda local, na Community Edition gratuita. O workflow está em `n8n/` e pode ser importado em qualquer instância.
+O n8n roda local, na Community Edition gratuita. O workflow está em `n8n/` e pode ser importado em qualquer instância. Ele chama a API sem header de autenticação. Se `AUTOMATION_TOKEN` estiver definido no backend, `/api/briefing` e `/api/alerts/routing` passam a exigir `X-Automation-Token`; deixe a variável vazia para o workflow versionado continuar funcionando.
 
 Importar e ligar o bot: [n8n/README.md](n8n/README.md). O que cada nó faz: [n8n/COMO-FUNCIONA.md](n8n/COMO-FUNCIONA.md). Mensagens de uma execução real: [n8n/exemplo-briefing.md](n8n/exemplo-briefing.md).
 
@@ -79,7 +79,7 @@ Decisões que vale conhecer:
 - **Um contrato de filtro.** `Filters` (Pydantic) é a query string da API e da URL do navegador. Os tipos TypeScript são gerados do OpenAPI: se um schema muda, o `astro check` quebra no build.
 - **Ilhas que se falam sem Provider global.** O filtro grava num átomo Nanostores; KPIs, gráficos, tabelas e agente são ilhas separadas que escutam o mesmo átomo e compartilham um `QueryClient`. A comanda aberta publica sua evidência num segundo átomo, que os gráficos usam para destacar o que o alerta aponta.
 - **Sem salto de layout.** Moldura, título e dica fixa de cada painel saem no HTML do Astro; a ilha só preenche o corpo, e o skeleton reserva a altura final. Acima da dobra hidrata com `client:load`; gráficos e tabelas com `client:visible`; a conversa do agente entra com `React.lazy`.
-- **Agente com limites.** Até 3 rodadas de ferramentas, orçamento de 20 s por pergunta, histórico curto, corpo de até 64 KB e 8 perguntas por minuto por IP. Se o LLM falha, demora ou a cota acaba, a resposta vem das regras locais em vez de um erro.
+- **Agente com limites.** Até 3 rodadas de ferramentas, orçamento de 20 s por pergunta, histórico curto, corpo de até 64 KB (contado no stream, não só no `Content-Length`), 8 perguntas por minuto por IP e um teto global por minuto. Se o LLM falha, demora ou a cota acaba, a resposta vem das regras locais em vez de um erro.
 
 ## Limpeza dos dados
 
@@ -100,7 +100,7 @@ cd backend
 python -m venv .venv && .venv\Scripts\activate      # Linux/macOS: source .venv/bin/activate
 pip install -r requirements-dev.txt
 uvicorn app.main:app --reload                       # http://localhost:8000/docs
-pytest                                              # 104 testes, com parquet sintético
+pytest                                              # 125 testes, com parquet sintético
 
 # frontend: Node 20+
 cd frontend
@@ -121,18 +121,25 @@ Agente com LLM (opcional): copie `backend/.env.example` para `backend/.env` e pr
 | `LLM_TIMEOUT_S` | `45` | Tempo máximo de cada chamada ao LLM |
 | `CHAT_BUDGET_S` | `20` | Tempo total por pergunta antes de cair nas regras locais |
 | `CHAT_RATE_LIMIT_PER_MINUTE` | `8` | Perguntas ao LLM por minuto por IP |
-| `CHAT_RATE_LIMIT_ENABLED` | `true` | Liga a cota acima |
+| `CHAT_GLOBAL_RATE_LIMIT_PER_MINUTE` | `60` | Teto de chamadas ao LLM por minuto, somando todos os IPs. `0` desliga |
+| `CHAT_RATE_LIMIT_ENABLED` | `true` | Liga as cotas acima |
+| `CLIENT_IP_HEADER` | vazio | Header de IP confiável, se o proxy mandar um (`true-client-ip` ou `cf-connecting-ip`). Vazio: último hop de `X-Forwarded-For`. O Render não documenta `True-Client-IP` como header próprio |
+| `CSV_EXPORT_MAX_ROWS` | `50000` | Teto de linhas do CSV. Acima disso a API responde 413 e pede um recorte menor |
+| `CSV_EXPORT_PER_MINUTE` | `30` | Exportações CSV por minuto por IP. `0` desliga |
+| `AUTOMATION_TOKEN` | vazio | Se preenchido, `/api/briefing` e `/api/alerts/routing` exigem `X-Automation-Token`. Vazio: abertos, como o workflow n8n versionado |
 
 ## API
 
 A query string é o recorte do painel: `start`, `end`, `city`, `hub`, `store`, `segment`, `channel_type`, `modal` e `status`. O contrato inteiro está em `/docs`.
 
-Dois GETs em `/api` alimentam automação (agendador, mensagem) sem chamar o agente com LLM. Data inválida ou `end` anterior a `start` responde 422, como o resto da API. Resposta 200 de GET leva `Cache-Control: public, max-age=600`.
+Dois GETs em `/api` alimentam automação (agendador, mensagem) sem chamar o agente com LLM. Data inválida ou `end` anterior a `start` responde 422, como o resto da API. Resposta 200 de GET leva `Cache-Control: public, max-age=600`. Com `AUTOMATION_TOKEN` no ambiente, os dois exigem o header `X-Automation-Token` (comparação em tempo constante). Sem a variável, seguem abertos: o JSON do n8n não envia esse header.
+
+`GET /api/orders.csv` exporta o recorte até `CSV_EXPORT_MAX_ROWS` (50 mil). Passou disso, responde 413 e pede para afinar o filtro. Também há um limite por minuto por IP.
 
 | | |
 |---|---|
 | `GET /api/briefing` | `{markdown, start, end, alert_count}`. `markdown` é o briefing local do recorte. `start` e `end` são as datas pedidas; sem elas, o primeiro e o último dia com pedido no recorte, ou `null` se não houver pedido. `alert_count` é o tamanho da fila de alertas. |
-| `GET /api/alerts/routing` | Lista `{alert_id, severity, recipient, message}`. `recipient` sai do drill-down ou da evidência do alerta: `Loja {id}` ou `Líder do hub {id}`. Sem loja nem hub, fica `Time de operações da praça`. `message` junta o problema (números já em pt-BR) e a ação. Template fixo, sem LLM. |
+| `GET /api/alerts/routing` | Lista `{alert_id, severity, recipient, message}`. `recipient` sai do drill-down ou da evidência do alerta: `Loja {nome} ({id})` ou `Líder do hub {nome} ({id})`, com o nome vindo dos dados. Sem loja nem hub, fica `Time de operações da praça`. `message` junta o problema (números já em pt-BR) e a ação. Template fixo, sem LLM. |
 
 ## Deploy
 

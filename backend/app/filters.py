@@ -8,7 +8,7 @@ chamada à API usam o mesmo contrato.
 from __future__ import annotations
 
 from datetime import date
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -17,21 +17,40 @@ ChannelType = Literal["marketplace", "own"]
 Modal = Literal["moto", "bike"]
 OrderStatus = Literal["delivered", "canceled"]
 
-_MAX_ITEMS = 200
+# Teto de cada lista e de cada texto. A URL do painel usa as mesmas chaves.
+_MAX_LIST = 50
+_MAX_TEXT = 80
+_DATE_MIN = date(2000, 1, 1)
+_DATE_MAX = date(2100, 12, 31)
+
+ShortText = Annotated[str, Field(max_length=_MAX_TEXT)]
 
 
 class Filters(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
-    start: date | None = Field(default=None, description="Data inicial (inclusiva, horário de Brasília)")
-    end: date | None = Field(default=None, description="Data final (inclusiva)")
-    city: list[str] = Field(default_factory=list, max_length=_MAX_ITEMS)
-    hub: list[int] = Field(default_factory=list, max_length=_MAX_ITEMS)
-    store: list[int] = Field(default_factory=list, max_length=_MAX_ITEMS)
-    segment: list[Segment] = Field(default_factory=list)
-    channel_type: list[ChannelType] = Field(default_factory=list)
-    modal: list[Modal] = Field(default_factory=list, description="Pedidos sem entregador saem do recorte")
-    status: list[OrderStatus] = Field(default_factory=list, description="Status do pedido: delivered ou canceled")
+    start: date | None = Field(
+        default=None,
+        ge=_DATE_MIN,
+        le=_DATE_MAX,
+        description="Data inicial (inclusiva, horário de Brasília)",
+    )
+    end: date | None = Field(default=None, ge=_DATE_MIN, le=_DATE_MAX, description="Data final (inclusiva)")
+    city: list[ShortText] = Field(default_factory=list, max_length=_MAX_LIST)
+    hub: list[int] = Field(default_factory=list, max_length=_MAX_LIST)
+    store: list[int] = Field(default_factory=list, max_length=_MAX_LIST)
+    segment: list[Segment] = Field(default_factory=list, max_length=_MAX_LIST)
+    channel_type: list[ChannelType] = Field(default_factory=list, max_length=_MAX_LIST)
+    modal: list[Modal] = Field(
+        default_factory=list,
+        max_length=_MAX_LIST,
+        description="Pedidos sem entregador saem do recorte",
+    )
+    status: list[OrderStatus] = Field(
+        default_factory=list,
+        max_length=_MAX_LIST,
+        description="Status do pedido: delivered ou canceled",
+    )
 
     @model_validator(mode="after")
     def _check_range(self) -> Filters:

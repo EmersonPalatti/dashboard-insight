@@ -101,9 +101,10 @@
             "schema": {
               "type": "array",
               "items": {
-                "type": "string"
+                "type": "string",
+                "maxLength": 80
               },
-              "maxItems": 200,
+              "maxItems": 50,
               "title": "City"
             }
           },
@@ -116,7 +117,7 @@
               "items": {
                 "type": "integer"
               },
-              "maxItems": 200,
+              "maxItems": 50,
               "title": "Hub"
             }
           },
@@ -129,7 +130,7 @@
               "items": {
                 "type": "integer"
               },
-              "maxItems": 200,
+              "maxItems": 50,
               "title": "Store"
             }
           },
@@ -146,6 +147,7 @@
                 ],
                 "type": "string"
               },
+              "maxItems": 50,
               "title": "Segment"
             }
           },
@@ -162,6 +164,7 @@
                 ],
                 "type": "string"
               },
+              "maxItems": 50,
               "title": "Channel Type"
             }
           },
@@ -178,6 +181,7 @@
                 ],
                 "type": "string"
               },
+              "maxItems": 50,
               "description": "Pedidos sem entregador saem do recorte",
               "title": "Modal"
             },
@@ -196,6 +200,7 @@
                 ],
                 "type": "string"
               },
+              "maxItems": 50,
               "description": "Status do pedido: delivered ou canceled",
               "title": "Status"
             },
@@ -279,9 +284,10 @@
             "schema": {
               "type": "array",
               "items": {
-                "type": "string"
+                "type": "string",
+                "maxLength": 80
               },
-              "maxItems": 200,
+              "maxItems": 50,
               "title": "City"
             }
           },
@@ -294,7 +300,7 @@
               "items": {
                 "type": "integer"
               },
-              "maxItems": 200,
+              "maxItems": 50,
               "title": "Hub"
             }
           },
@@ -307,7 +313,7 @@
               "items": {
                 "type": "integer"
               },
-              "maxItems": 200,
+              "maxItems": 50,
               "title": "Store"
             }
           },
@@ -324,6 +330,7 @@
                 ],
                 "type": "string"
               },
+              "maxItems": 50,
               "title": "Segment"
             }
           },
@@ -340,6 +347,7 @@
                 ],
                 "type": "string"
               },
+              "maxItems": 50,
               "title": "Channel Type"
             }
           },
@@ -356,6 +364,7 @@
                 ],
                 "type": "string"
               },
+              "maxItems": 50,
               "description": "Pedidos sem entregador saem do recorte",
               "title": "Modal"
             },
@@ -374,6 +383,7 @@
                 ],
                 "type": "string"
               },
+              "maxItems": 50,
               "description": "Status do pedido: delivered ou canceled",
               "title": "Status"
             },
@@ -476,9 +486,10 @@
             "schema": {
               "type": "array",
               "items": {
-                "type": "string"
+                "type": "string",
+                "maxLength": 80
               },
-              "maxItems": 200,
+              "maxItems": 50,
               "title": "City"
             }
           },
@@ -491,7 +502,7 @@
               "items": {
                 "type": "integer"
               },
-              "maxItems": 200,
+              "maxItems": 50,
               "title": "Hub"
             }
           },
@@ -504,7 +515,7 @@
               "items": {
                 "type": "integer"
               },
-              "maxItems": 200,
+              "maxItems": 50,
               "title": "Store"
             }
           },
@@ -521,6 +532,7 @@
                 ],
                 "type": "string"
               },
+              "maxItems": 50,
               "title": "Segment"
             }
           },
@@ -537,6 +549,7 @@
                 ],
                 "type": "string"
               },
+              "maxItems": 50,
               "title": "Channel Type"
             }
           },
@@ -553,6 +566,7 @@
                 ],
                 "type": "string"
               },
+              "maxItems": 50,
               "description": "Pedidos sem entregador saem do recorte",
               "title": "Modal"
             },
@@ -571,6 +585,7 @@
                 ],
                 "type": "string"
               },
+              "maxItems": 50,
               "description": "Status do pedido: delivered ou canceled",
               "title": "Status"
             },
@@ -658,9 +673,10 @@
             "schema": {
               "type": "array",
               "items": {
-                "type": "string"
+                "type": "string",
+                "maxLength": 80
               },
-              "maxItems": 200,
+              "maxItems": 50,
               "title": "City"
             }
           },
@@ -673,7 +689,7 @@
               "items": {
                 "type": "integer"
               },
-              "maxItems": 200,
+              "maxItems": 50,
               "title": "Hub"
             }
           },
@@ -686,7 +702,7 @@
               "items": {
                 "type": "integer"
               },
-              "maxItems": 200,
+              "maxItems": 50,
               "title": "Store"
             }
           },
@@ -703,6 +719,7 @@
                 ],
                 "type": "string"
               },
+              "maxItems": 50,
               "title": "Segment"
             }
           },
@@ -719,6 +736,7 @@
                 ],
                 "type": "string"
               },
+              "maxItems": 50,
               "title": "Channel Type"
             }
           },
@@ -735,6 +753,7 @@
                 ],
                 "type": "string"
               },
+              "maxItems": 50,
               "description": "Pedidos sem entregador saem do recorte",
               "title": "Modal"
             },
@@ -753,6 +772,7 @@
                 ],
                 "type": "string"
               },
+              "maxItems": 50,
               "description": "Status do pedido: delivered ou canceled",
               "title": "Status"
             },
@@ -829,6 +849,7 @@
             "required": false,
             "schema": {
               "type": "integer",
+              "maximum": 100000,
               "minimum": 0,
               "default": 0,
               "title": "Min Orders"
@@ -912,9 +933,10 @@
             "schema": {
               "type": "array",
               "items": {
-                "type": "string"
+                "type": "string",
+                "maxLength": 80
               },
-              "maxItems": 200,
+              "maxItems": 50,
               "title": "City"
             }
           },
@@ -927,7 +949,7 @@
               "items": {
                 "type": "integer"
               },
-              "maxItems": 200,
+              "maxItems": 50,
               "title": "Hub"
             }
           },
@@ -940,7 +962,7 @@
               "items": {
                 "type": "integer"
               },
-              "maxItems": 200,
+              "maxItems": 50,
               "title": "Store"
             }
           },
@@ -957,6 +979,7 @@
                 ],
                 "type": "string"
               },
+              "maxItems": 50,
               "title": "Segment"
             }
           },
@@ -973,6 +996,7 @@
                 ],
                 "type": "string"
               },
+              "maxItems": 50,
               "title": "Channel Type"
             }
           },
@@ -989,6 +1013,7 @@
                 ],
                 "type": "string"
               },
+              "maxItems": 50,
               "description": "Pedidos sem entregador saem do recorte",
               "title": "Modal"
             },
@@ -1007,6 +1032,7 @@
                 ],
                 "type": "string"
               },
+              "maxItems": 50,
               "description": "Status do pedido: delivered ou canceled",
               "title": "Status"
             },
@@ -1090,9 +1116,10 @@
             "schema": {
               "type": "array",
               "items": {
-                "type": "string"
+                "type": "string",
+                "maxLength": 80
               },
-              "maxItems": 200,
+              "maxItems": 50,
               "title": "City"
             }
           },
@@ -1105,7 +1132,7 @@
               "items": {
                 "type": "integer"
               },
-              "maxItems": 200,
+              "maxItems": 50,
               "title": "Hub"
             }
           },
@@ -1118,7 +1145,7 @@
               "items": {
                 "type": "integer"
               },
-              "maxItems": 200,
+              "maxItems": 50,
               "title": "Store"
             }
           },
@@ -1135,6 +1162,7 @@
                 ],
                 "type": "string"
               },
+              "maxItems": 50,
               "title": "Segment"
             }
           },
@@ -1151,6 +1179,7 @@
                 ],
                 "type": "string"
               },
+              "maxItems": 50,
               "title": "Channel Type"
             }
           },
@@ -1167,6 +1196,7 @@
                 ],
                 "type": "string"
               },
+              "maxItems": 50,
               "description": "Pedidos sem entregador saem do recorte",
               "title": "Modal"
             },
@@ -1185,10 +1215,29 @@
                 ],
                 "type": "string"
               },
+              "maxItems": 50,
               "description": "Status do pedido: delivered ou canceled",
               "title": "Status"
             },
             "description": "Status do pedido: delivered ou canceled"
+          },
+          {
+            "name": "x-automation-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Obrigatório só se AUTOMATION_TOKEN estiver definido no servidor.",
+              "title": "X-Automation-Token"
+            },
+            "description": "Obrigatório só se AUTOMATION_TOKEN estiver definido no servidor."
           }
         ],
         "responses": {
@@ -1268,9 +1317,10 @@
             "schema": {
               "type": "array",
               "items": {
-                "type": "string"
+                "type": "string",
+                "maxLength": 80
               },
-              "maxItems": 200,
+              "maxItems": 50,
               "title": "City"
             }
           },
@@ -1283,7 +1333,7 @@
               "items": {
                 "type": "integer"
               },
-              "maxItems": 200,
+              "maxItems": 50,
               "title": "Hub"
             }
           },
@@ -1296,7 +1346,7 @@
               "items": {
                 "type": "integer"
               },
-              "maxItems": 200,
+              "maxItems": 50,
               "title": "Store"
             }
           },
@@ -1313,6 +1363,7 @@
                 ],
                 "type": "string"
               },
+              "maxItems": 50,
               "title": "Segment"
             }
           },
@@ -1329,6 +1380,7 @@
                 ],
                 "type": "string"
               },
+              "maxItems": 50,
               "title": "Channel Type"
             }
           },
@@ -1345,6 +1397,7 @@
                 ],
                 "type": "string"
               },
+              "maxItems": 50,
               "description": "Pedidos sem entregador saem do recorte",
               "title": "Modal"
             },
@@ -1363,10 +1416,29 @@
                 ],
                 "type": "string"
               },
+              "maxItems": 50,
               "description": "Status do pedido: delivered ou canceled",
               "title": "Status"
             },
             "description": "Status do pedido: delivered ou canceled"
+          },
+          {
+            "name": "x-automation-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Obrigatório só se AUTOMATION_TOKEN estiver definido no servidor.",
+              "title": "X-Automation-Token"
+            },
+            "description": "Obrigatório só se AUTOMATION_TOKEN estiver definido no servidor."
           }
         ],
         "responses": {
@@ -1450,9 +1522,10 @@
             "schema": {
               "type": "array",
               "items": {
-                "type": "string"
+                "type": "string",
+                "maxLength": 80
               },
-              "maxItems": 200,
+              "maxItems": 50,
               "title": "City"
             }
           },
@@ -1465,7 +1538,7 @@
               "items": {
                 "type": "integer"
               },
-              "maxItems": 200,
+              "maxItems": 50,
               "title": "Hub"
             }
           },
@@ -1478,7 +1551,7 @@
               "items": {
                 "type": "integer"
               },
-              "maxItems": 200,
+              "maxItems": 50,
               "title": "Store"
             }
           },
@@ -1495,6 +1568,7 @@
                 ],
                 "type": "string"
               },
+              "maxItems": 50,
               "title": "Segment"
             }
           },
@@ -1511,6 +1585,7 @@
                 ],
                 "type": "string"
               },
+              "maxItems": 50,
               "title": "Channel Type"
             }
           },
@@ -1527,6 +1602,7 @@
                 ],
                 "type": "string"
               },
+              "maxItems": 50,
               "description": "Pedidos sem entregador saem do recorte",
               "title": "Modal"
             },
@@ -1545,6 +1621,7 @@
                 ],
                 "type": "string"
               },
+              "maxItems": 50,
               "description": "Status do pedido: delivered ou canceled",
               "title": "Status"
             },
@@ -1672,9 +1749,10 @@
             "schema": {
               "type": "array",
               "items": {
-                "type": "string"
+                "type": "string",
+                "maxLength": 80
               },
-              "maxItems": 200,
+              "maxItems": 50,
               "title": "City"
             }
           },
@@ -1687,7 +1765,7 @@
               "items": {
                 "type": "integer"
               },
-              "maxItems": 200,
+              "maxItems": 50,
               "title": "Hub"
             }
           },
@@ -1700,7 +1778,7 @@
               "items": {
                 "type": "integer"
               },
-              "maxItems": 200,
+              "maxItems": 50,
               "title": "Store"
             }
           },
@@ -1717,6 +1795,7 @@
                 ],
                 "type": "string"
               },
+              "maxItems": 50,
               "title": "Segment"
             }
           },
@@ -1733,6 +1812,7 @@
                 ],
                 "type": "string"
               },
+              "maxItems": 50,
               "title": "Channel Type"
             }
           },
@@ -1749,6 +1829,7 @@
                 ],
                 "type": "string"
               },
+              "maxItems": 50,
               "description": "Pedidos sem entregador saem do recorte",
               "title": "Modal"
             },
@@ -1767,6 +1848,7 @@
                 ],
                 "type": "string"
               },
+              "maxItems": 50,
               "description": "Status do pedido: delivered ou canceled",
               "title": "Status"
             },
@@ -2179,7 +2261,7 @@
               }
             ],
             "title": "Subsidy",
-            "description": "Custo logístico menos frete cobrado, por pedido entregue"
+            "description": "Custo logístico menos frete cobrado, por entrega com os dois valores preenchidos"
           },
           "key": {
             "anyOf": [
@@ -2188,6 +2270,9 @@
               },
               {
                 "type": "integer"
+              },
+              {
+                "type": "null"
               }
             ],
             "title": "Key"
@@ -2541,10 +2626,11 @@
           },
           "city": {
             "items": {
-              "type": "string"
+              "type": "string",
+              "maxLength": 80
             },
             "type": "array",
-            "maxItems": 200,
+            "maxItems": 50,
             "title": "City"
           },
           "hub": {
@@ -2552,7 +2638,7 @@
               "type": "integer"
             },
             "type": "array",
-            "maxItems": 200,
+            "maxItems": 50,
             "title": "Hub"
           },
           "store": {
@@ -2560,7 +2646,7 @@
               "type": "integer"
             },
             "type": "array",
-            "maxItems": 200,
+            "maxItems": 50,
             "title": "Store"
           },
           "segment": {
@@ -2572,6 +2658,7 @@
               ]
             },
             "type": "array",
+            "maxItems": 50,
             "title": "Segment"
           },
           "channel_type": {
@@ -2583,6 +2670,7 @@
               ]
             },
             "type": "array",
+            "maxItems": 50,
             "title": "Channel Type"
           },
           "modal": {
@@ -2594,6 +2682,7 @@
               ]
             },
             "type": "array",
+            "maxItems": 50,
             "title": "Modal",
             "description": "Pedidos sem entregador saem do recorte"
           },
@@ -2606,6 +2695,7 @@
               ]
             },
             "type": "array",
+            "maxItems": 50,
             "title": "Status",
             "description": "Status do pedido: delivered ou canceled"
           }
@@ -3027,7 +3117,7 @@
               }
             ],
             "title": "Subsidy",
-            "description": "Custo logístico menos frete cobrado, por pedido entregue"
+            "description": "Custo logístico menos frete cobrado, por entrega com os dois valores preenchidos"
           }
         },
         "type": "object",
