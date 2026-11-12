@@ -239,7 +239,10 @@ function SampleNote({ count, noun }: { count: number; noun: "entrega" | "pedido"
   );
 }
 
-/** Veredito e referência na frente; o delta do período anterior vem depois, na mesma linha. */
+/**
+ * Veredito, referência e depois o delta do período anterior (ordem do DESIGN.md). Nada corta:
+ * o trecho que não cabe desce inteiro para a linha de baixo. O ciclo não tem veredito.
+ */
 function StatusLine({
   reading,
   delta,
@@ -250,22 +253,26 @@ function StatusLine({
   const verdict = reading?.verdict ? VERDICT[reading.verdict] : null;
   const reference = reading?.reference ?? null;
   if (!verdict && !reference && !delta) {
-    return <span className="min-w-0 truncate text-aux text-muted">sem referência</span>;
+    return <span className="min-w-0 text-aux text-muted">sem referência</span>;
   }
   const title = [verdict?.label, reference].filter(Boolean).join(" · ");
   return (
-    <span className="flex min-w-0 items-center gap-1.5 text-aux" title={title || undefined}>
-      {verdict && <span className={`inline-block shrink-0 ${verdict.mark}`} aria-hidden />}
-      {verdict && <span className={`shrink-0 font-semibold whitespace-nowrap ${verdict.tone}`}>{verdict.label}</span>}
-      {/* relative no trecho que trunca: o sr-only do delta é absoluto e, sem um ancestral relative, alarga a página. */}
+    <span className="flex min-w-0 flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-aux" title={title || undefined}>
+      {verdict && (
+        <span className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap">
+          <span className={`inline-block shrink-0 ${verdict.mark}`} aria-hidden />
+          <span className={`font-semibold ${verdict.tone}`}>{verdict.label}</span>
+        </span>
+      )}
       {reference && (
-        <span className="relative min-w-0 truncate text-ink tabular-nums">
+        <span className="max-w-full text-ink tabular-nums">
           {verdict ? "· " : ""}
           {reference}
         </span>
       )}
       {delta && (
-        <span className="relative shrink-0 overflow-hidden whitespace-nowrap">
+        // relative: o sr-only do delta é absoluto e, sem um ancestral relative, alarga a página.
+        <span className="relative inline-flex shrink-0 items-center whitespace-nowrap">
           {(verdict || reference) && <span className="text-muted"> · </span>}
           {delta}
         </span>
@@ -385,7 +392,7 @@ function heroSummary(def: KpiDef, current: Metrics, reading?: HeroReading): stri
 
 function KpiSkeleton({ status }: { status?: string }) {
   return (
-    <div className="grid gap-2.5">
+    <div className="kpi-strip grid gap-2.5">
       {/* Linha de cabeçalho: período e SLA. No cold start a frase ocupa o lugar da barra. */}
       <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 px-0.5">
         {status ? (

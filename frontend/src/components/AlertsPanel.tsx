@@ -66,9 +66,9 @@ function TicketHead({
   const s = SEVERITY[alert.severity];
   return (
     <span className="cond flex items-center justify-between gap-3 text-meta font-bold">
-      <span className="flex min-w-0 items-center gap-2">
+      <span className={`flex items-center gap-2 ${compact ? "shrink-0" : "min-w-0"}`}>
         <span className={`inline-block shrink-0 ${s.mark}`} aria-hidden />
-        <span className="truncate">
+        <span className={compact ? "whitespace-nowrap" : "truncate"}>
           {num(index)} · {CATEGORY[alert.category]}
         </span>
       </span>
@@ -141,8 +141,9 @@ function Stub({
         }`}
       >
         <TicketHead alert={alert} index={index} compact selected={selected} />
+        {/* w-0 + min-w-full: o título quebra em duas linhas e não alarga a coluna. A largura mínima fica com o carimbo. */}
         <span
-          className={`mt-1.5 line-clamp-2 text-body leading-snug font-semibold text-pretty transition-colors duration-(--duration-quick) ease-(--ease-smooth-out) ${
+          className={`mt-1.5 line-clamp-2 w-0 min-w-full text-body leading-snug font-semibold text-pretty transition-colors duration-(--duration-quick) ease-(--ease-smooth-out) ${
             selected ? "" : "text-ink/85 group-hover:text-ink"
           }`}
         >
@@ -317,8 +318,8 @@ function AlertsSkeletonBody() {
               <div className="skeleton h-4 w-full" />
               <div className="skeleton h-4 w-5/6" />
             </div>
-            <div className="mt-3 flex flex-wrap gap-2">
-              <div className="skeleton h-9 w-28 rounded-card max-lg:h-11 max-lg:w-32" />
+            <div className="comanda-actions mt-3 flex flex-wrap gap-2">
+              <div className="skeleton h-9 w-28 rounded-card max-lg:h-11 max-lg:w-full max-lg:basis-full" />
               <div className="skeleton h-9 w-32 rounded-card max-lg:h-11 max-lg:w-36" />
               <div className="skeleton h-9 w-36 rounded-card max-lg:h-11 max-lg:w-40" />
             </div>
@@ -542,7 +543,7 @@ function AlertsPanelInner() {
         : "Nenhuma comanda aberta neste recorte.";
 
   return (
-    <section ref={sectionRef} aria-labelledby="comandas-title" className={`transition-opacity ${isPlaceholderData ? "opacity-60" : ""}`}>
+    <section ref={sectionRef} aria-labelledby="comandas-title" className={`min-w-0 transition-opacity ${isPlaceholderData ? "opacity-60" : ""}`}>
       <header className="mb-2 flex items-baseline justify-between gap-2 px-0.5">
         <h2 id="comandas-title" className="cond text-body font-semibold text-ink tabular-nums">
           Comandas abertas{data ? ` · ${total}` : ""}
@@ -599,7 +600,7 @@ function AlertsPanelInner() {
               const id = (e.target as HTMLElement).closest<HTMLElement>("[data-alert]")?.dataset.alert;
               if (id) setRailCursor(id);
             }}
-            className="comanda-rail relative grid snap-x auto-cols-[minmax(12rem,1fr)] grid-flow-col gap-2 overflow-x-auto overflow-y-hidden overscroll-x-contain pb-2 max-sm:auto-cols-[15rem] print:grid-flow-row print:grid-cols-2 print:overflow-visible"
+            className="comanda-rail relative grid snap-x auto-cols-[minmax(max-content,1fr)] grid-flow-col *:min-w-46 gap-2 overflow-x-auto overflow-y-hidden overscroll-x-contain pb-2 max-sm:auto-cols-[15rem] print:grid-flow-row print:grid-cols-2 print:overflow-visible"
           >
             {alerts.map((a, i) => (
               <Stub

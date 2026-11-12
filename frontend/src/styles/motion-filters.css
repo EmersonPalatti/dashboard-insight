@@ -46,17 +46,27 @@
 }
 
 /*
- * Abaixo de lg o agente fica fixo no canto inferior direito. A coluna de botões
- * da comanda aberta fica mais estreita que ele, e o foco rola para cima da faixa.
+ * Abaixo de lg o agente fica fixo no canto inferior direito. Os botões da
+ * comanda usam a linha inteira (o primário sozinho, os outros na linha de
+ * baixo). O foco não fica sob o botão flutuante: a folga de rolagem leva o
+ * alvo para cima da faixa, sem estreitar a coluna.
  */
 @media (max-width: 1023px) {
   .comanda-actions {
-    width: calc(100% - 7rem - env(safe-area-inset-right));
-    max-width: calc(100% - 7rem - env(safe-area-inset-right));
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .comanda-actions > .btn-primary {
+    flex-basis: 100%;
+    max-width: 100%;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
   }
 
   .comanda-actions :is(button, a) {
-    min-width: 0;
+    min-height: 2.75rem;
     scroll-margin-bottom: calc(4.75rem + env(safe-area-inset-bottom));
   }
 
