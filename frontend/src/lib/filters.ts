@@ -493,11 +493,19 @@ export function initFilters() {
   applySearch(location.search);
   $ready.set(true);
   publish("replace");
-  const onChange = () => {
+  // Só a edição do operador passa por aqui com `applying` falso. A leitura da URL
+  // e o catálogo (`applyDimensionCatalog`) reescrevem o recorte com a flag ligada
+  // e podem acrescentar ao aviso; essa reescrita não apaga o que acabou de avisar.
+  const onFiltersChange = () => {
+    if (applying) return;
+    if ($ignored.get().length > 0) $ignored.set([]);
+    publish("push");
+  };
+  const onViewChange = () => {
     if (!applying) publish("push");
   };
-  $filters.listen(onChange);
-  $view.listen(onChange);
+  $filters.listen(onFiltersChange);
+  $view.listen(onViewChange);
   window.addEventListener("popstate", () => {
     applySearch(location.search);
     publish("replace");

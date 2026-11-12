@@ -220,7 +220,7 @@ Six steps, as `@theme` tokens in `global.css`; no `text-[x.xxrem]` outside them:
 
 ## Layout
 
-Max width 1440px, 24px side padding (16px under `sm`), 20px gutters. The page reads top-down at full width: comanda rail → KPIs → trend → stages | heatmap → stores | ranking → orders. The rail sits first because the action is the product; KPIs follow as the context the comandas cite. From `lg` the KPI block is two tracks (`minmax(0,3fr) minmax(15rem,1fr)`): the three operation heroes on the left, the three volume figures stacked in one column on the right at the same height. Charts and tables follow full width or in pairs. The agent is not a grid track: it is one fixed panel outside `main` (see Agent panel). Every grid track is `minmax(0, 1fr)` so truncated text never widens the page.
+Max width 1440px, 24px side padding (16px under `sm`), 20px gutters. The page reads top-down at full width: comanda rail → KPIs → trend → stages | heatmap → stores → ranking → orders. The rail sits first because the action is the product; KPIs follow as the context the comandas cite. From `lg` the KPI block is two tracks (`minmax(0,3fr) minmax(15rem,1fr)`): the three operation heroes on the left, the three volume figures stacked in one column on the right at the same height. Charts and tables follow full width or in pairs. The agent is not a grid track: it is one fixed panel outside `main` (see Agent panel). Every grid track is `minmax(0, 1fr)` so truncated text never widens the page.
 
 ## Elevation & Depth
 
@@ -298,7 +298,7 @@ Tokens live in `:root` (`--duration-*`, `--ease-*`, `--distance-*`, `--scale-*`,
 - The agent's wait is a shimmer over "Consultando o recorte…"; its answer rises 4px into place in 250ms.
 
 ### KPI grid
-Three operation cells joined by 1px rule gaps, each with a sentence-case label, figure, one status line, a daily trail in series wine, and a muted footnote that wraps, never truncates. The status line leads with the verdict (Dentro, Atenção, Crítico — dash in `good`, hollow ring in `warn`, filled dot in `crit`) and the reference, then the previous-period delta when it exists. It stays one line and truncates. A hairline marks the network value on the trail only when that value already sits inside the series scale. When the backend flags the measured base as small (`low_sample`), SLA and ciclo keep their figure and swap the status line for a `warn` note ("base: 20 entregas · amostra pequena"). Volume KPIs sit in one tile below, inline, and swap their delta for "amostra pequena" when either period has fewer than 100 orders.
+Three operation cells joined by 1px rule gaps, each with a sentence-case label, figure, one status line, a daily trail in series wine, and a muted footnote that wraps, never truncates. The status line leads with the verdict (Dentro, Atenção, Crítico — dash in `good`, hollow ring in `warn`, filled dot in `crit`) and the reference, then the previous-period delta when it exists. Nothing in it truncates: the part that does not fit beside the rest drops whole to a second line. A hairline marks the network value on the trail only when that value already sits inside the series scale. When the backend flags the measured base as small (`low_sample`), SLA and ciclo keep their figure and swap the status line for a `warn` note ("base: 20 entregas · amostra pequena"). Volume KPIs sit in one tile below, inline, and swap their delta for "amostra pequena" when either period has fewer than 100 orders.
 
 ## Do's and Don'ts
 

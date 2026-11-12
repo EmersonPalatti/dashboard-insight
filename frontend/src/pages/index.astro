@@ -37,20 +37,20 @@ const repoUrl = "https://github.com/EmersonPalatti/dashboard-insight";
     <a class="skip-link" href="#comandas">Pular para as comandas</a>
     <a class="skip-link" href="#filtros">Pular para os filtros</a>
     <!-- no escuro o vinho (#26060F) quase some no campo (#111): um fio de wine-raised marca a borda da faixa -->
-    <!-- sm+: 64px com a promessa do recorte. Abaixo de sm: 56px, uma linha; o título trunca e a promessa desce para o fluxo. -->
+    <!-- sm+: 64px com a promessa do recorte. Abaixo de sm: 56px; o nome desce um degrau da escala para caber inteiro. -->
     <header class="h-14 bg-wine text-white sm:h-16 dark:border-b dark:border-wine-raised">
-      <div class="mx-auto flex h-full max-w-[1440px] min-w-0 items-center gap-2 px-4 sm:gap-3 sm:px-6">
-        <div class="flex min-w-0 flex-1 items-center gap-2.5">
+      <div class="mx-auto flex h-full max-w-[1440px] min-w-0 items-center gap-1.5 px-4 sm:gap-3 sm:px-6">
+        <div class="flex min-w-0 flex-1 items-center gap-1.5 sm:gap-2.5">
           <OpsLogo size={28} class="text-on-wine" />
           <div class="min-w-0 flex-1">
-            <h1 class="header-reveal-title truncate font-slab text-figure leading-none font-bold text-white">
+            <h1 class="header-reveal-title font-slab text-lead leading-none font-bold text-white sm:truncate sm:text-figure">
               Central de Operações
             </h1>
             <div class="header-reveal-sub mt-1 hidden min-w-0 items-center gap-2 sm:flex">
               <p class="min-w-0 truncate text-meta leading-none text-on-wine/90">
                 KPIs, comandas e o agente respondem sobre o mesmo recorte.
               </p>
-              <span class="hidden shrink-0 items-center gap-1.5 rounded-full border border-on-wine/15 bg-wine-raised/60 px-3 py-2 text-meta font-medium text-on-wine xl:inline-flex dark:bg-white/10">
+              <span class="hidden shrink-0 items-center gap-1.5 rounded-full border border-on-wine/15 bg-wine-raised/60 px-3 py-1 text-meta leading-none font-medium text-on-wine xl:inline-flex dark:bg-white/10">
                 <span>Delivery Center</span>
                 <span class="opacity-50">·</span>
                 <span class="tabular-nums">jan–abr 2021</span>
@@ -72,7 +72,8 @@ const repoUrl = "https://github.com/EmersonPalatti/dashboard-insight";
     </p>
 
     <search id="filtros" data-filter-bar aria-label="Filtros do recorte" tabindex="-1" class="no-print sticky top-0 z-20 block border-b border-rule bg-surface">
-      <div class="mx-auto max-w-[1440px] px-4 py-2 sm:px-6">
+      <!-- DESIGN: a barra desktop é 80px (40 + 8 + 32). O py-2 só no mobile; no lg ele somava 16px. -->
+      <div class="mx-auto max-w-[1440px] px-4 py-2 sm:px-6 lg:py-0">
         <FilterBar client:load />
       </div>
     </search>
@@ -105,14 +106,16 @@ const repoUrl = "https://github.com/EmersonPalatti/dashboard-insight";
         </div>
       </div>
 
-      <div class="grid gap-5 xl:grid-cols-2">
-        <div id="grafico-lojas" tabindex="-1" class="evidence-anchor grid min-w-0">
-          <Panel title="Lojas: volume × problema" hint="Cada ponto é uma loja com 30+ pedidos; tamanho = GMV. Use a seleção retangular para filtrar um grupo.">
-            <StoreScatter client:visible />
-          </Panel>
-        </div>
-        <Panel title="Ranking do recorte"><BreakdownTable client:visible /></Panel>
+      <!--
+        Lojas e ranking em linhas próprias. Lado a lado o ranking ficava com ~628px e as
+        colunas Preparo, Trânsito e Subsídio saíam do quadro. A ordem de leitura não muda.
+      -->
+      <div id="grafico-lojas" tabindex="-1" class="evidence-anchor grid min-w-0">
+        <Panel title="Lojas: volume × problema" hint="Cada ponto é uma loja com 30+ pedidos; tamanho = GMV. Use a seleção retangular para filtrar um grupo.">
+          <StoreScatter client:visible />
+        </Panel>
       </div>
+      <Panel title="Ranking do recorte"><BreakdownTable client:visible /></Panel>
 
       <Panel title="Pedidos do recorte"><OrdersTable client:visible /></Panel>
     </main>
@@ -122,7 +125,7 @@ const repoUrl = "https://github.com/EmersonPalatti/dashboard-insight";
         <div>
           <p class="text-pretty font-semibold text-ink">Dados</p>
           <p class="text-pretty">
-            <a class="underline decoration-rule underline-offset-4" href="https://www.kaggle.com/datasets/nosbielcs/brazilian-delivery-center" target="_blank" rel="noopener">Delivery Center: Food &amp; Goods orders in Brazil</a> (Kaggle). Nomes de lojas vêm anonimizados no dataset.
+            <a class="hit-target underline decoration-rule underline-offset-4" href="https://www.kaggle.com/datasets/nosbielcs/brazilian-delivery-center" target="_blank" rel="noopener">Delivery Center: Food &amp; Goods orders in Brazil</a> (Kaggle). Nomes de lojas vêm anonimizados no dataset.
           </p>
         </div>
         <div>
@@ -138,7 +141,7 @@ const repoUrl = "https://github.com/EmersonPalatti/dashboard-insight";
         <div>
           <p class="text-pretty font-semibold text-ink">Stack</p>
           <p class="text-pretty">Astro + ilhas React, ECharts, Nanostores, TanStack Query/Table/Virtual · FastAPI, Pydantic, DuckDB sobre Parquet.</p>
-          <p class="text-pretty mt-1"><a class="underline decoration-rule underline-offset-4" href={repoUrl} target="_blank" rel="noopener">Código</a></p>
+          <p class="text-pretty mt-1"><a class="hit-target underline decoration-rule underline-offset-4" href={repoUrl} target="_blank" rel="noopener">Código</a></p>
         </div>
       </div>
     </footer>

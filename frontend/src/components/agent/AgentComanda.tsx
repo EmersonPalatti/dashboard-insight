@@ -141,12 +141,13 @@ export function AgentStub({
       >
         <span className="cond flex items-center gap-2 text-meta font-bold">
           <span className={`inline-block shrink-0 ${MARK}`} aria-hidden />
-          <span className="truncate">
+          <span className="whitespace-nowrap">
             {agentStamp(ticket.series)} · Agente
           </span>
         </span>
+        {/* w-0 + min-w-full: o título não entra na largura mínima da coluna do trilho. */}
         <span
-          className={`mt-1.5 line-clamp-2 text-body leading-snug font-semibold text-pretty transition-colors duration-(--duration-quick) ease-(--ease-smooth-out) ${
+          className={`mt-1.5 line-clamp-2 w-0 min-w-full text-body leading-snug font-semibold text-pretty transition-colors duration-(--duration-quick) ease-(--ease-smooth-out) ${
             selected ? "" : "text-ink/85 group-hover:text-ink"
           }`}
         >
