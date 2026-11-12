@@ -4,14 +4,14 @@ import type { Chip } from "../filters/useFilterModel";
 /** Chips do recorte com entrada suave (starting: sai de opacidade e escala menores). Remoção é instantânea. */
 export function ActiveChips({ chips }: { chips: Chip[] }) {
   return (
-    <ul aria-label="Filtros ativos" className="flex flex-wrap items-center gap-1.5">
+    <ul aria-label="Filtros ativos" className="flex min-w-0 max-w-full flex-wrap items-center gap-1.5">
       {chips.map((c) => (
         <li
           key={c.key}
-          className="inline-flex max-w-full items-center gap-1 rounded-[4px] border border-ink bg-surface pl-2 pr-0.5 text-aux font-medium text-ink transition-[opacity,scale] duration-(--duration-fast) ease-(--ease-smooth-out) starting:scale-(--scale-medium) starting:opacity-0 motion-reduce:transition-none"
+          className="inline-flex min-w-0 max-w-full items-center gap-1 rounded-[4px] border border-ink bg-surface pl-2 pr-0.5 text-aux font-medium text-ink transition-[opacity,scale] duration-(--duration-fast) ease-(--ease-smooth-out) starting:scale-(--scale-medium) starting:opacity-0 motion-reduce:transition-none"
         >
-          <span className="text-muted">{c.dim}</span>
-          <span className="max-w-[16rem] truncate" title={c.value}>
+          <span className="shrink-0 text-muted">{c.dim}</span>
+          <span className="min-w-0 max-w-[16rem] truncate" title={c.value}>
             {c.value}
           </span>
           <button

@@ -50,7 +50,7 @@ const repoUrl = "https://github.com/EmersonPalatti/dashboard-insight";
               <p class="min-w-0 truncate text-meta leading-none text-on-wine/90">
                 KPIs, comandas e o agente respondem sobre o mesmo recorte.
               </p>
-              <span class="hidden shrink-0 items-center gap-1.5 rounded-full border border-on-wine/15 bg-wine-raised/60 px-2.5 py-0.5 text-meta leading-none font-medium text-on-wine xl:inline-flex dark:bg-white/10">
+              <span class="hidden shrink-0 items-center gap-1.5 rounded-full border border-on-wine/15 bg-wine-raised/60 px-3 py-2 text-meta font-medium text-on-wine xl:inline-flex dark:bg-white/10">
                 <span>Delivery Center</span>
                 <span class="opacity-50">·</span>
                 <span class="tabular-nums">jan–abr 2021</span>
@@ -61,7 +61,7 @@ const repoUrl = "https://github.com/EmersonPalatti/dashboard-insight";
           </div>
         </div>
         <div class="no-print flex shrink-0 items-center gap-1">
-          <a class="hidden shrink-0 rounded-card px-2 py-1.5 text-aux text-on-wine transition-colors duration-(--duration-quick) ease-(--ease-smooth-out) hover:bg-wine-raised hover:text-white sm:inline" href={`${apiUrl}/docs`} target="_blank" rel="noopener">API (Swagger)</a>
+          <a class="hit-target relative hidden shrink-0 items-center rounded-card px-2 py-1.5 text-aux text-on-wine transition-colors duration-(--duration-quick) ease-(--ease-smooth-out) hover:bg-wine-raised hover:text-white sm:inline-flex" href={`${apiUrl}/docs`} target="_blank" rel="noopener">API (Swagger)</a>
           <TopBarStatus client:load />
         </div>
       </div>
@@ -82,7 +82,7 @@ const repoUrl = "https://github.com/EmersonPalatti/dashboard-insight";
         Trilho de comandas no topo: as comandas penduradas lado a lado e a aberta numa faixa larga.
         KPIs e tendência ganham a largura toda logo abaixo. O agente fica fora da grade (AgentDock).
       -->
-      <div id="comandas" tabindex="-1" aria-labelledby="comandas-title" class="min-w-0 scroll-mt-16 lg:scroll-mt-28">
+      <div id="comandas" tabindex="-1" aria-labelledby="comandas-title" class="min-w-0">
         <AlertsPanel client:load />
       </div>
 
@@ -149,6 +149,17 @@ const repoUrl = "https://github.com/EmersonPalatti/dashboard-insight";
     Painéis client:visible não têm botão até hidratar. Enquanto isso, a moldura entra no Tab
     (o foco rola a seção para a vista e a ilha monta). Com controles dentro, sai da ordem.
   -->
+  <script is:inline>
+    (function () {
+      var bar = document.querySelector("[data-filter-bar]");
+      if (!bar || !window.ResizeObserver) return;
+      var apply = function () {
+        document.documentElement.style.setProperty("--sticky-bar", bar.offsetHeight + "px");
+      };
+      apply();
+      new ResizeObserver(apply).observe(bar);
+    })();
+  </script>
   <script is:inline>
     (function () {
       var focusable = "a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled])";

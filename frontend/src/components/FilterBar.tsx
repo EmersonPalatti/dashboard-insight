@@ -1,5 +1,5 @@
 import { Download, RotateCcw } from "lucide-react";
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { resetFilters } from "@/lib/filters";
 import { useMediaQuery } from "@/lib/media";
 import { island } from "@/lib/query";
@@ -25,24 +25,30 @@ const preloadExportDialog = () => void loadExportDialog().catch(() => {});
  * Barra do desktop (lg e acima), em duas linhas com papéis separados:
  *  1. o que define o recorte (período, lugar, mais filtros) e, à direita, o agente;
  *  2. o recorte em si (chips, limpar) e, à direita, compartilhar.
- * Linha 1 em controles de 40px, linha 2 em 32px. A barra é um container: o
- * agente encolhe para "Agente" quando ela estreita (painel lateral aberto).
+ * Linha 1 em controles de 40px, linha 2 em 32px. O campo do agente cede
+ * largura antes dos seletores de lugar: encolhe até "Agente" + atalho, e só
+ * volta ao convite inteiro quando o miolo do botão chega a 18rem.
  */
 function DesktopBar({ m }: { m: FilterModel }) {
   return (
     <div className="@container flex min-w-0 flex-col gap-2">
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        <PeriodFields m={m} />
-        <div className="flex min-w-0 flex-1 basis-[24rem] items-center gap-2">
+      <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2 xl:flex-nowrap">
+        <div className="shrink-0">
+          <PeriodFields m={m} />
+        </div>
+        {/* basis largo: cidade, hub e loja ficam com o nome inteiro; o agente encolhe primeiro */}
+        <div className="flex min-w-0 flex-[1_1_42rem] items-center gap-2">
           <div className="grid min-w-0 flex-1 grid-cols-3 gap-2">
             <PlaceFields m={m} />
           </div>
-          <FiltersPopover count={m.extraCount}>
-            <ExtraFields m={m} />
-          </FiltersPopover>
+          <div className="shrink-0">
+            <FiltersPopover count={m.extraCount}>
+              <ExtraFields m={m} />
+            </FiltersPopover>
+          </div>
         </div>
-        {/* último da linha: fica acima do canto onde o painel solto abre */}
-        <div className="flex min-w-0 border-l border-rule pl-4">
+        {/* último da linha: fica acima do canto onde o painel solto abre. shrink alto: cede antes do lugar. */}
+        <div className="flex min-w-[9.5rem] max-w-[22rem] flex-[0_100_22rem] border-l border-rule pl-4">
           <AgentAskButton />
         </div>
       </div>
@@ -78,13 +84,40 @@ function FilterBarInner() {
   const [exportMounted, setExportMounted] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const exportWasOpen = useRef(false);
 
   // a folha só existe no mobile: se a janela crescer com ela aberta, ela fecha
   useEffect(() => {
     if (desktop) setSheetOpen(false);
   }, [desktop]);
 
+  // A barra é sticky: a folga dos âncoras acompanha a altura real (chips, quebra de linha).
+  useLayoutEffect(() => {
+    const bar = document.querySelector<HTMLElement>("[data-filter-bar]");
+    if (!bar) return;
+    const apply = () => {
+      document.documentElement.style.setProperty("--sticky-bar", `${bar.offsetHeight}px`);
+    };
+    apply();
+    const ro = new ResizeObserver(apply);
+    ro.observe(bar);
+    return () => ro.disconnect();
+  }, [desktop, m.chips.length]);
+
+  // O diálogo de exportação abre depois que a folha fecha. O foco volta para o botão que abriu a folha,
+  // depois da animação de saída (o close nativo também devolve, este é o reforço).
+  useEffect(() => {
+    if (!exportWasOpen.current || exportOpen) {
+      exportWasOpen.current = exportOpen;
+      return;
+    }
+    exportWasOpen.current = false;
+    const id = window.setTimeout(() => triggerRef.current?.focus({ preventScroll: true }), 200);
+    return () => window.clearTimeout(id);
+  }, [exportOpen]);
+
   const openExport = () => {
+    setSheetOpen(false);
     setExportMounted(true);
     setExportOpen(true);
   };
@@ -121,18 +154,18 @@ function FilterBarInner() {
                 </>
               }
             >
-              <div className="grid gap-5">
+              <div className="grid min-w-0 gap-5">
                 <div className="grid min-w-0 gap-2">
                   <p id="periodo-titulo" className="text-aux font-semibold text-ink">
                     Período
                   </p>
                   <PeriodFields m={m} variant="sheet" labelId="periodo-titulo" />
                 </div>
-                <div className="grid gap-1.5">
+                <div className="grid min-w-0 gap-1.5">
                   <PlaceFields m={m} />
                   <ExtraFields m={m} />
                 </div>
-                <div className="grid gap-2">
+                <div className="grid min-w-0 gap-2">
                   {m.chips.length === 0 ? (
                     <p className="label text-pretty">Recorte completo: todos os pedidos do período.</p>
                   ) : (
@@ -159,10 +192,11 @@ function FilterBarInner() {
 }
 
 /**
- * Fallback do SSR com a altura da barra em cada breakpoint: 44px no mobile (MobileRecorte, min-h-11)
- * e 80px no desktop (duas linhas: 40px + 8px de respiro + 32px). O breakpoint é o mesmo de
+ * Fallback do SSR com a altura da barra em cada breakpoint. No mobile o resumo ocupa a
+ * largura toda e o atalho de comandas vai na linha de baixo (duas faixas de 44px + respiro).
+ * No desktop, 80px: duas linhas (40px + 8px de respiro + 32px). O breakpoint é o mesmo de
  * `useMediaQuery("(min-width: 1024px)")`, o lg do Tailwind, então a troca não empurra o layout.
  */
-const barSkeleton = <div className="skeleton h-11 w-full lg:h-20" aria-hidden />;
+const barSkeleton = <div className="skeleton h-24 w-full lg:h-20" aria-hidden />;
 
 export default island(FilterBarInner, barSkeleton);

@@ -347,10 +347,12 @@ function OrdersTableInner() {
                 const sortable = SORTABLE.has(h.id);
                 const isNumeric = NUMERIC_COLS.has(h.id);
 
+                const sortPhrase = !active ? "sem ordem" : sort.desc ? "ordem decrescente" : "ordem crescente";
                 return (
                   <div
                     key={h.id}
                     role="columnheader"
+                    aria-sort={sortable ? (active ? (sort.desc ? "descending" : "ascending") : "none") : undefined}
                     style={{ width: h.getSize() }}
                     className={`flex shrink-0 items-center justify-between gap-1 px-2 py-2 text-aux font-semibold ${
                       isNumeric ? "tabular-nums" : ""
@@ -360,10 +362,11 @@ function OrdersTableInner() {
                       <button
                         type="button"
                         onClick={() => setSort((s) => ({ id: h.id, desc: s.id === h.id ? !s.desc : true }))}
-                        className={`inline-flex min-w-0 items-center gap-1 truncate ${active ? "text-ink" : "text-muted hover:text-ink"}`}
+                        className={`hit-target inline-flex min-w-0 items-center gap-1 truncate ${active ? "text-ink" : "text-muted hover:text-ink"}`}
                       >
                         <span className="truncate">{flexRender(h.column.columnDef.header, h.getContext())}</span>
                         {active && (sort.desc ? <ArrowDown className="icon-swap size-3 shrink-0" aria-hidden /> : <ArrowUp className="icon-swap size-3 shrink-0" aria-hidden />)}
+                        <span className="sr-only">, {sortPhrase}</span>
                       </button>
                     ) : (
                       <span className="truncate text-muted">{flexRender(h.column.columnDef.header, h.getContext())}</span>

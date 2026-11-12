@@ -1,12 +1,18 @@
 import { useStore } from "@nanostores/react";
-import { useState } from "react";
-import { $ignored, ignoredMessage } from "@/lib/filters";
+import { useEffect, useState } from "react";
+import { $ignored, applyDimensionCatalog, catalogFromMeta, ignoredMessage } from "@/lib/filters";
+import { useMeta } from "@/lib/query";
 
 /** Avisa uma vez quais valores da URL não entraram no recorte. Some ao fechar. */
 export function IgnoredNotice() {
   const items = useStore($ignored);
   const message = ignoredMessage(items);
   const [hidden, setHidden] = useState<string | null>(null);
+  const { data: meta } = useMeta();
+  // Espera as opções. Enquanto a API acorda, um id válido não pode ser descartado.
+  useEffect(() => {
+    if (meta) applyDimensionCatalog(catalogFromMeta(meta));
+  }, [meta]);
   if (!message || hidden === message) return null;
   return (
     <div className="mb-2.5 flex items-start gap-3 rounded-card border border-rule bg-sunken px-3 py-2" role="status">

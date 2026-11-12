@@ -210,7 +210,15 @@ export function readSearch(search: string): ParsedSearch {
       city: takeCities(p.getAll("city"), ignored),
       hub: takeIds(p.getAll("hub"), "Hub", ignored),
       store: takeIds(p.getAll("store"), "Loja", ignored),
-      segment: takeEnums(p.getAll("segment"), SEGMENTS, "Segmento", "o valor aceito é food ou good", ignored),
+      // A API aceita o token `good`. O rodapé e o produto chamam esse segmento de goods,
+      // então `goods` na URL vale como `good` e o aviso não promete um valor que seria recusado.
+      segment: takeEnums(
+        p.getAll("segment").map((s) => (s === "goods" ? "good" : s)),
+        SEGMENTS,
+        "Segmento",
+        "o valor aceito é food ou goods",
+        ignored,
+      ),
       channel_type: takeEnums(
         p.getAll("channel_type"),
         CHANNELS,
@@ -261,16 +269,130 @@ export function parseSearch(search: string): Recorte {
   return readSearch(search).recorte;
 }
 
+/** Valor que passou no contrato, mas não está nas opções de /api/meta. */
+const NOT_IN_BASE = "não existe nesta base";
+
+function ignoredBit(item: IgnoredValue): string {
+  if (item.reason === NOT_IN_BASE) return `${item.label} ${item.value} (${item.reason})`;
+  return `${item.label} "${item.value}" (${item.reason})`;
+}
+
 /** Uma frase, ou a lista, para o aviso que aparece uma vez. */
 export function ignoredMessage(items: IgnoredValue[]): string {
   if (items.length === 0) return "";
   if (items.length === 1) {
     const item = items[0];
+    if (item.reason === NOT_IN_BASE) return `${item.label} ${item.value} não existe nesta base e ficou de fora do recorte.`;
     return `${item.label} "${item.value}" ficou de fora do recorte: ${item.reason}.`;
   }
-  const bits = items.map((item) => `${item.label} "${item.value}" (${item.reason})`);
-  return `Alguns valores da URL ficaram de fora do recorte: ${bits.join("; ")}.`;
+  return `Alguns valores da URL ficaram de fora do recorte: ${items.map(ignoredBit).join("; ")}.`;
 }
+
+/** Opção de /api/meta. O valor é o id ou o token, não o rótulo. */
+export interface CatalogOption {
+  value: string | number;
+}
+
+/** Listas completas do dataset, as mesmas que alimentam os seletores antes do cascade. */
+export interface DimensionLists {
+  cities: readonly CatalogOption[];
+  hubs: readonly CatalogOption[];
+  stores: readonly CatalogOption[];
+  segments: readonly CatalogOption[];
+  channel_types: readonly CatalogOption[];
+  modals: readonly CatalogOption[];
+}
+
+interface DimensionCatalog {
+  city: ReadonlySet<string>;
+  hub: ReadonlySet<number>;
+  store: ReadonlySet<number>;
+  segment: ReadonlySet<string>;
+  channel_type: ReadonlySet<string>;
+  modal: ReadonlySet<string>;
+}
+
+function textValues(options: readonly CatalogOption[]): Set<string> {
+  return new Set(options.map((option) => String(option.value)));
+}
+
+function idValues(options: readonly CatalogOption[]): Set<number> {
+  const ids = new Set<number>();
+  for (const option of options) {
+    const n = Number(option.value);
+    if (Number.isInteger(n) && n > 0) ids.add(n);
+  }
+  return ids;
+}
+
+export function catalogFromMeta(lists: DimensionLists): DimensionCatalog {
+  return {
+    city: textValues(lists.cities),
+    hub: idValues(lists.hubs),
+    store: idValues(lists.stores),
+    segment: textValues(lists.segments),
+    channel_type: textValues(lists.channel_types),
+    modal: textValues(lists.modals),
+  };
+}
+
+function dropListed<T extends string | number>(
+  values: readonly T[],
+  known: (value: T) => boolean,
+  label: string,
+  ignored: IgnoredValue[],
+  show: (value: T) => string,
+): T[] {
+  const kept: T[] = [];
+  const seen = new Set<string>();
+  for (const value of values) {
+    if (known(value)) {
+      kept.push(value);
+      continue;
+    }
+    const shown = show(value);
+    if (seen.has(shown)) continue;
+    seen.add(shown);
+    note(ignored, label, shown, NOT_IN_BASE);
+  }
+  return kept;
+}
+
+/**
+ * Tira cidade, hub, loja, segmento, canal e modal que não existem na base.
+ * Hub e loja usam a lista inteira: um hub que existe fora da cidade escolhida
+ * continua no recorte, como hoje. Status não entra: /api/meta não lista status.
+ */
+export function withoutUnknownIds(recorte: Recorte, catalog: DimensionCatalog): { recorte: Recorte; ignored: IgnoredValue[] } {
+  const ignored: IgnoredValue[] = [];
+  return {
+    recorte: {
+      ...recorte,
+      city: dropListed(recorte.city, (value) => catalog.city.has(value), "Cidade", ignored, (value) => value),
+      hub: dropListed(recorte.hub, (value) => catalog.hub.has(value), "Hub", ignored, (value) => String(value)),
+      store: dropListed(recorte.store, (value) => catalog.store.has(value), "Loja", ignored, (value) => String(value)),
+      segment: dropListed(recorte.segment, (value) => catalog.segment.has(value), "Segmento", ignored, (value) => value),
+      channel_type: dropListed(recorte.channel_type, (value) => catalog.channel_type.has(value), "Canal", ignored, (value) => value),
+      modal: dropListed(recorte.modal, (value) => catalog.modal.has(value), "Modal", ignored, (value) => value),
+    },
+    ignored,
+  };
+}
+
+function sameNote(a: IgnoredValue, b: IgnoredValue) {
+  return a.label === b.label && a.value === b.value && a.reason === b.reason;
+}
+
+function mergeIgnored(prev: readonly IgnoredValue[], extra: readonly IgnoredValue[]): IgnoredValue[] {
+  const merged = [...prev];
+  for (const item of extra) {
+    if (!merged.some((have) => sameNote(have, item))) merged.push(item);
+  }
+  return merged;
+}
+
+/** Null até /api/meta responder. Enquanto isso o id da URL fica; não se descarta no escuro. */
+let catalog: DimensionCatalog | null = null;
 
 export function toQuery(f: Recorte): Record<string, string | (string | number)[] | null> {
   return {
@@ -338,11 +460,30 @@ let applying = false;
 
 function applySearch(search: string) {
   const parsed = readSearch(search);
+  let recorte = parsed.recorte;
+  let ignored = parsed.ignored;
+  if (catalog) {
+    const dropped = withoutUnknownIds(recorte, catalog);
+    recorte = dropped.recorte;
+    ignored = mergeIgnored(ignored, dropped.ignored);
+  }
   applying = true;
-  $filters.set(parsed.recorte);
+  $filters.set(recorte);
   $view.set(parsed.view);
-  $ignored.set(parsed.ignored);
+  $ignored.set(ignored);
   applying = false;
+}
+
+/** Segunda passagem, quando as opções do dataset chegam. Reescreve a URL sem empurrar histórico. */
+export function applyDimensionCatalog(next: DimensionCatalog) {
+  catalog = next;
+  const dropped = withoutUnknownIds($filters.get(), next);
+  if (dropped.ignored.length === 0) return;
+  applying = true;
+  $filters.set(dropped.recorte);
+  $ignored.set(mergeIgnored($ignored.get(), dropped.ignored));
+  applying = false;
+  if (typeof window !== "undefined") publish("replace");
 }
 
 /** Chamado uma vez por qualquer ilha; idempotente. */

@@ -29,10 +29,18 @@ export function PeriodFields({ m, variant = "bar", labelId }: { m: FilterModel; 
   const { presets, activePreset, customDates, datesLabel, datesReady, set } = m;
   const [sheetDates, setSheetDates] = useState(false);
   const activeId = activePreset ?? (customDates ? "dates" : undefined);
+  const rangeParts = datesLabel.split(" – ");
   const datesInner = (
     <>
       <Calendar className="size-3.5 shrink-0" aria-hidden />
-      <span className="min-w-0 truncate tabular-nums">{datesLabel}</span>
+      {variant === "sheet" && rangeParts.length === 2 ? (
+        <span className="flex flex-col items-center leading-tight tabular-nums">
+          <span>{rangeParts[0]}</span>
+          <span>{rangeParts[1]}</span>
+        </span>
+      ) : (
+        <span className={`min-w-0 tabular-nums ${variant === "sheet" ? "text-balance" : "truncate"}`}>{datesLabel}</span>
+      )}
     </>
   );
   const pick = (p: PresetOption) => {
@@ -61,7 +69,7 @@ export function PeriodFields({ m, variant = "bar", labelId }: { m: FilterModel; 
               tabIndex={tabIndex}
               disabled={!datesReady}
               onClick={() => setSheetDates((v) => !v)}
-              className={presetClass(checked)}
+              className={`${presetClass(checked)} whitespace-normal!`}
             >
               {datesInner}
             </button>

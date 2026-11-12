@@ -69,6 +69,8 @@
   --scale-tiny: 0.99; /* menu fechando */
   --blur-small: 2px; /* troca de ícone/texto, skeleton → conteúdo */
   --blur-medium: 3px; /* revelação de texto */
+  /* Altura da barra de filtros fixa. O script da página substitui pelo valor medido. */
+  --sticky-bar: 6.5rem;
 }
 
 :root[data-theme="dark"] {
@@ -316,9 +318,10 @@ button.ticket:focus-visible {
   outline-offset: -6px;
 }
 
-/* Gráfico que prova uma comanda: alvo de "Ver no gráfico", abaixo da barra de filtros fixa. */
+/* Gráfico que prova uma comanda: alvo de "Ver no gráfico", abaixo da barra de filtros fixa.
+   --sticky-bar é a altura medida da barra (o script da casca); 6.5rem cobre o primeiro quadro. */
 .evidence-anchor {
-  scroll-margin-top: 8rem;
+  scroll-margin-top: calc(var(--sticky-bar, 6.5rem) + 0.75rem);
   outline: none;
 }
 
@@ -427,7 +430,38 @@ button.ticket:focus-visible {
   border-width: 1px;
 }
 
-/* O ranking é o destino do atalho do gráfico de lojas. O id sai do título na casca. */
-#painel-ranking-do-recorte {
-  scroll-margin-top: 8rem;
+/* O ranking é o destino do atalho do gráfico de lojas. O id sai do título na casca.
+   Comandas, KPIs e o corpo do ranking usam a mesma folga: a barra fixa não cobre o alvo. */
+#comandas,
+#painel-ranking-do-recorte,
+#ranking-recorte,
+.kpi-strip,
+.kpi-label,
+.kpi-strip :is(a, button) {
+  scroll-margin-top: calc(var(--sticky-bar, 6.5rem) + 0.75rem);
+}
+
+/*
+ * Área de toque sem mudar o desenho. 24px no desktop; 44px abaixo de lg.
+ * O ::after não entra no fluxo, então a linha não se desloca.
+ */
+.hit-target {
+  position: relative;
+}
+
+.hit-target::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 1.5rem;
+  height: 1.5rem;
+  transform: translate(-50%, -50%);
+}
+
+@media (max-width: 1023px) {
+  .hit-target::after {
+    width: 2.75rem;
+    height: 2.75rem;
+  }
 }

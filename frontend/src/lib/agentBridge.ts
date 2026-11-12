@@ -6,7 +6,8 @@
  *    campo sem enviar; o operador revisa e aperta Enviar.
  *  - $agentActivity: o que o botão de abrir mostra com o painel fechado.
  */
-import { atom } from "nanostores";
+import { atom, computed } from "nanostores";
+import { $filters } from "./filters";
 
 /** Pergunta pendente para o campo do agente; `null` quando já foi consumida. */
 export const $agentDraft = atom<string | null>(null);
@@ -90,6 +91,20 @@ $agentComandas.set(projectComandas($agentMessages.get()));
 
 export function scopeKey(filters: object): string {
   return JSON.stringify(filters);
+}
+
+/** Comandas do agente deste recorte. As de outro recorte ficam só no log da conversa. */
+export function comandasForRecorte(tickets: readonly AgentTicket[], scope: string): AgentTicket[] {
+  return tickets.filter((ticket) => ticket.scope === scope);
+}
+
+export const $railAgentComandas = computed([$agentComandas, $filters], (tickets, filters) =>
+  comandasForRecorte(tickets, scopeKey(filters)),
+);
+
+/** Alertas da API mais comandas do agente que ainda são deste recorte. */
+export function openComandaCount(alertCount: number, agentOnRecorte: number): number {
+  return alertCount + agentOnRecorte;
 }
 
 /** Tira a comanda da fila. A mensagem continua na conversa. */

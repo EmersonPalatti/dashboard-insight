@@ -90,13 +90,10 @@ function Delta({
   def,
   current,
   previous,
-  embedded = false,
 }: {
   def: KpiDef;
   current: Metrics;
   previous?: Metrics | null;
-  /** Dentro da linha que trunca: inline, para a reticência cortar o fim e não a marca. */
-  embedded?: boolean;
 }) {
   const a = current[def.key] as number | null;
   const b = previous?.[def.key] as number | null | undefined;
@@ -122,12 +119,12 @@ function Delta({
       : `${delta > 0 ? "+" : "−"}${fmt.num1(Math.abs(delta) * 100)}%`;
   return (
     <span
-      className={`${embedded ? "inline" : "inline-flex items-center gap-0.5"} text-aux font-semibold tabular-nums ${
+      className={`inline-flex items-center gap-0.5 text-aux font-semibold tabular-nums ${
         good === null ? "text-muted" : good ? "text-good" : "text-crit"
       }`}
       title="Contra o período anterior de mesmo tamanho"
     >
-      <Icon className={`${embedded ? "mr-0.5 inline align-[-2px]" : ""} size-3.5`} aria-hidden />
+      <Icon className="size-3.5" aria-hidden />
       {flat ? "estável" : text}
       <span className="sr-only">{good === null ? "" : good ? "(melhorou)" : "(piorou)"}</span>
     </span>
@@ -257,20 +254,22 @@ function StatusLine({
   }
   const title = [verdict?.label, reference].filter(Boolean).join(" · ");
   return (
-    <span className="flex min-w-0 items-center gap-1.5" title={title || undefined}>
+    <span className="flex min-w-0 items-center gap-1.5 text-aux" title={title || undefined}>
       {verdict && <span className={`inline-block shrink-0 ${verdict.mark}`} aria-hidden />}
-      {/* relative: o sr-only do delta é absoluto e, sem isso, escapa do corte e alarga a página. */}
-      <span className="relative min-w-0 truncate text-aux">
-        {verdict && <span className={`font-semibold ${verdict.tone}`}>{verdict.label}</span>}
-        {reference && (
-          <span className="text-ink tabular-nums">
-            {verdict ? " · " : ""}
-            {reference}
-          </span>
-        )}
-        {(verdict || reference) && delta && <span className="text-muted"> · </span>}
-        {delta}
-      </span>
+      {verdict && <span className={`shrink-0 font-semibold whitespace-nowrap ${verdict.tone}`}>{verdict.label}</span>}
+      {/* relative no trecho que trunca: o sr-only do delta é absoluto e, sem um ancestral relative, alarga a página. */}
+      {reference && (
+        <span className="relative min-w-0 truncate text-ink tabular-nums">
+          {verdict ? "· " : ""}
+          {reference}
+        </span>
+      )}
+      {delta && (
+        <span className="relative shrink-0 overflow-hidden whitespace-nowrap">
+          {(verdict || reference) && <span className="text-muted"> · </span>}
+          {delta}
+        </span>
+      )}
     </span>
   );
 }
@@ -305,7 +304,7 @@ function Hero({
   return (
     <div className={`@container min-w-0 bg-surface px-4 pt-3.5 pb-3 ${markClass(!!focus)}`}>
       <p className="flex min-w-0 items-center justify-between gap-2">
-        <span className="min-w-0 truncate text-aux font-semibold text-muted">{def.label}</span>
+        <span className="kpi-label min-w-0 truncate text-aux font-semibold text-muted">{def.label}</span>
         {focus && (
           <>
             <span className="hidden shrink-0 @min-[17rem]:inline-flex">
@@ -326,7 +325,7 @@ function Hero({
         ) : (
           <StatusLine
             reading={reading}
-            delta={showDelta ? <Delta embedded def={def} current={current} previous={previous} /> : undefined}
+            delta={showDelta ? <Delta def={def} current={current} previous={previous} /> : undefined}
           />
         )}
       </div>
@@ -341,8 +340,8 @@ function Hero({
 function Volume({ def, current, previous, focus }: { def: KpiDef; current: Metrics; previous?: Metrics | null; focus: FocusedEvidence | null }) {
   return (
     <div className={`@container flex min-w-0 flex-col justify-center px-4 py-2.5 ${markClass(!!focus)}`}>
-      <div className="flex items-baseline justify-between gap-x-3">
-        <span className="min-w-0 truncate text-aux font-semibold text-muted">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+        <span className="kpi-label min-w-[6.5rem] flex-1 text-pretty text-aux font-semibold text-muted">
           {def.key === "gmv" ? <Term term="GMV" definition={GLOSS.gmv} /> : def.label}
         </span>
         <span className="flex shrink-0 items-baseline gap-2">
@@ -398,9 +397,9 @@ function KpiSkeleton({ status }: { status?: string }) {
         )}
         <div className="skeleton h-3.5 w-44 max-w-[30%]" aria-hidden />
       </div>
-      {/* lg+: operação à esquerda (3 colunas em sm+), volume à direita (empilhado em lg, linha em sm, empilhado em mobile) */}
+      {/* lg+: operação em 3 colunas; abaixo disso uma coluna, para o delta não cair sob o botão do agente */}
       <div className="grid gap-2.5 lg:grid-cols-[minmax(0,3fr)_minmax(15rem,1fr)]" aria-hidden="true">
-        <div className="grid grid-cols-1 gap-px overflow-hidden rounded-card border border-rule bg-rule sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-px overflow-hidden rounded-card border border-rule bg-rule lg:grid-cols-3">
           {[0, 1, 2].map((i) => (
             <div key={i} className="min-w-0 bg-surface px-4 pt-3.5 pb-3">
               <div className="flex min-w-0 items-center justify-between gap-2">
@@ -415,7 +414,7 @@ function KpiSkeleton({ status }: { status?: string }) {
             </div>
           ))}
         </div>
-        <div className="tile grid grid-cols-1 divide-y divide-rule overflow-hidden sm:grid-cols-3 sm:divide-x sm:divide-y-0 lg:auto-rows-fr lg:grid-cols-1 lg:divide-x-0 lg:divide-y">
+        <div className="tile grid grid-cols-1 divide-y divide-rule overflow-hidden lg:auto-rows-fr lg:grid-cols-1 lg:divide-y">
           {[0, 1, 2].map((i) => (
             <div key={i} className="flex min-w-0 flex-col justify-center px-4 py-2.5">
               <div className="flex flex-wrap items-baseline gap-2">
@@ -474,7 +473,7 @@ function KpiStripInner() {
   const summary = `Recorte atualizado: ${OPERATION.map((def) => heroSummary(def, current, readingFor(def.key))).join(". ")}.`;
 
   return (
-    <div className={`content-reveal grid gap-2.5 transition-opacity ${isPlaceholderData ? "opacity-60" : ""}`}>
+    <div className={`kpi-strip content-reveal grid gap-2.5 transition-opacity ${isPlaceholderData ? "opacity-60" : ""}`}>
       <IgnoredNotice />
       {/* Vazio durante o dim: o recorte antigo não é anunciado como se fosse o novo. */}
       <p className="sr-only" aria-live="polite" aria-atomic="true">
@@ -495,7 +494,7 @@ function KpiStripInner() {
       </div>
       {/* lg+: operação grande à esquerda, volume empilhado numa coluna estreita ao lado (mesma altura) */}
       <div className="grid gap-2.5 lg:grid-cols-[minmax(0,3fr)_minmax(15rem,1fr)]">
-        <div className="grid grid-cols-1 gap-px overflow-hidden rounded-card border border-rule bg-rule sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-px overflow-hidden rounded-card border border-rule bg-rule lg:grid-cols-3">
           {OPERATION.map((def) => (
             <Hero
               key={def.key}
@@ -508,7 +507,7 @@ function KpiStripInner() {
             />
           ))}
         </div>
-        <div className="tile grid grid-cols-1 divide-y divide-rule overflow-hidden sm:grid-cols-3 sm:divide-x sm:divide-y-0 lg:auto-rows-fr lg:grid-cols-1 lg:divide-x-0 lg:divide-y">
+        <div className="tile grid grid-cols-1 divide-y divide-rule overflow-hidden lg:auto-rows-fr lg:grid-cols-1 lg:divide-y">
           {VOLUME.map((def) => (
             <Volume key={def.key} def={def} current={current} previous={previous} focus={focusFor(def.key)} />
           ))}

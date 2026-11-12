@@ -55,7 +55,7 @@ export function Term({ term, definition }: { term: string; definition: string })
       <button
         ref={btn}
         type="button"
-        className="underline decoration-dotted decoration-ink underline-offset-[3px]"
+        className="hit-target underline decoration-dotted decoration-ink underline-offset-[3px]"
         aria-expanded={open}
         aria-describedby={open ? panelId : undefined}
         onClick={() => setOpen((value) => !value)}

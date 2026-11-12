@@ -1,5 +1,7 @@
+import { useStore } from "@nanostores/react";
 import { SlidersHorizontal } from "lucide-react";
 import type { RefObject } from "react";
+import { $railAgentComandas, openComandaCount } from "@/lib/agentBridge";
 import { useRecorteQuery } from "@/lib/query";
 import { SubtleNumber } from "./SubtleNumber";
 
@@ -12,27 +14,27 @@ interface Props {
 }
 
 /**
- * Mobile (abaixo de lg): uma faixa de 44px com o resumo do recorte, que abre a
- * folha de filtros, e à direita o atalho para a fila de comandas. Cada bloco é
- * rótulo em cima e valor embaixo, para o resumo caber numa linha sem cortar a
- * palavra. A consulta é a mesma de AlertsPanel (mesma chave), então o cache é compartilhado.
+ * Mobile (abaixo de lg): o resumo do recorte ocupa a largura toda e abre a folha.
+ * O atalho da fila de comandas fica na linha de baixo, para o período não ser
+ * cortado pelo link. A consulta é a mesma de AlertsPanel (mesma chave), então o cache é compartilhado.
  */
 export function MobileRecorte({ summary, activeCount, onOpen, buttonRef }: Props) {
   const { data } = useRecorteQuery("/api/alerts");
+  const railAgents = useStore($railAgentComandas);
   const alerts = data?.alerts ?? [];
-  const total = data ? alerts.length : null;
+  const total = data ? openComandaCount(alerts.length, railAgents.length) : null;
   const critical = alerts.filter((a) => a.severity === "high").length;
   const filtersText = activeCount === 1 ? "1 filtro ativo" : `${activeCount} filtros ativos`;
 
   return (
-    <div className="flex min-w-0 items-stretch gap-2">
+    <div className="flex min-w-0 flex-col gap-2">
       <button
         ref={buttonRef}
         type="button"
         aria-haspopup="dialog"
         aria-label={`Recorte: ${summary}${activeCount ? `, ${filtersText}` : ""}. Editar`}
         onClick={onOpen}
-        className={`flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-card border bg-surface px-3 py-1.5 text-left ${
+        className={`flex min-h-11 w-full min-w-0 items-center gap-2 rounded-card border bg-surface px-3 py-1.5 text-left ${
           activeCount ? "border-ink" : "border-rule"
         }`}
       >
@@ -41,7 +43,7 @@ export function MobileRecorte({ summary, activeCount, onOpen, buttonRef }: Props
           <span className="text-aux leading-none font-semibold text-muted tabular-nums">
             Recorte{activeCount > 0 ? ` · ${activeCount}` : ""}
           </span>
-          <span className="mt-0.5 truncate text-body font-medium">{summary}</span>
+          <span className="mt-0.5 text-pretty text-body font-medium">{summary}</span>
         </span>
         {/* o verbo da linha: ink, negrito e sublinhado, para ler como ação e não como rótulo */}
         <span aria-hidden className="shrink-0 text-aux font-semibold text-ink underline decoration-muted underline-offset-4">
@@ -52,7 +54,7 @@ export function MobileRecorte({ summary, activeCount, onOpen, buttonRef }: Props
       {/* "Comandas · N" na primeira linha; "X críticas" embaixo, só quando há críticas */}
       <a
         href="#comandas"
-        className="flex min-h-11 shrink-0 flex-col justify-center rounded-card border border-rule bg-surface px-3 py-1 leading-tight whitespace-nowrap"
+        className="flex min-h-11 w-fit max-w-full flex-col justify-center rounded-card border border-rule bg-surface px-3 py-1 leading-tight"
       >
         <span className="text-body">
           Comandas
