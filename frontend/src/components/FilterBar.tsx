@@ -28,11 +28,14 @@ const preloadExportDialog = () => void loadExportDialog().catch(() => {});
  * Linha 1 em controles de 40px, linha 2 em 32px. O campo do agente cede
  * largura antes dos seletores de lugar: encolhe até "Agente" + atalho, e só
  * volta ao convite inteiro quando o miolo do botão chega a 18rem.
+ * Entre lg e xl a linha 1 não tem largura para os dois: o agente desce para o
+ * fim da linha 2, em 32px, e a barra continua com duas linhas (80px).
  */
 function DesktopBar({ m }: { m: FilterModel }) {
+  const wide = useMediaQuery("(min-width: 1280px)");
   return (
     <div className="@container flex min-w-0 flex-col gap-2">
-      <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2 xl:flex-nowrap">
+      <div className="flex min-w-0 items-center gap-x-4">
         <div className="shrink-0">
           <PeriodFields m={m} />
         </div>
@@ -48,9 +51,11 @@ function DesktopBar({ m }: { m: FilterModel }) {
           </div>
         </div>
         {/* último da linha: fica acima do canto onde o painel solto abre. shrink alto: cede antes do lugar. */}
-        <div className="flex min-w-[9.5rem] max-w-[22rem] flex-[0_100_22rem] border-l border-rule pl-4">
-          <AgentAskButton />
-        </div>
+        {wide && (
+          <div className="flex min-w-[9.5rem] max-w-[22rem] flex-[0_100_22rem] border-l border-rule pl-4">
+            <AgentAskButton />
+          </div>
+        )}
       </div>
 
       <div className="flex min-h-8 flex-wrap items-center gap-x-3 gap-y-1.5">
@@ -68,8 +73,13 @@ function DesktopBar({ m }: { m: FilterModel }) {
             <RotateCcw className="size-3.5" aria-hidden /> Limpar recorte
           </button>
         )}
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-2">
           <ShareMenu />
+          {!wide && (
+            <div className="w-40">
+              <AgentAskButton compact />
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -161,8 +171,16 @@ function FilterBarInner() {
                   </p>
                   <PeriodFields m={m} variant="sheet" labelId="periodo-titulo" />
                 </div>
-                <div className="grid min-w-0 gap-1.5">
+                <div role="group" aria-labelledby="lugar-titulo" className="grid min-w-0 gap-1.5">
+                  <p id="lugar-titulo" className="text-aux font-semibold text-ink">
+                    Lugar
+                  </p>
                   <PlaceFields m={m} />
+                </div>
+                <div role="group" aria-labelledby="pedido-titulo" className="grid min-w-0 gap-1.5">
+                  <p id="pedido-titulo" className="text-aux font-semibold text-ink">
+                    Pedido
+                  </p>
                   <ExtraFields m={m} />
                 </div>
                 <div className="grid min-w-0 gap-2">

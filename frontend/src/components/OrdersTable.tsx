@@ -55,7 +55,7 @@ const columns = [
   }),
   col.accessor("hub_name", { header: "Hub", size: 160 }),
   col.accessor("store_name", { header: "Loja", size: 170 }),
-  col.accessor("segment", { header: "Seg.", size: 85, cell: (c) => label(c.getValue()) }),
+  col.accessor("segment", { header: "Segmento", size: 118, cell: (c) => label(c.getValue()) }),
   col.accessor("channel", { header: "Canal", size: 125 }),
   col.accessor("modal", { header: "Modal", size: 90, cell: (c) => label(c.getValue()) }),
   col.accessor("amount", { header: "Valor", size: 95, cell: (c) => fmt.brl(c.getValue()) }),

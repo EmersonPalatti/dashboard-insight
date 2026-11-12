@@ -285,7 +285,7 @@ export function Segmented<T extends string>({ value, options, onChange, label }:
             tabIndex={i === tabStop ? 0 : -1}
             onClick={() => onChange(o.value)}
             onKeyDown={(e) => onArrowKey(e, i)}
-            className={`relative z-[1] rounded-t-[4px] border-b-2 border-transparent px-2.5 py-1 text-aux transition-colors duration-(--duration-quick) ${
+            className={`relative z-[1] rounded-t-[4px] border-b-2 border-transparent px-2.5 py-1 text-aux max-lg:min-h-11 transition-colors duration-(--duration-quick) ${
               checked ? "font-medium text-ink" : "text-muted hover:text-ink"
             }`}
           >

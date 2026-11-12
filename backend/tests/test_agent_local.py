@@ -25,7 +25,7 @@ DISALLOWED_STATIC_NAMES = [
 
 # Cada frase abaixo só aparece na resposta daquele handler.
 QUESTIONS_AND_MARKERS = [
-    ("quais os alertas e problemas no recorte?", "alerta(s) no recorte"),
+    ("quais os alertas e problemas no recorte?", "alertas no recorte ("),
     ("onde esta o gargalo das etapas de entrega?", "Mediana por etapa"),
     ("quais lojas cancelam mais pedidos?", "Cancelamento no recorte"),
     ("quanto estamos gastando de frete e subsidio?", "Frete médio cobrado"),
@@ -41,11 +41,11 @@ QUESTIONS_AND_MARKERS = [
 
 # Substring antigo mandava estas frases para o handler errado.
 FALSE_POSITIVES = [
-    ("qual a situação da operação?", "**Briefing do recorte**", "alerta(s) no recorte"),
-    ("como está a operação hoje?", "**Briefing do recorte**", "alerta(s) no recorte"),
-    ("qual a duração média?", "**Briefing do recorte**", "alerta(s) no recorte"),
-    ("preciso de mais informação", "**Briefing do recorte**", "alerta(s) no recorte"),
-    ("quero uma avaliação do recorte", "**Briefing do recorte**", "alerta(s) no recorte"),
+    ("qual a situação da operação?", "**Briefing do recorte**", "alertas no recorte ("),
+    ("como está a operação hoje?", "**Briefing do recorte**", "alertas no recorte ("),
+    ("qual a duração média?", "**Briefing do recorte**", "alertas no recorte ("),
+    ("preciso de mais informação", "**Briefing do recorte**", "alertas no recorte ("),
+    ("quero uma avaliação do recorte", "**Briefing do recorte**", "alertas no recorte ("),
     ("como melhorar o resultado?", "**Briefing do recorte**", "Horários de maior volume"),
     ("cadê o motorista?", "**Briefing do recorte**", "Entregas por modal"),
     ("tempo de trânsito por modal", "Entregas por modal", "Mediana por etapa"),

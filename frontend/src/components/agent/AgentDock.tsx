@@ -106,6 +106,21 @@ function AgentDockInner() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  // Esc com o foco fora do painel e fora de qualquer controle (cai no body quando o botão focado some,
+  // como a pergunta sugerida depois de enviada): fecha do mesmo jeito. Com foco em outro controle da
+  // página, Esc é dele (menus, popovers), e o painel lateral fica.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      if (document.activeElement !== document.body || document.querySelector("dialog[open]")) return;
+      e.preventDefault();
+      closeAgent();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open]);
+
   // Modo lateral: a página abre espaço (padding no body) no mesmo quadro em que o painel começa a entrar.
   useLayoutEffect(() => {
     const root = document.documentElement;

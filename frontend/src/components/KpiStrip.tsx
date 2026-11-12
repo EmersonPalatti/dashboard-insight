@@ -1,7 +1,7 @@
 import { ArrowDownRight, ArrowUpRight, Minus } from "lucide-react";
 import { Fragment, useState, type CSSProperties, type ReactNode } from "react";
 import type { KpiResponse, Metrics } from "@/lib/api/client";
-import { fmt } from "@/lib/format";
+import { fmt, outsideBaseNote } from "@/lib/format";
 import type { FocusedEvidence } from "@/lib/evidence";
 import { GLOSS } from "@/lib/glossary";
 import { island, useMeta, useRecorteQuery } from "@/lib/query";
@@ -468,7 +468,9 @@ function KpiStripInner() {
         <IgnoredNotice />
         <div className="tile p-4">
           <p className="font-semibold">Nenhum pedido neste recorte.</p>
-          <p className="label">Afrouxe período, hub ou loja. Os painéis abaixo ficam vazios até lá.</p>
+          <p className="label">
+            {outsideBaseNote(period, meta) ?? "Afrouxe período, hub ou loja."} Os painéis abaixo ficam vazios até lá.
+          </p>
         </div>
       </>
     );
