@@ -61,7 +61,7 @@ const columns = [
   col.accessor("amount", { header: "Valor", size: 95, cell: (c) => fmt.brl(c.getValue()) }),
   col.accessor("cycle_min", {
     header: "Ciclo",
-    size: 85,
+    size: 92,
     cell: (c) =>
       c.row.original.on_time === false ? (
         <span className="inline-flex items-center gap-1 font-semibold text-ink">
@@ -153,7 +153,7 @@ function ColumnFilterPopover<V extends string | number>({
           e.stopPropagation();
           setOpen((v) => !v);
         }}
-        className={`inline-flex size-6 items-center justify-center rounded-tick transition-colors duration-(--duration-quick) ${
+        className={`hit-target inline-flex size-6 items-center justify-center rounded-tick transition-colors duration-(--duration-quick) ${
           hasFilter
             ? "bg-ink text-surface"
             : "text-muted hover:bg-surface hover:text-ink hover:ring-1 hover:ring-rule"
@@ -168,7 +168,7 @@ function ColumnFilterPopover<V extends string | number>({
           aria-label={`Filtro de ${title}`}
           data-state="open"
           data-align={align}
-          className={`recorte-popover absolute top-full z-40 mt-1.5 min-w-[14rem] rounded-card border border-rule bg-surface p-3 shadow-lg ${
+          className={`recorte-popover absolute top-full z-40 mt-1.5 min-w-[14rem] rounded-card border border-rule bg-surface p-3 ${
             align === "right" ? "right-0" : "left-0"
           }`}
           onMouseDown={(e) => e.stopPropagation()}

@@ -1,4 +1,4 @@
-import { Download, RotateCcw } from "lucide-react";
+import { ChevronDown, Download, RotateCcw } from "lucide-react";
 import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { resetFilters } from "@/lib/filters";
 import { useMediaQuery } from "@/lib/media";
@@ -93,8 +93,14 @@ function FilterBarInner() {
   // o modal monta no primeiro clique e fica montado depois: a animação de fechamento precisa do nó
   const [exportMounted, setExportMounted] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [pedidoOpen, setPedidoOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const exportWasOpen = useRef(false);
+
+  // filtro de pedido em uso (ex.: veio pela URL): o grupo abre para o filtro não ficar escondido
+  useEffect(() => {
+    if (m.extraCount > 0) setPedidoOpen(true);
+  }, [m.extraCount]);
 
   // a folha só existe no mobile: se a janela crescer com ela aberta, ela fecha
   useEffect(() => {
@@ -177,12 +183,23 @@ function FilterBarInner() {
                   </p>
                   <PlaceFields m={m} />
                 </div>
-                <div role="group" aria-labelledby="pedido-titulo" className="grid min-w-0 gap-1.5">
-                  <p id="pedido-titulo" className="text-aux font-semibold text-ink">
-                    Pedido
-                  </p>
-                  <ExtraFields m={m} />
-                </div>
+                {/* Segmento, canal e modal: recolhidos como o "Mais filtros" do desktop; abrem sozinhos quando há filtro neles. */}
+                <details
+                  open={pedidoOpen}
+                  onToggle={(e) => setPedidoOpen(e.currentTarget.open)}
+                  className="group min-w-0 border-t border-rule"
+                >
+                  <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 text-aux font-semibold text-ink [&::-webkit-details-marker]:hidden">
+                    <span>
+                      Pedido: segmento, canal e modal
+                      {m.extraCount > 0 && <span className="font-normal text-muted"> · {m.extraCount} em uso</span>}
+                    </span>
+                    <ChevronDown className="size-4 shrink-0 text-muted group-open:rotate-180" aria-hidden />
+                  </summary>
+                  <div className="grid min-w-0 gap-1.5 pb-1">
+                    <ExtraFields m={m} />
+                  </div>
+                </details>
                 <div className="grid min-w-0 gap-2">
                   {m.chips.length === 0 ? (
                     <p className="label text-pretty">Recorte completo: todos os pedidos do período.</p>

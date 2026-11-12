@@ -47,7 +47,7 @@ function Tag({ focus, note, className = "", compact = false }: TagProps) {
     >
       <span className={`inline-block shrink-0 ${s.mark}`} aria-hidden />
       <span className="cond shrink-0 font-bold whitespace-nowrap">Comanda {focus.number}</span>
-      {caption && <span className="min-w-0 truncate text-muted">{caption}</span>}
+      {caption && <span className="min-w-0 truncate text-muted max-sm:line-clamp-2 max-sm:whitespace-normal">{caption}</span>}
     </span>
   );
 }
