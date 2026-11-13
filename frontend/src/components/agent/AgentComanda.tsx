@@ -1,5 +1,5 @@
 import { ChevronUp, Filter, X } from "lucide-react";
-import { useEffect, useRef, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { agentStamp, dismissAgentComanda, type AgentTicket } from "@/lib/agentBridge";
 import { applyDrilldown } from "@/lib/filters";
 import { fmt } from "@/lib/format";
@@ -21,7 +21,7 @@ function DrillButtons({ ticket, primary }: { ticket: AgentTicket; primary: boole
         <button
           key={`${drill.label}-${index}`}
           type="button"
-          className={`${primary && index === 0 ? "btn-primary" : "btn-ghost"} max-lg:min-h-11 lg:min-h-9`}
+          className={`${primary && index === 0 ? "btn-ink" : "btn-ghost"} max-lg:min-h-11 lg:min-h-9`}
           onClick={() => applyDrilldown(drill.filters)}
         >
           <Filter className="size-3.5" aria-hidden /> {drill.label}
@@ -31,7 +31,13 @@ function DrillButtons({ ticket, primary }: { ticket: AgentTicket; primary: boole
   );
 }
 
-/** Comanda dentro da conversa. O vermelho fica na faixa aberta da fila, não aqui. */
+/** Resume leituras longas (ex.: lista de todos os alertas) para caberem sem dominar o dock. */
+function isLongComanda(detail: string, action: string): boolean {
+  const lines = detail.split("\n").filter((l) => l.trim().length > 0);
+  return detail.length > 150 || action.length > 150 || lines.length > 2;
+}
+
+/** Comanda dentro da conversa. Usa cartão com borda (.tile); o picote fica reservado à fila. */
 export function AgentChatComanda({
   ticket,
   stale,
@@ -43,10 +49,13 @@ export function AgentChatComanda({
   waiting: boolean;
   onCancel: () => void;
 }) {
+  const [expanded, setExpanded] = useState(false);
+  const collapsible = isLongComanda(ticket.detail, ticket.action);
+  const clamped = collapsible && !expanded;
   const note = waiting ? "Leitura pelas regras. Aprofundando com o modelo…" : readingNote(ticket.status, ticket.toolLabels);
   return (
-    <article className="ticket mr-2 bg-surface px-3 pt-4 pb-3" aria-label={`${agentStamp(ticket.series)} · ${ticket.title}`}>
-      <div className="border-b-[1.5px] border-dashed border-rule pb-2">
+    <article className="tile mr-2 px-3 py-2.5" aria-label={`${agentStamp(ticket.series)} · ${ticket.title}`}>
+      <div className="border-b-[1.5px] border-dashed border-rule pb-1.5">
         <span className="cond flex items-center gap-2 text-meta font-bold">
           <span className={`inline-block shrink-0 ${MARK}`} aria-hidden />
           <span className="truncate">
@@ -54,24 +63,34 @@ export function AgentChatComanda({
           </span>
         </span>
       </div>
-      {stale && <p className="mt-2 text-meta text-muted">Recorte mudou</p>}
-      <h3 className="mt-2 text-lead leading-snug font-semibold text-balance">{ticket.title}</h3>
-      <div className="mt-1.5 text-body leading-relaxed text-pretty text-ink/85">
+      {stale && <p className="mt-1.5 text-meta text-muted">Recorte mudou</p>}
+      <h3 className="mt-1.5 text-lead leading-snug font-semibold text-balance">{ticket.title}</h3>
+      <div className={`mt-1 text-body leading-snug text-pretty text-ink/85 ${clamped ? "line-clamp-3" : ""}`}>
         <Markdown text={ticket.detail} />
       </div>
-      <div className="mt-3 action-block rounded-card px-4 py-3.5">
+      <div className="mt-2.5 action-block rounded-card px-3 py-2">
         <p className="text-aux font-semibold opacity-70">Ação</p>
-        <p className="mt-1 text-body leading-snug text-pretty">{ticket.action}</p>
+        <p className={`mt-1 text-body leading-snug text-pretty ${clamped ? "line-clamp-3" : ""}`}>{ticket.action}</p>
       </div>
+      {collapsible && (
+        <button
+          type="button"
+          className="btn-ghost hit-target mt-2 min-h-8 px-2.5 py-1 text-meta max-lg:min-h-11"
+          aria-expanded={expanded}
+          onClick={() => setExpanded((v) => !v)}
+        >
+          {expanded ? "Recolher detalhe" : "Ver detalhe completo"}
+        </button>
+      )}
       {ticket.drilldowns.length > 0 && (
         <div className="mt-3 flex flex-wrap gap-2">
           <DrillButtons ticket={ticket} primary={false} />
         </div>
       )}
-      <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-meta text-muted">
+      <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-meta text-muted">
         <p className="min-w-0 text-pretty">{note}</p>
         {waiting && (
-          <button type="button" className="btn-ghost px-2 py-1 text-meta max-lg:min-h-11" onClick={onCancel}>
+          <button type="button" className="btn-ghost hit-target min-h-8 px-2.5 py-1 text-meta max-lg:min-h-11" onClick={onCancel}>
             Cancelar
           </button>
         )}
@@ -79,7 +98,7 @@ export function AgentChatComanda({
         {ticket.onRail && (
           <button
             type="button"
-            className="btn-ghost px-2 py-1 text-meta max-lg:min-h-11"
+            className="btn-ghost hit-target min-h-8 px-2.5 py-1 text-meta max-lg:min-h-11"
             onClick={() => dismissAgentComanda(ticket.id)}
           >
             Tirar da fila
@@ -163,7 +182,7 @@ export function AgentStub({
   );
 }
 
-/** Faixa aberta da comanda do agente. Um botão vermelho: o primeiro atalho. */
+/** Faixa aberta da comanda do agente. Um botão em tinta: o primeiro atalho. */
 export function AgentOpenBand({
   ticket,
   stale,

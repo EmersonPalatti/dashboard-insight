@@ -89,11 +89,12 @@ const THIN_BY_COLUMN: Partial<Record<string, ThinKey>> = {
   cancel_rate: "volume_low_sample",
 };
 
-/** Figura sobre base pequena: tinta apagada e sublinhado pontilhado, com o motivo no title e para leitor de tela. */
+/** Figura sobre base pequena: tinta apagada com asterisco, sem sublinhado (para não colidir com Term). */
 function Thin({ children }: { children: ReactNode }) {
   return (
-    <span className="text-muted underline decoration-dotted underline-offset-2" title="Amostra pequena: a figura oscila demais para comparar">
+    <span className="text-muted" title="Amostra pequena: a figura oscila demais para comparar">
       {children}
+      <span className="ml-0.5 font-normal opacity-80" aria-hidden>*</span>
       <span className="sr-only"> (amostra pequena)</span>
     </span>
   );
@@ -208,7 +209,7 @@ function BreakdownTableInner() {
 
   return (
     <PanelContent
-      hint={`Ordene pelas colunas. Seta para baixo: no prazo abaixo do recorte. Seta para cima: cancelamento acima do recorte.${hasThin ? " Pontilhado: amostra pequena, fica no fim ao ordenar a coluna." : ""}${tab === "store" ? ` Lojas com 30+ pedidos. ${STORE_NAMES_HINT}` : ""}`}
+      hint={`Ordene pelas colunas. Seta para baixo: no prazo abaixo do recorte. Seta para cima: cancelamento acima do recorte.${hasThin ? " Valor com *: amostra pequena, fica no fim ao ordenar a coluna." : ""}${tab === "store" ? ` Lojas com 30+ pedidos. ${STORE_NAMES_HINT}` : ""}`}
       busy={isPlaceholderData}
       actions={
         <>
@@ -252,12 +253,12 @@ function BreakdownTableInner() {
                         className={`border-b border-rule px-2.5 py-2 text-aux font-semibold whitespace-nowrap ${i === 0 ? "text-left" : "text-right tabular-nums"}`}
                       >
                         {help ? (
-                          <span className={`inline-flex items-center gap-1 ${dir ? "text-ink" : "text-muted"}`}>
+                          <span className={`inline-flex items-center gap-1 max-lg:gap-4 ${dir ? "text-ink" : "text-muted"}`}>
                             <Term term={help.term} definition={help.definition} />
                             <button
                               type="button"
                               onClick={h.column.getToggleSortingHandler()}
-                              className="hit-target -mx-1 inline-flex size-6 items-center justify-center rounded-tick hover:bg-surface hover:text-ink"
+                              className="hit-target inline-flex size-6 items-center justify-center rounded-tick hover:bg-surface hover:text-ink"
                               aria-label={`Ordenar por ${help.term}, ${sortPhrase(dir)}`}
                             >
                               <Icon className="size-3" aria-hidden />
@@ -295,7 +296,7 @@ function BreakdownTableInner() {
                         <button
                           type="button"
                           onClick={() => drill(row.original)}
-                          className="inline-flex size-6 items-center justify-center rounded-tick text-muted hover:bg-sunken-strong hover:text-ink max-lg:size-11"
+                          className="hit-target inline-flex size-6 items-center justify-center rounded-tick text-muted hover:bg-sunken-strong hover:text-ink max-lg:size-11"
                           aria-label={`Filtrar por ${row.original.label}`}
                           title="Filtrar o painel por este grupo"
                         >

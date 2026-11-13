@@ -454,14 +454,14 @@ button.ticket:focus-visible {
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 1.5rem;
-  height: 1.5rem;
+  width: max(100%, 1.5rem);
+  height: max(100%, 1.5rem);
   transform: translate(-50%, -50%);
 }
 
 @media (max-width: 1023px) {
   .hit-target::after {
-    width: 2.75rem;
-    height: 2.75rem;
+    width: max(100%, 2.75rem);
+    height: max(100%, 2.75rem);
   }
 }

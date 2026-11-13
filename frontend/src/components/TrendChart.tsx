@@ -1,12 +1,13 @@
 import { useStore } from "@nanostores/react";
-import { CalendarCheck } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { CalendarCheck, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { $filters, $view, patchFilters, setView, type TrendGrain, type TrendView } from "@/lib/filters";
 import { fmt } from "@/lib/format";
 import { island, useRecorteQuery } from "@/lib/query";
 import { BarChart, LineChart } from "echarts/charts";
 import { DataZoomComponent, LegendComponent } from "echarts/components";
 import * as echarts from "echarts/core";
+import { ChartAccess } from "./charts/ChartAccess";
 import { EChart, type ECInstance, type Tokens } from "./charts/EChart";
 import { AskAgentButton } from "./ui/AskAgentButton";
 import { AsyncBody, Empty, panelFallback, PanelContent, Segmented } from "./ui/Panel";
@@ -34,6 +35,39 @@ function TrendChartInner() {
   const chart = useRef<ECInstance | null>(null);
   const { data, error, isPending, refetch, isPlaceholderData, waking, down } = useRecorteQuery("/api/timeseries", { grain });
   const points = data ?? [];
+
+  const summary = useMemo(() => {
+    if (points.length === 0) return "";
+    const stamp = (t: string) => (grain === "hour" ? fmt.dateTime(t) : fmt.date(t));
+    const span = `${stamp(points[0].t)} a ${stamp(points.at(-1)!.t)}`;
+    if (view === "volume") {
+      let peak = points[0];
+      for (const p of points) {
+        if (p.orders > peak.orders) peak = p;
+      }
+      return `Tendência de volume (${span}, por ${GRAIN_LABEL[grain].toLowerCase()}). Pico: ${stamp(peak.t)} com ${fmt.int(peak.orders)} pedidos e ${fmt.brl(peak.gmv)} de GMV.`;
+    }
+    if (view === "sla") {
+      const valid = points.filter((p) => p.sla_rate !== null);
+      if (valid.length === 0) return `Tendência de SLA e ciclo (${span}).`;
+      let worst = valid[0];
+      let best = valid[0];
+      for (const p of valid) {
+        if ((p.sla_rate as number) < (worst.sla_rate as number)) worst = p;
+        if ((p.sla_rate as number) > (best.sla_rate as number)) best = p;
+      }
+      return `Tendência de SLA (${span}). Pior ponto: ${stamp(worst.t)} com ${fmt.pct(worst.sla_rate)} no prazo (ciclo ${fmt.min(worst.cycle_p50)}). Melhor: ${stamp(best.t)} com ${fmt.pct(best.sla_rate)}.`;
+    }
+    const valid = points.filter((p) => p.cancel_rate !== null);
+    if (valid.length === 0) return `Tendência de cancelamento (${span}).`;
+    let peak = valid[0];
+    let low = valid[0];
+    for (const p of valid) {
+      if ((p.cancel_rate as number) > (peak.cancel_rate as number)) peak = p;
+      if ((p.cancel_rate as number) < (low.cancel_rate as number)) low = p;
+    }
+    return `Tendência de cancelamento (${span}). Maior taxa: ${stamp(peak.t)} com ${fmt.pct(peak.cancel_rate)}. Menor: ${stamp(low.t)} com ${fmt.pct(low.cancel_rate)}.`;
+  }, [points, view, grain]);
 
   // O zoom pertence à faixa que está na tela. Recorte, granularidade, métrica ou
   // dados novos zeram o dataZoom do ECharts (notMerge), então o zoom guardado vira obsoleto.
@@ -160,6 +194,11 @@ function TrendChartInner() {
     setZoom(null);
   };
 
+  const clearZoom = () => {
+    chart.current?.dispatchAction({ type: "dataZoom", start: 0, end: 100 });
+    setZoom(null);
+  };
+
   return (
     <PanelContent
       hint={
@@ -171,9 +210,14 @@ function TrendChartInner() {
       actions={
         <>
           {zoom && (
-            <button type="button" className="btn-ink py-1 text-aux" onClick={applyZoom}>
-              <CalendarCheck className="size-3.5" aria-hidden /> Usar como período
-            </button>
+            <>
+              <button type="button" className="btn-ghost py-1 text-aux" onClick={clearZoom}>
+                <X className="size-3.5" aria-hidden /> Limpar zoom
+              </button>
+              <button type="button" className="btn-ink py-1 text-aux" onClick={applyZoom}>
+                <CalendarCheck className="size-3.5" aria-hidden /> Usar como período
+              </button>
+            </>
           )}
           <Segmented
             label="Métrica"
@@ -212,6 +256,7 @@ function TrendChartInner() {
             onReady={(c) => (chart.current = c)}
             ariaLabel={`Série ${VIEW_LABEL[view]} por ${GRAIN_LABEL[grain].toLowerCase()} no recorte`}
           />
+          <ChartAccess summary={summary} items={[]} />
         </div>
       </AsyncBody>
     </PanelContent>

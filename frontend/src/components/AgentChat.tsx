@@ -343,7 +343,7 @@ export function AgentConversation({ visible, onClose }: ConversationProps) {
           </h2>
           <div className="flex items-center gap-1">
             {messages.length > 0 && (
-              <button type="button" className="btn-ghost px-2 py-1 text-meta max-lg:min-h-11" onClick={wipe}>
+              <button type="button" className="btn-ghost hit-target min-h-8 px-2.5 py-1 text-meta max-lg:min-h-11" onClick={wipe}>
                 <RotateCcw className="size-3.5" aria-hidden /> Nova conversa
               </button>
             )}
@@ -352,7 +352,7 @@ export function AgentConversation({ visible, onClose }: ConversationProps) {
               onClick={onClose}
               aria-label="Fechar agente"
               title="Fechar (Esc)"
-              className="inline-flex size-8 items-center justify-center rounded-card text-muted hover:bg-sunken hover:text-ink max-lg:size-11"
+              className="hit-target inline-flex size-8 items-center justify-center rounded-card text-muted hover:bg-sunken hover:text-ink max-lg:size-11"
             >
               <X className="size-4" aria-hidden />
             </button>
@@ -378,7 +378,7 @@ export function AgentConversation({ visible, onClose }: ConversationProps) {
             {undo && (
               <div className="flex items-center justify-between gap-2 rounded-card border border-rule bg-surface px-3 py-2">
                 <p className="text-body">Conversa apagada.</p>
-                <button type="button" className="btn-ghost px-2 py-1 text-meta max-lg:min-h-11" onClick={restore}>
+                <button type="button" className="btn-ghost hit-target min-h-8 px-2.5 py-1 text-meta max-lg:min-h-11" onClick={restore}>
                   Desfazer
                 </button>
               </div>
@@ -394,7 +394,7 @@ export function AgentConversation({ visible, onClose }: ConversationProps) {
             {SUGGESTIONS.length > SUGGESTIONS_SHOWN && (
               <button
                 type="button"
-                className="btn-ghost px-2 py-1 text-meta max-lg:min-h-11"
+                className="btn-ghost hit-target min-h-8 px-2.5 py-1 text-meta max-lg:min-h-11"
                 aria-expanded={moreSuggestions}
                 onClick={() => setMoreSuggestions((value) => !value)}
               >
@@ -449,7 +449,7 @@ export function AgentConversation({ visible, onClose }: ConversationProps) {
               {elapsed >= 5 && <span aria-hidden> {elapsed} s</span>}
             </p>
             {serverAsleep && <p className="text-meta">O servidor está acordando. A primeira leitura leva até ~40 s.</p>}
-            <button type="button" className="btn-ghost mt-1 px-2 py-1 text-meta max-lg:min-h-11" onClick={cancel}>
+            <button type="button" className="btn-ghost hit-target mt-1 min-h-8 px-2.5 py-1 text-meta max-lg:min-h-11" onClick={cancel}>
               Cancelar
             </button>
           </div>
@@ -493,7 +493,7 @@ export function AgentConversation({ visible, onClose }: ConversationProps) {
           placeholder="Pergunte sobre este recorte…"
           className="max-h-40 min-h-11 w-full min-w-0 flex-1 resize-none overflow-y-auto rounded-card border border-rule bg-surface px-3 py-2 text-body outline-none placeholder:text-muted focus:border-ink lg:min-h-10"
         />
-        <button type="submit" className="btn-ink max-lg:min-h-11 max-lg:min-w-11 max-lg:justify-center" disabled={!input.trim() || phase !== "idle"} aria-label="Enviar">
+        <button type="submit" className="btn-ink justify-center max-lg:min-h-11 max-lg:min-w-11 lg:h-10 lg:px-3.5" disabled={!input.trim() || phase !== "idle"} aria-label="Enviar">
           <SendHorizontal className="size-4" aria-hidden />
         </button>
       </form>
