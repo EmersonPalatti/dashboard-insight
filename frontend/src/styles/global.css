@@ -197,7 +197,7 @@
  * dica dinâmica e nota numa linha inteira, corpo por último.
  */
 @utility panel-frame {
-  @apply panel flex min-w-0 flex-wrap items-start gap-x-2 p-4;
+  @apply panel flex min-w-0 flex-wrap content-start items-start gap-x-2 p-4;
 }
 @utility panel-head {
   /* min-h igual à altura das ações: a linha do título não cresce quando a ilha monta */
@@ -223,15 +223,15 @@
   mask: radial-gradient(circle 5px at 7px 0, #0000 98%, #000) 0 0 / 14px 100% repeat-x;
 }
 
-/* A comanda aberta desdobra de cima para baixo, como papel saindo da impressora. */
+/* A comanda aberta desdobra de cima para baixo, como papel saindo da impressora (sem clip-path sobre mask). */
 @keyframes ticket-unfold {
   from {
-    clip-path: inset(0 0 55% 0);
-    opacity: 0.6;
+    opacity: 0.45;
+    transform: translateY(calc(var(--distance-small) * -1));
   }
   to {
-    clip-path: inset(0 0 0 0);
     opacity: 1;
+    transform: none;
   }
 }
 
@@ -244,7 +244,7 @@
 
 /* Reimpressão do recorte: a fila sai em ordem, 40ms por comanda (--i vai até 5). */
 @utility ticket-print {
-  animation: ticket-unfold 280ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: ticket-unfold 280ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
   animation-delay: calc(var(--i, 0) * var(--duration-stagger));
   @media (prefers-reduced-motion: reduce) {
     animation: none;
@@ -266,7 +266,7 @@
   overflow: hidden;
   min-height: 0;
   opacity: 1;
-  filter: blur(0);
+  filter: none;
   transition:
     opacity var(--duration-fast) var(--ease-smooth-out),
     filter var(--duration-fast) var(--ease-smooth-out);

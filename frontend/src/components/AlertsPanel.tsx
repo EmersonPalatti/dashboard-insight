@@ -204,41 +204,41 @@ function OpenBand({
           }
         />
       </div>
-      <div className="mt-3 grid gap-x-8 gap-y-3.5 max-lg:pr-9 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
-        <div className="min-w-0">
+      <div className="mt-3 grid gap-x-8 gap-y-3.5 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)] lg:grid-rows-[auto_1fr]">
+        <div className="min-w-0 lg:col-start-1 lg:row-start-1">
           <h3 id={`${BAND_ID}-title`} ref={titleRef} tabIndex={-1} className="text-lead leading-snug font-semibold text-balance">
             {alert.title}
           </h3>
           <p className="mt-1.5 max-w-[68ch] text-body leading-relaxed text-pretty text-ink/85">{alert.detail}</p>
-          <div className="comanda-actions no-print mt-3 flex flex-wrap gap-2">
-            {alert.drilldown && (
-              <button type="button" className="btn-primary max-lg:min-h-11 lg:min-h-9" onClick={() => applyDrilldown(alert.drilldown!.filters)}>
-                <Filter className="size-3.5" aria-hidden /> {alert.drilldown.label}
-              </button>
-            )}
-            {anchor && (
-              <button
-                type="button"
-                className="btn-ghost max-lg:min-h-11 lg:min-h-9"
-                aria-label={`Ver no gráfico · ${anchor.label}`}
-                onClick={() => showEvidence(view!)}
-              >
-                <LineChart className="size-3.5" aria-hidden /> Ver no gráfico
-              </button>
-            )}
+        </div>
+        <div className="self-start action-block rounded-card px-4 py-3.5 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:mt-0.5">
+          <p className="text-aux font-semibold opacity-70">Ação</p>
+          <p className="mt-1 text-body leading-snug text-pretty">{alert.action}</p>
+        </div>
+        <div className="comanda-actions no-print flex flex-wrap gap-2 self-start lg:col-start-1 lg:row-start-2">
+          {alert.drilldown && (
+            <button type="button" className="btn-primary max-lg:min-h-11 lg:min-h-9" onClick={() => applyDrilldown(alert.drilldown!.filters)}>
+              <Filter className="size-3.5" aria-hidden /> {alert.drilldown.label}
+            </button>
+          )}
+          {anchor && (
             <button
               type="button"
               className="btn-ghost max-lg:min-h-11 lg:min-h-9"
-              aria-label="Perguntar ao agente sobre esta comanda"
-              onClick={() => askAgentAbout(`Sobre a comanda "${alert.title}": o que explica isso neste recorte e o que fazer hoje?`)}
+              aria-label={`Ver no gráfico · ${anchor.label}`}
+              onClick={() => showEvidence(view!)}
             >
-              <MessageSquareText className="size-3.5" aria-hidden /> Perguntar ao agente
+              <LineChart className="size-3.5" aria-hidden /> Ver no gráfico
             </button>
-          </div>
-        </div>
-        <div className="self-start action-block rounded-card px-4 py-3.5 max-lg:order-first lg:mt-0.5">
-          <p className="text-aux font-semibold opacity-70">Ação</p>
-          <p className="mt-1 text-body leading-snug text-pretty">{alert.action}</p>
+          )}
+          <button
+            type="button"
+            className="btn-ghost max-lg:min-h-11 lg:min-h-9"
+            aria-label="Perguntar ao agente sobre esta comanda"
+            onClick={() => askAgentAbout(`Sobre a comanda "${alert.title}": o que explica isso neste recorte e o que fazer hoje?`)}
+          >
+            <MessageSquareText className="size-3.5" aria-hidden /> Perguntar ao agente
+          </button>
         </div>
       </div>
     </article>
@@ -335,7 +335,7 @@ function AlertsSkeletonBody() {
           </div>
         ))}
       </div>
-      {/* Faixa aberta: a primeira comanda abre por padrão; no mobile Ação vem primeiro, no desktop lado a lado */}
+      {/* Faixa aberta: a primeira comanda abre por padrão; no mobile diagnóstico → Ação → botões, no desktop lado a lado */}
       <div className="ticket mt-2 bg-surface px-5 pt-5 pb-4">
         <div className="flex items-center justify-between border-b-[1.5px] border-dashed border-rule pb-2.5">
           <div className="flex items-center gap-2">
@@ -344,25 +344,25 @@ function AlertsSkeletonBody() {
           </div>
           <div className="skeleton h-4 w-16" />
         </div>
-        <div className="mt-3 grid gap-x-8 gap-y-3.5 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
-          <div className="min-w-0">
+        <div className="mt-3 grid gap-x-8 gap-y-3.5 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)] lg:grid-rows-[auto_1fr]">
+          <div className="min-w-0 lg:col-start-1 lg:row-start-1">
             <div className="skeleton h-5 w-3/4 max-w-sm" />
             <div className="mt-2 space-y-1.5">
               <div className="skeleton h-4 w-full" />
               <div className="skeleton h-4 w-5/6" />
             </div>
-            <div className="comanda-actions mt-3 flex flex-wrap gap-2">
-              <div className="skeleton h-9 w-28 rounded-card max-lg:h-11 max-lg:w-full max-lg:basis-full" />
-              <div className="skeleton h-9 w-32 rounded-card max-lg:h-11 max-lg:w-36" />
-              <div className="skeleton h-9 w-36 rounded-card max-lg:h-11 max-lg:w-40" />
-            </div>
           </div>
-          <div className="self-start rounded-card bg-sunken-strong/40 p-4 max-lg:order-first lg:mt-0.5">
+          <div className="self-start rounded-card bg-sunken-strong/40 p-4 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:mt-0.5">
             <div className="skeleton h-3 w-12" />
             <div className="mt-2 space-y-1.5">
               <div className="skeleton h-4 w-full" />
               <div className="skeleton h-4 w-4/5" />
             </div>
+          </div>
+          <div className="comanda-actions flex flex-wrap gap-2 self-start lg:col-start-1 lg:row-start-2">
+            <div className="skeleton h-9 w-28 rounded-card max-lg:h-11 max-lg:w-full max-lg:basis-full" />
+            <div className="skeleton h-9 w-32 rounded-card max-lg:h-11 max-lg:w-36" />
+            <div className="skeleton h-9 w-36 rounded-card max-lg:h-11 max-lg:w-40" />
           </div>
         </div>
       </div>
@@ -465,6 +465,37 @@ function AlertsPanelInner() {
     folding ? null : effectiveOpen,
     `${printKey}:${alerts.length}:${railAgents.length}`,
   );
+
+  // Mantém a comanda aberta visível na horizontal do trilho ao trocar de seleção ou largura (ex.: painel do agente),
+  // sem mexer na rolagem vertical da página nem desfazer a navegação por "voltar" / "mais N".
+  useEffect(() => {
+    const rail = railRef.current;
+    if (!rail || !effectiveOpen) return;
+    const ensureVisible = (smooth: boolean) => {
+      const item = rail.querySelector<HTMLElement>(`[data-alert="${CSS.escape(effectiveOpen)}"]`);
+      if (!item) return;
+      const left = item.offsetLeft;
+      const right = left + item.offsetWidth;
+      const viewLeft = rail.scrollLeft;
+      const viewRight = viewLeft + rail.clientWidth;
+      let nextLeft: number | null = null;
+      if (left < viewLeft) nextLeft = left;
+      else if (right > viewRight) nextLeft = right - rail.clientWidth;
+      if (nextLeft !== null && Math.abs(nextLeft - viewLeft) > 1) {
+        rail.scrollTo({ left: nextLeft, behavior: smooth && !prefersReducedMotion() ? "smooth" : "auto" });
+      }
+    };
+    ensureVisible(true);
+    let prevWidth = rail.clientWidth;
+    const ro = new ResizeObserver(() => {
+      if (rail.clientWidth !== prevWidth) {
+        prevWidth = rail.clientWidth;
+        ensureVisible(false);
+      }
+    });
+    ro.observe(rail);
+    return () => ro.disconnect();
+  }, [effectiveOpen, printKey, alerts.length, railAgents.length]);
 
   // Se abriu a partir de um estado totalmente recolhido, faz o flip 0fr → 1fr no frame seguinte
   useLayoutEffect(() => {
@@ -585,13 +616,13 @@ function AlertsPanelInner() {
 
   return (
     <section ref={sectionRef} aria-labelledby="comandas-title" className={`min-w-0 transition-opacity ${isPlaceholderData ? "opacity-60" : ""}`}>
-      <header className="mb-2 flex items-baseline justify-between gap-2 px-0.5">
+      <header className="mb-2 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 px-0.5">
         <h2 id="comandas-title" className="cond text-body text-ink">
           Comandas abertas{data ? ` · ${total}` : ""}
         </h2>
         {data && total > 0 ? (
-          <div className="flex min-w-0 items-baseline gap-3">
-            <p className="text-aux text-muted">
+          <>
+            <p className="text-aux text-muted max-sm:order-last max-sm:basis-full sm:ml-auto">
               {alerts.length > 0 ? (
                 <>
                   {highText}
@@ -602,29 +633,33 @@ function AlertsPanelInner() {
                 agentSide
               )}
             </p>
-            {railBehind && (
-              <button
-                type="button"
-                onClick={() => scrollRail(-1)}
-                className="hit-target inline-flex shrink-0 items-center gap-0.5 rounded-tick text-aux font-medium whitespace-nowrap text-ink underline decoration-rule underline-offset-2 hover:decoration-ink print:hidden"
-                aria-label="Mostrar as comandas anteriores"
-              >
-                <ChevronLeft className="size-3.5" aria-hidden />
-                voltar
-              </button>
+            {(railBehind || hiddenAhead > 0) && (
+              <div className="flex shrink-0 items-baseline gap-3">
+                {railBehind && (
+                  <button
+                    type="button"
+                    onClick={() => scrollRail(-1)}
+                    className="hit-target inline-flex shrink-0 items-center gap-0.5 rounded-tick text-aux font-medium whitespace-nowrap text-ink underline decoration-rule underline-offset-2 hover:decoration-ink print:hidden"
+                    aria-label="Mostrar as comandas anteriores"
+                  >
+                    <ChevronLeft className="size-3.5" aria-hidden />
+                    voltar
+                  </button>
+                )}
+                {hiddenAhead > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => scrollRail(1)}
+                    className="hit-target inline-flex shrink-0 items-center gap-0.5 rounded-tick text-aux font-medium whitespace-nowrap text-ink underline decoration-rule underline-offset-2 hover:decoration-ink print:hidden"
+                    aria-label={`Mostrar as próximas comandas: ${hiddenAhead} fora da vista`}
+                  >
+                    mais {hiddenAhead}
+                    <ChevronRight className="size-3.5" aria-hidden />
+                  </button>
+                )}
+              </div>
             )}
-            {hiddenAhead > 0 && (
-              <button
-                type="button"
-                onClick={() => scrollRail(1)}
-                className="hit-target inline-flex shrink-0 items-center gap-0.5 rounded-tick text-aux font-medium whitespace-nowrap text-ink underline decoration-rule underline-offset-2 hover:decoration-ink print:hidden"
-                aria-label={`Mostrar as próximas comandas: ${hiddenAhead} fora da vista`}
-              >
-                mais {hiddenAhead}
-                <ChevronRight className="size-3.5" aria-hidden />
-              </button>
-            )}
-          </div>
+          </>
         ) : (
           !data && <div className="skeleton h-3.5 w-28 max-sm:hidden" aria-hidden />
         )}

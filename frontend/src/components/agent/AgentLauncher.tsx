@@ -75,13 +75,13 @@ export function AgentAskButton({ compact = false }: { compact?: boolean }) {
     >
       <Bot className="size-4 shrink-0 text-series" aria-hidden />
       {/* o slot estreito (a barra cedeu a largura ao lugar) mostra "Agente"; 18rem+ de miolo: o convite */}
-      <span className="min-w-0 flex-1 truncate font-medium text-ink @min-[18rem]/ask:hidden">Agente</span>
+      <span className="min-w-fit flex-1 font-medium text-ink @min-[18rem]/ask:hidden">Agente</span>
       <span className={`hidden min-w-0 flex-1 truncate @min-[18rem]/ask:inline ${open ? "text-ink" : "text-muted"}`}>
         {open ? "Conversa aberta" : "Pergunte sobre este recorte…"}
       </span>
       <ActivityDot activity={activity} />
       {activity !== "idle" && <span className="sr-only">: {ACTIVITY_TEXT[activity]}</span>}
-      <kbd aria-hidden className="shrink-0 rounded-tick border border-rule px-1 font-sans text-meta text-muted">
+      <kbd aria-hidden className="hidden shrink-0 rounded-tick border border-rule px-1 font-sans text-meta text-muted @min-[8.5rem]/ask:inline-block">
         {shortcutLabel()}
       </kbd>
     </button>

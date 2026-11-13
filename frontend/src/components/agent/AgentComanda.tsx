@@ -21,7 +21,7 @@ function DrillButtons({ ticket, primary }: { ticket: AgentTicket; primary: boole
         <button
           key={`${drill.label}-${index}`}
           type="button"
-          className={`${primary && index === 0 ? "btn-primary" : index === 0 ? "btn-ink" : "btn-ghost"} max-lg:min-h-11 lg:min-h-9`}
+          className={`${primary && index === 0 ? "btn-primary" : "btn-ghost"} max-lg:min-h-11 lg:min-h-9`}
           onClick={() => applyDrilldown(drill.filters)}
         >
           <Filter className="size-3.5" aria-hidden /> {drill.label}
@@ -210,8 +210,8 @@ export function AgentOpenBand({
           </span>
         </span>
       </div>
-      <div className="mt-3 grid gap-x-8 gap-y-3.5 max-lg:pr-9 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
-        <div className="min-w-0">
+      <div className="mt-3 grid gap-x-8 gap-y-3.5 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)] lg:grid-rows-[auto_1fr]">
+        <div className="min-w-0 lg:col-start-1 lg:row-start-1">
           {stale && <p className="mb-1.5 text-meta text-muted">Recorte mudou</p>}
           <h3 id="comanda-aberta-title" ref={titleRef} tabIndex={-1} className="text-lead leading-snug font-semibold text-balance">
             {ticket.title}
@@ -219,8 +219,13 @@ export function AgentOpenBand({
           <div className="mt-1.5 max-w-[68ch] text-body leading-relaxed text-pretty text-ink/85">
             <Markdown text={ticket.detail} />
           </div>
-          {/* A coluna de botões fica à esquerda do FAB no mobile. */}
-          <div className="comanda-actions no-print mt-3 flex flex-wrap gap-2">
+        </div>
+        <div className="self-start action-block rounded-card px-4 py-3.5 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:mt-0.5">
+          <p className="text-aux font-semibold opacity-70">Ação</p>
+          <p className="mt-1 text-body leading-snug text-pretty">{ticket.action}</p>
+        </div>
+        <div className="min-w-0 self-start lg:col-start-1 lg:row-start-2">
+          <div className="comanda-actions no-print flex flex-wrap gap-2">
             <DrillButtons ticket={ticket} primary />
             <button type="button" className="btn-ghost max-lg:min-h-11 lg:min-h-9" onClick={() => dismissAgentComanda(ticket.id)}>
               <X className="size-3.5" aria-hidden /> Tirar da fila
@@ -228,10 +233,6 @@ export function AgentOpenBand({
           </div>
           <p className="mt-3 text-meta text-pretty text-muted">{readingNote(ticket.status, ticket.toolLabels)}</p>
           <p className="mt-1 text-meta tabular-nums text-muted">{baseLine(ticket)}</p>
-        </div>
-        <div className="self-start action-block rounded-card px-4 py-3.5 max-lg:order-first lg:mt-0.5">
-          <p className="text-aux font-semibold opacity-70">Ação</p>
-          <p className="mt-1 text-body leading-snug text-pretty">{ticket.action}</p>
         </div>
       </div>
     </article>

@@ -5,7 +5,7 @@ import { iconSwap } from "../ui/swap";
 import { useDisclosure } from "./useDisclosure";
 
 const itemClass =
-  "flex w-full items-start gap-2.5 rounded-tick px-2.5 py-2 text-left transition-colors duration-(--duration-quick) hover:bg-sunken focus-visible:bg-sunken";
+  "flex w-full items-start gap-2.5 rounded-tick px-2.5 py-2 text-left transition-colors duration-(--duration-quick) hover:bg-sunken focus-visible:bg-sunken disabled:pointer-events-none disabled:opacity-50";
 
 /** Itens navegáveis do menu, na ordem do DOM (botões habilitados e links). */
 function menuItems(panel: HTMLElement | null): HTMLElement[] {
@@ -125,7 +125,7 @@ export function ShareMenu() {
             type="button"
             role="menuitem"
             className={itemClass}
-            disabled={csv.busy}
+            disabled={csv.busy || csv.blocked}
             onClick={async () => {
               const ok = await csv.download();
               if (ok) d.dismiss(true);

@@ -354,15 +354,15 @@ function OrdersTableInner() {
                     role="columnheader"
                     aria-sort={sortable ? (active ? (sort.desc ? "descending" : "ascending") : "none") : undefined}
                     style={{ width: h.getSize() }}
-                    className={`flex shrink-0 items-center justify-between gap-1 px-2 py-2 text-aux font-semibold ${
-                      isNumeric ? "tabular-nums" : ""
+                    className={`flex shrink-0 items-center gap-1 px-2 py-2 text-aux font-semibold ${
+                      isNumeric ? "justify-end text-right tabular-nums" : "justify-between"
                     }`}
                   >
                     {sortable ? (
                       <button
                         type="button"
                         onClick={() => setSort((s) => ({ id: h.id, desc: s.id === h.id ? !s.desc : true }))}
-                        className={`hit-target inline-flex min-w-0 items-center gap-1 truncate ${active ? "text-ink" : "text-muted hover:text-ink"}`}
+                        className={`hit-target inline-flex min-w-0 items-center gap-1 ${active ? "text-ink" : "text-muted hover:text-ink"}`}
                       >
                         <span className="truncate">{flexRender(h.column.columnDef.header, h.getContext())}</span>
                         {active && (sort.desc ? <ArrowDown className="icon-swap size-3 shrink-0" aria-hidden /> : <ArrowUp className="icon-swap size-3 shrink-0" aria-hidden />)}
@@ -434,11 +434,19 @@ function OrdersTableInner() {
                     className="absolute left-0 flex w-full border-b border-rule/50 transition-colors duration-(--duration-quick) hover:bg-sunken/60"
                     style={{ height: ROW_H, transform: `translateY(${item.start}px)` }}
                   >
-                    {row.getVisibleCells().map((cell) => (
-                      <div key={cell.id} role="cell" style={{ width: cell.column.getSize() }} className="flex shrink-0 items-center truncate px-2">
-                        <span className="truncate">{flexRender(cell.column.columnDef.cell, cell.getContext())}</span>
-                      </div>
-                    ))}
+                    {row.getVisibleCells().map((cell) => {
+                      const isNumeric = NUMERIC_COLS.has(cell.column.id);
+                      return (
+                        <div
+                          key={cell.id}
+                          role="cell"
+                          style={{ width: cell.column.getSize() }}
+                          className={`flex shrink-0 items-center px-2 ${isNumeric ? "justify-end text-right tabular-nums" : ""}`}
+                        >
+                          <span className="truncate">{flexRender(cell.column.columnDef.cell, cell.getContext())}</span>
+                        </div>
+                      );
+                    })}
                   </div>
                 );
               })}
