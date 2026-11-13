@@ -124,13 +124,14 @@ export function AgentConversation({ visible, onClose }: ConversationProps) {
   const latestAnswer = [...messages].reverse().find((message) => message.role === "assistant");
   const scrollKey = phase === "local" ? `pending-${turn}` : latestAnswer ? String(latestAnswer.id) : "";
 
-  // O log rola até o começo da resposta nova. Trocar a mesma comanda pelo modelo não mexe na rolagem.
+  // O log rola até a pergunta do turno (quando existe) para manter pergunta e resposta juntas à vista.
   useEffect(() => {
     if (!scrollKey || scrolled.current === scrollKey) return;
     const log = logRef.current;
-    const el = log?.querySelector<HTMLElement>(`[data-answer="${CSS.escape(scrollKey)}"]`);
-    if (!log || !el) return;
-    const top = el.getBoundingClientRect().top - log.getBoundingClientRect().top + log.scrollTop;
+    const answer = log?.querySelector<HTMLElement>(`[data-answer="${CSS.escape(scrollKey)}"]`);
+    if (!log || !answer) return;
+    const target = answer.previousElementSibling?.hasAttribute("data-question") ? answer.previousElementSibling : answer;
+    const top = target.getBoundingClientRect().top - log.getBoundingClientRect().top + log.scrollTop - 8;
     log.scrollTo({ top: Math.max(0, top), behavior: visible && !prefersReducedMotion() ? "smooth" : "auto" });
     scrolled.current = scrollKey;
   }, [scrollKey, visible, messages.length]);
@@ -366,16 +367,16 @@ export function AgentConversation({ visible, onClose }: ConversationProps) {
           )}
           <p className="text-meta text-pretty text-muted">
             Responde só sobre {active ? (active === 1 ? "este filtro" : `estes ${active} filtros`) : "este recorte"}.{" "}
-            {meta ? (meta.llm_enabled ? "LLM com ferramentas, regras locais de reserva." : "Modo local: regras e estatísticas, sem API key.") : ""}
+            {meta ? (meta.llm_enabled ? "Respostas calculadas direto sobre os dados do recorte." : "Leitura local por regras e estatísticas do recorte.") : ""}
           </p>
         </div>
       </header>
 
-      <div ref={logRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain p-4" role="log" aria-live="off" aria-label="Conversa com o agente">
+      <div ref={logRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain bg-field p-4" role="log" aria-live="off" aria-label="Conversa com o agente">
         {messages.length === 0 && (
           <div className="space-y-2">
             {undo && (
-              <div className="flex items-center justify-between gap-2 rounded-card bg-sunken px-3 py-2">
+              <div className="flex items-center justify-between gap-2 rounded-card border border-rule bg-surface px-3 py-2">
                 <p className="text-body">Conversa apagada.</p>
                 <button type="button" className="btn-ghost px-2 py-1 text-meta max-lg:min-h-11" onClick={restore}>
                   Desfazer
@@ -413,7 +414,9 @@ export function AgentConversation({ visible, onClose }: ConversationProps) {
                 </p>
               )}
               {message.role === "user" ? (
-                <div className="ml-8 rounded-card bg-sunken px-3 py-2 text-body">{message.content}</div>
+                <div data-question={message.id} className="ml-8 rounded-card border border-rule bg-sunken px-3 py-2 text-body">
+                  {message.content}
+                </div>
               ) : message.comanda ? (
                 <div
                   data-answer={message.id}
@@ -458,7 +461,7 @@ export function AgentConversation({ visible, onClose }: ConversationProps) {
       </p>
 
       {scopeChanged && phase === "idle" && (
-        <p className="mx-4 mb-2 rounded-card bg-sunken px-3 py-1.5 text-meta text-muted">
+        <p className="mx-4 my-2 rounded-card border border-rule bg-sunken px-3 py-1.5 text-meta text-muted">
           Os filtros mudaram desde a última resposta. A próxima pergunta já usa o recorte novo.
         </p>
       )}

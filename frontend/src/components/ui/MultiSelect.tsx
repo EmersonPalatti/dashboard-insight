@@ -237,8 +237,13 @@ export function MultiSelect<V extends string | number>({
 
   const activeDescendant = activeIdx >= 0 ? optionId(activeIdx) : undefined;
 
-  // Compara as larguras inteiras (não as cortadas): se rótulo + valor não cabem, o rótulo sai.
+  // Compara as larguras inteiras (não as cortadas): se rótulo + valor selecionado não cabem, o rótulo sai.
+  // Sem seleção ("Todos"), o rótulo fica sempre à vista para não criar vários "Todos ▾" anônimos.
   useLayoutEffect(() => {
+    if (value.length === 0) {
+      setYieldLabel(false);
+      return;
+    }
     const row = rowRef.current;
     const labelEl = labelMeasure.current;
     const valueEl = valueMeasure.current;
@@ -251,7 +256,7 @@ export function MultiSelect<V extends string | number>({
     const ro = new ResizeObserver(check);
     ro.observe(row);
     return () => ro.disconnect();
-  }, [summary, label]);
+  }, [summary, label, value.length]);
 
   return (
     <div ref={root} className="relative" onBlur={onRootBlur}>
