@@ -26,10 +26,9 @@ const preloadExportDialog = () => void loadExportDialog().catch(() => {});
  *  1. o que define o recorte (período, lugar, mais filtros) e, à direita, o agente;
  *  2. o recorte em si (chips, limpar) e, à direita, compartilhar.
  * Linha 1 em controles de 40px, linha 2 em 32px. O campo do agente cede
- * largura antes dos seletores de lugar: encolhe até "Agente" + atalho, e só
- * volta ao convite inteiro quando o miolo do botão chega a 18rem.
- * Sem espaço na linha 1 (entre lg e xl, ou com o painel lateral aberto),
- * o agente desce para o fim da linha 2, em 32px, e a barra continua com duas linhas (80px).
+ * largura antes dos seletores de lugar: encolhe até "Agente" / "Aberta" + atalho,
+ * mostra "Conversa aberta" quando cabe (~12.5rem+) e o convite completo a partir de 18rem.
+ * Permanece ancorado na linha 1 mesmo com o painel lateral aberto, sem pular de linha.
  */
 function DesktopBar({ m }: { m: FilterModel }) {
   return (
@@ -38,8 +37,8 @@ function DesktopBar({ m }: { m: FilterModel }) {
         <div className="shrink-0">
           <PeriodFields m={m} />
         </div>
-        {/* basis largo: cidade, hub e loja ficam com o nome inteiro; o agente encolhe primeiro */}
-        <div className="flex min-w-0 flex-[1_1_42rem] items-center gap-2">
+        {/* basis equilibrado: cidade, hub e loja mantêm leitura limpa enquanto o agente fica sempre ancorado na linha 1 */}
+        <div className="flex min-w-0 flex-[1_1_28rem] items-center gap-2">
           <div className="grid min-w-0 flex-1 grid-cols-3 gap-2">
             <PlaceFields m={m} />
           </div>
@@ -49,8 +48,8 @@ function DesktopBar({ m }: { m: FilterModel }) {
             </FiltersPopover>
           </div>
         </div>
-        {/* último da linha: fica acima do canto onde o painel solto abre. shrink alto: cede antes do lugar. */}
-        <div className="hidden min-w-[11rem] max-w-[22rem] flex-[0_100_22rem] border-l border-rule pl-4 @min-[70rem]:flex">
+        {/* último da linha: fica acima do canto onde o painel abre e nunca salta para a linha 2 */}
+        <div className="flex min-w-[9.5rem] max-w-[22rem] flex-[0_6_22rem] border-l border-rule pl-4">
           <AgentAskButton />
         </div>
       </div>
@@ -72,9 +71,6 @@ function DesktopBar({ m }: { m: FilterModel }) {
         )}
         <div className="ml-auto flex items-center gap-2">
           <ShareMenu />
-          <div className="w-44 shrink-0 @min-[70rem]:hidden">
-            <AgentAskButton compact />
-          </div>
         </div>
       </div>
     </div>
@@ -186,7 +182,7 @@ function FilterBarInner() {
                 >
                   <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 text-aux font-semibold text-ink [&::-webkit-details-marker]:hidden">
                     <span>
-                      Pedido: segmento, canal e modal
+                      Pedido: segmento, canal, modal e status
                       {m.extraCount > 0 && <span className="font-normal text-muted"> · {m.extraCount} em uso</span>}
                     </span>
                     <ChevronDown className="size-4 shrink-0 text-muted group-open:rotate-180" aria-hidden />

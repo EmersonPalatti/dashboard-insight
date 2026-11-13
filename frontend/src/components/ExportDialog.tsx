@@ -97,7 +97,7 @@ export function ExportDialog({ open, onClose }: Props) {
       <div className="p-5">
         <div className="mb-4 flex items-start justify-between gap-4">
           <div>
-            <h2 className="text-lg font-semibold">Exportar recorte</h2>
+            <h2 className="section-title">Exportar recorte</h2>
             <p className="label">Tudo segue os filtros ativos agora.</p>
           </div>
           <button type="button" onClick={onClose} className="btn-ghost px-2 max-lg:min-h-11 max-lg:min-w-11 max-lg:justify-center" aria-label="Fechar">

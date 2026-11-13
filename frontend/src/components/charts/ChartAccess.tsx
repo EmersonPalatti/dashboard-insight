@@ -14,10 +14,10 @@ interface Item {
 export function ChartAccess({ summary, items }: { summary: string; items: Item[] }) {
   if (!summary && items.length === 0) return null;
   return (
-    <div className="mt-2">
+    <>
       {summary && <p className="sr-only">{summary}</p>}
       {items.length > 0 && (
-        <ul className="flex flex-col gap-1" aria-label="Filtrar pelo teclado">
+        <ul className="flex flex-col gap-1 focus-within:mt-2" aria-label="Filtrar pelo teclado">
           {items.map((item) => (
             <li key={item.key}>
               <button type="button" className="chart-key btn-ghost sr-only text-left" onClick={item.onSelect}>
@@ -27,7 +27,7 @@ export function ChartAccess({ summary, items }: { summary: string; items: Item[]
           ))}
         </ul>
       )}
-    </div>
+    </>
   );
 }
 

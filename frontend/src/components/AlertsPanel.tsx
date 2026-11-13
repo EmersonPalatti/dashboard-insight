@@ -674,7 +674,7 @@ function AlertsPanelInner() {
           <ErrorState error={error} onRetry={() => refetch()} />
         </div>
       ) : alerts.length === 0 && railAgents.length === 0 ? (
-        <div className="ticket flex items-center gap-3 bg-surface px-5 pt-5 pb-4">
+        <div className="tile flex items-center gap-3 px-5 py-4">
           {noOrders ? (
             <CircleSlash className="size-5 shrink-0 text-muted" aria-hidden />
           ) : (

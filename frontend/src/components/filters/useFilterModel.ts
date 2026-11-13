@@ -82,8 +82,8 @@ export function useFilterModel() {
   ];
   const activePreset = presets.find((p) => !p.disabled && p.start === f.start && p.end === f.end)?.id;
 
-  // dimensões do "Mais filtros" (desktop) que têm algum valor selecionado
-  const extraCount = [f.segment, f.channel_type, f.modal].filter((v) => v.length > 0).length;
+  // dimensões do "Mais filtros" (desktop) e "Pedido" (mobile) que têm algum valor selecionado
+  const extraCount = [f.segment, f.channel_type, f.modal, f.status].filter((v) => v.length > 0).length;
 
   const opts = useMemo(() => {
     const hubCity = new Map(meta?.hubs.map((h) => [Number(h.value), String(h.parent)]) ?? []);
@@ -102,6 +102,10 @@ export function useFilterModel() {
       segments: meta?.segments.map((o) => toOpt<string>(o)) ?? [],
       channels: meta?.channel_types.map((o) => toOpt<string>(o)) ?? [],
       modals: meta?.modals.map((o) => toOpt<string>(o)) ?? [],
+      statuses: [
+        { value: "delivered" as const, label: label("delivered") },
+        { value: "canceled" as const, label: label("canceled") },
+      ],
     };
   }, [meta, f.city, f.hub]);
 

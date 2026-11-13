@@ -5,6 +5,7 @@ import { island, useRecorteQuery } from "@/lib/query";
 import { HeatmapChart } from "echarts/charts";
 import { VisualMapComponent } from "echarts/components";
 import * as echarts from "echarts/core";
+import { ChartAccess } from "./charts/ChartAccess";
 import { EChart, type Tokens } from "./charts/EChart";
 import { AskAgentButton } from "./ui/AskAgentButton";
 import { EvidenceTag, useEvidence } from "./ui/EvidenceTag";
@@ -52,6 +53,20 @@ function HeatmapChartInner() {
     () => cells.filter((c) => (metric === "orders" || c.orders >= MIN_ORDERS) && c[metric] !== null),
     [cells, metric],
   );
+  const summary = useMemo(() => {
+    if (usable.length === 0) return "";
+    const m = METRICS[metric];
+    let hi = usable[0];
+    let lo = usable[0];
+    for (const c of usable) {
+      if ((c[metric] as number) > (hi[metric] as number)) hi = c;
+      if ((c[metric] as number) < (lo[metric] as number)) lo = c;
+    }
+    if (hi === lo) {
+      return `${m.label}: ${WEEKDAYS[hi.weekday]} às ${HOURS[hi.hour]} (${m.format(hi[metric] as number)}, ${fmt.int(hi.orders)} pedidos).`;
+    }
+    return `Maior ${m.label.toLowerCase()}: ${WEEKDAYS[hi.weekday]} às ${HOURS[hi.hour]} (${m.format(hi[metric] as number)}, ${fmt.int(hi.orders)} pedidos). Menor: ${WEEKDAYS[lo.weekday]} às ${HOURS[lo.hour]} (${m.format(lo[metric] as number)}).`;
+  }, [usable, metric]);
 
   const option = useCallback(
     (t: Tokens) => {
@@ -165,6 +180,7 @@ function HeatmapChartInner() {
       >
         <div className="content-reveal min-w-0">
           <EChart option={option} height={CHART_H} ariaLabel={`Mapa de calor de ${METRICS[metric].label} por dia e hora`} />
+          <ChartAccess summary={summary} items={[]} />
         </div>
       </AsyncBody>
     </PanelContent>

@@ -137,7 +137,7 @@ export function PlaceFields({ m }: { m: FilterModel }) {
   );
 }
 
-/** Segmento, Canal e Modal: ficam no "Mais filtros" do desktop e nos campos da folha no mobile. */
+/** Segmento, Canal, Modal e Status: ficam no "Mais filtros" do desktop e nos campos da folha no mobile. */
 export function ExtraFields({ m }: { m: FilterModel }) {
   const { f, opts, set } = m;
   return (
@@ -150,6 +150,7 @@ export function ExtraFields({ m }: { m: FilterModel }) {
         onChange={(channel_type) => set({ channel_type: channel_type as Recorte["channel_type"] })}
       />
       <MultiSelect label="Modal" options={opts.modals} value={f.modal} onChange={(modal) => set({ modal: modal as Recorte["modal"] })} />
+      <MultiSelect label="Status" options={opts.statuses} value={f.status} onChange={(status) => set({ status: status as Recorte["status"] })} />
     </>
   );
 }
