@@ -63,7 +63,7 @@ const TRENDS: TrendView[] = ["volume", "sla", "cancel"];
 const GRAINS: TrendGrain[] = ["hour", "day", "week"];
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 /** Mesmos tetos de `Filters` no backend: lista de 50, texto de 80, data entre 2000 e 2100. */
-const LIST_CAP = 50;
+export const LIST_CAP = 50;
 const TEXT_CAP = 80;
 const OWNED_KEYS = [
   "start",

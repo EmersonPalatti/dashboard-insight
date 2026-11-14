@@ -51,7 +51,7 @@ export function Popover({
         id={id}
         data-align={align}
         {...d.panelProps}
-        className={`recorte-popover absolute top-full z-30 mt-1.5 max-w-[calc(100vw-2rem)] rounded-card border border-rule bg-surface p-3 ${
+        className={`recorte-popover absolute top-full z-30 mt-1.5 max-w-[calc(100vw-2rem)] rounded-card border border-ink bg-surface p-3 ${
           align === "left" ? "left-0" : "right-0"
         } ${panelClassName} ${d.phase === "closed" ? "hidden" : ""}`}
       >

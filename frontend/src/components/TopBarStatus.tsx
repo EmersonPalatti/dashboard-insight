@@ -47,12 +47,13 @@ function TopBarStatusInner() {
           }`}
           aria-hidden
         />
-        {/* key no status: cada mudança remonta o texto, que entra de baixo com desfoque. Abaixo de sm o texto some visualmente, mas segue no DOM para a leitura de tela. */}
-        {/* Abaixo de sm o texto fica só para o leitor. De sm a xl ele trunca, para a faixa de 64px não estourar. */}
-        <span className="sr-only sm:hidden">{text}</span>
+        {/* key no status: cada mudança remonta o texto, que entra de baixo com desfoque. Abaixo de sm, "API no ar" fica só para o leitor de tela; estados de alerta seguem visíveis. */}
+        {status === "ok" && <span className="sr-only sm:hidden">{text}</span>}
         <span
           key={status}
-          className="hidden max-w-[7.5rem] truncate transition-[opacity,translate,filter] duration-(--duration-quick) ease-(--ease-in-out) starting:translate-y-(--distance-micro) starting:opacity-0 starting:blur-(--blur-small) motion-reduce:transition-none sm:inline-block lg:max-w-[12rem] xl:max-w-none"
+          className={`truncate transition-[opacity,translate,filter] duration-(--duration-quick) ease-(--ease-in-out) starting:translate-y-(--distance-micro) starting:opacity-0 starting:blur-(--blur-small) motion-reduce:transition-none lg:max-w-[12rem] xl:max-w-none ${
+            status === "ok" ? "hidden max-w-[7.5rem] sm:inline-block" : "inline-block max-w-[9.5rem]"
+          }`}
         >
           {text}
         </span>

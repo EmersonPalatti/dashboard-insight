@@ -211,7 +211,7 @@ export function Select<V extends string | number>({ label, options, value, onCha
               if (e.target === e.currentTarget && !open) setClosing(false);
             }}
             onMouseDown={onPanelMouseDown}
-            className={`absolute z-30 mt-1 w-max min-w-full max-w-[calc(100vw-2rem)] rounded-card border border-rule bg-surface p-1.5 transition-[opacity,scale,translate] duration-(--duration-fast) ease-(--ease-smooth-out) ${
+            className={`absolute z-30 mt-1 w-max min-w-full max-w-[calc(100vw-2rem)] rounded-card border border-ink bg-surface p-1.5 transition-[opacity,scale,translate] duration-(--duration-fast) ease-(--ease-smooth-out) ${
               align === "end" ? "right-0 origin-top-right" : "left-0 origin-top-left"
             } ${
               open

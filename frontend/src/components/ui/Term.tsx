@@ -70,7 +70,7 @@ export function Term({ term, definition }: { term: string; definition: string })
             id={panelId}
             role="tooltip"
             style={{ top: box.top, left: box.left }}
-            className="fixed z-40 w-60 rounded-card border border-rule bg-surface p-2 text-left text-meta font-normal tracking-normal text-ink normal-case"
+            className="fixed z-40 w-60 rounded-card border border-ink bg-surface p-2 text-left text-meta font-normal tracking-normal text-ink normal-case"
           >
             {definition}
           </span>,

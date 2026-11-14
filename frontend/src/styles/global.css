@@ -70,7 +70,7 @@
   --blur-small: 2px; /* troca de ícone/texto, skeleton → conteúdo */
   --blur-medium: 3px; /* revelação de texto */
   /* Altura da barra de filtros fixa. O script da página substitui pelo valor medido. */
-  --sticky-bar: 6.5rem;
+  --sticky-bar: 4rem;
 }
 
 :root[data-theme="dark"] {
@@ -93,9 +93,9 @@
   --series-deep: #f4b8cb;
   /* Ainda o degrau mais escuro da rampa, claro o bastante para 3:1 sobre a superfície. */
   --series-soft: #a3516c;
-  /* Âncora da comanda: vinho legível, mais escuro que o vermelho crítico (#ff5d50). */
-  --action: #925a6e;
-  --on-action: #ffffff;
+  /* Âncora da comanda: papel invertido (#ececec) no escuro para manter o vermelho exclusivo do estado crítico. */
+  --action: #ececec;
+  --on-action: #111111;
   color-scheme: dark;
 }
 
@@ -395,10 +395,6 @@ button.ticket:focus-visible {
 .action-block {
   background-color: var(--action);
   color: var(--on-action);
-}
-
-:root[data-theme="dark"] .action-block > p:first-child {
-  opacity: 1;
 }
 
 /* Atalho de teclado dos gráficos: some até receber foco, aí vira um botão.

@@ -134,9 +134,8 @@ export function PeriodPresets({ presets, activeId, onSelect, labelId, extra }: P
     const btn = buttons[next];
     const id = btn.dataset.preset ?? null;
     const preset = presets.find((p) => p.id === id);
-    // Datas não aplica um intervalo: abre o calendário. Enter/Space também abre (botão nativo).
+    // Datas não aplica um intervalo nem abre sozinho com seta: Enter/Space abre o calendário (botão nativo).
     if (preset) onSelect(preset);
-    else if (btn.getAttribute("aria-expanded") !== "true") btn.click();
     setRovingId(id);
     btn.focus();
   };

@@ -1,6 +1,6 @@
 import { ChevronUp, Filter, X } from "lucide-react";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { agentStamp, dismissAgentComanda, type AgentTicket } from "@/lib/agentBridge";
+import { agentStamp, dismissAgentComanda, pinAgentComanda, type AgentTicket } from "@/lib/agentBridge";
 import { applyDrilldown } from "@/lib/filters";
 import { fmt } from "@/lib/format";
 import { SEVERITY } from "../ui/EvidenceTag";
@@ -95,15 +95,13 @@ export function AgentChatComanda({
           </button>
         )}
         <p className="tabular-nums">{baseLine(ticket)}</p>
-        {ticket.onRail && (
-          <button
-            type="button"
-            className="btn-ghost hit-target min-h-8 px-2.5 py-1 text-meta max-lg:min-h-11"
-            onClick={() => dismissAgentComanda(ticket.id)}
-          >
-            Tirar da fila
-          </button>
-        )}
+        <button
+          type="button"
+          className="btn-ghost hit-target min-h-8 px-2.5 py-1 text-meta max-lg:min-h-11"
+          onClick={() => (ticket.onRail ? dismissAgentComanda(ticket.id) : pinAgentComanda(ticket.id))}
+        >
+          {ticket.onRail ? "Tirar da fila" : "Fixar na fila"}
+        </button>
       </div>
     </article>
   );

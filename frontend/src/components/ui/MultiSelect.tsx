@@ -303,7 +303,7 @@ export function MultiSelect<V extends string | number>({
           }}
           onKeyDown={onPanelKeyDown}
           onMouseDown={onPanelMouseDown}
-          className={`absolute left-0 z-30 mt-1 w-72 max-w-[calc(100vw-2rem)] origin-top-left rounded-card border border-rule bg-surface p-1.5 transition-[opacity,scale] duration-(--duration-fast) ease-(--ease-smooth-out) ${
+          className={`absolute left-0 z-30 mt-1 w-72 max-w-[calc(100vw-2rem)] origin-top-left rounded-card border border-ink bg-surface p-1.5 transition-[opacity,scale] duration-(--duration-fast) ease-(--ease-smooth-out) ${
             open
               ? "starting:opacity-0 motion-safe:starting:scale-(--scale-medium) motion-reduce:duration-(--duration-quick)"
               : "pointer-events-none opacity-0 duration-(--duration-quick) motion-safe:scale-(--scale-tiny)"
