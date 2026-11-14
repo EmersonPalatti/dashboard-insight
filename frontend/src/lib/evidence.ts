@@ -19,10 +19,10 @@ export interface FocusedEvidence {
 export const $evidence = atom<FocusedEvidence | null>(null);
 
 /**
- * Opacidade do que não é a evidência da comanda aberta. 0,48 deixa o resto
- * claramente secundário e ainda legível nos dois temas.
+ * Opacidade do que não é a evidência da comanda aberta. 0,25 atenua o restante
+ * dentro da faixa de 20–30% sem apagar a leitura dos eixos e rótulos.
  */
-export const EVIDENCE_DIM = 0.48;
+export const EVIDENCE_DIM = 0.25;
 
 /** Painel de cada gráfico que pode provar uma comanda (id da seção, para rolar até ela). */
 export const EVIDENCE_ANCHOR: Record<Exclude<Evidence["view"], "kpi">, { id: string; label: string }> = {

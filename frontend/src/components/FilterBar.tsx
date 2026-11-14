@@ -33,12 +33,12 @@ const preloadExportDialog = () => void loadExportDialog().catch(() => {});
 function DesktopBar({ m }: { m: FilterModel }) {
   return (
     <div className="@container flex min-w-0 flex-col gap-2">
-      <div className="flex min-w-0 items-center gap-x-4">
+      <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2 @min-[75rem]:flex-nowrap @min-[75rem]:gap-x-4">
         <div className="shrink-0">
           <PeriodFields m={m} />
         </div>
         {/* basis equilibrado: cidade, hub e loja mantêm leitura limpa enquanto o agente fica sempre ancorado na linha 1 */}
-        <div className="flex min-w-0 flex-[1_1_28rem] items-center gap-2">
+        <div className="flex min-w-[22rem] flex-[1_1_26rem] items-center gap-2">
           <div className="grid min-w-0 flex-1 grid-cols-3 gap-2">
             <PlaceFields m={m} />
           </div>
@@ -47,32 +47,30 @@ function DesktopBar({ m }: { m: FilterModel }) {
               <ExtraFields m={m} />
             </FiltersPopover>
           </div>
+          <div className="shrink-0">
+            <ShareMenu />
+          </div>
         </div>
-        {/* último da linha: fica acima do canto onde o painel abre e nunca salta para a linha 2 */}
-        <div className="flex min-w-[9.5rem] max-w-[22rem] flex-[0_6_22rem] border-l border-rule pl-4">
+        {/* último da linha: fica acima do canto onde o painel abre */}
+        <div className="flex min-w-[9.5rem] max-w-[22rem] flex-[0_6_22rem] border-l border-rule pl-3 @min-[75rem]:pl-4">
           <AgentAskButton />
         </div>
       </div>
 
-      <div className="flex min-h-8 flex-wrap items-center gap-x-3 gap-y-1.5">
-        {m.chips.length === 0 ? (
-          <p className="label text-pretty">Recorte completo: todos os pedidos do período.</p>
-        ) : (
+      {m.chips.length > 0 && (
+        <div className="flex min-h-8 flex-wrap items-center gap-x-3 gap-y-1.5">
           <ActiveChips chips={m.chips} />
-        )}
-        {m.active > 0 && (
-          <button
-            type="button"
-            className="inline-flex h-8 items-center gap-1.5 rounded-tick px-1.5 text-aux font-medium text-muted transition-colors duration-(--duration-quick) hover:bg-sunken hover:text-ink"
-            onClick={resetFilters}
-          >
-            <RotateCcw className="size-3.5" aria-hidden /> Limpar recorte
-          </button>
-        )}
-        <div className="ml-auto flex items-center gap-2">
-          <ShareMenu />
+          {m.active > 0 && (
+            <button
+              type="button"
+              className="inline-flex h-8 items-center gap-1.5 rounded-tick px-1.5 text-aux font-medium text-muted transition-colors duration-(--duration-quick) hover:bg-sunken hover:text-ink"
+              onClick={resetFilters}
+            >
+              <RotateCcw className="size-3.5" aria-hidden /> Limpar recorte
+            </button>
+          )}
         </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -223,6 +221,6 @@ function FilterBarInner() {
  * No desktop, 80px: duas linhas (40px + 8px de respiro + 32px). O breakpoint é o mesmo de
  * `useMediaQuery("(min-width: 1024px)")`, o lg do Tailwind, então a troca não empurra o layout.
  */
-const barSkeleton = <div className="skeleton h-24 w-full lg:h-20" aria-hidden />;
+const barSkeleton = <div className="skeleton h-11 w-full lg:h-10" aria-hidden />;
 
 export default island(FilterBarInner, barSkeleton);

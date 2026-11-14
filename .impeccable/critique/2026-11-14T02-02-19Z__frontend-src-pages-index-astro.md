@@ -1,0 +1,116 @@
+---
+target: frontend/src/pages/index.astro
+total_score: 30
+max_score: 40
+na_heuristics: 
+p0_count: 1
+p1_count: 2
+target_identity: "file:C:\\Projects\\dashboard-insight\\frontend\\src\\pages\\index.astro"
+target_fingerprint: "sha256:15815488a4ff7d87418519de223da17e5752c5d51896869c147799ff4a1c0924"
+target_path: "C:\\Projects\\dashboard-insight\\frontend\\src\\pages\\index.astro"
+timestamp: 2026-11-14T02-02-19Z
+slug: frontend-src-pages-index-astro
+closed: true
+---
+Method: dual-agent (A: 89d7510f-fe3e-4230-b68c-72b2d21f984c · B: f04cd1d8-2539-4e3e-b740-21ebf30489e8)
+
+#### Design Health Score
+
+| # | Heuristic | Score | Key Issue |
+|---|---|---:|---|
+| 1 | Visibility of System Status | 3 | Mobile `<sm` hides `API no ar`/`Conectando…` copy via `sr-only` ([TopBarStatus.tsx](file:///c:/Projects/dashboard-insight/frontend/src/components/TopBarStatus.tsx#L52)); `Ciclo mediano` omits a status verdict ([KpiStrip.tsx](file:///c:/Projects/dashboard-insight/frontend/src/components/KpiStrip.tsx#L244)); `OrdersTable` lacks a `fora do GMV` marker on `> R$ 5 mil` rows. |
+| 2 | Match Between System and Real World | 4 | Authentic Brazilian delivery ops vocabulary (`comanda`, `recorte`, `praça`, `preso no fluxo`) and pt-BR formatting; only `API (Swagger)` in the masthead ([index.astro](file:///c:/Projects/dashboard-insight/frontend/src/pages/index.astro#L64)) leaks English developer terminology. |
+| 3 | User Control and Freedom | 3 | URL-backed filters, `Limpar recorte`, `Nova conversa`, chart zoom reset, and `Tirar da fila` work well; however, `AgentChat` auto-pins answers to the live rail (`onRail: true` in [AgentChat.tsx](file:///c:/Projects/dashboard-insight/frontend/src/components/AgentChat.tsx#L72)) and system comandas can only collapse (`Recolher`), not be acknowledged/done. |
+| 4 | Consistency and Standards | 3 | Shared `Filters` contract and `Panel` framing across views, but `EVIDENCE_DIM = 0.48` ([evidence.ts](file:///c:/Projects/dashboard-insight/frontend/src/lib/evidence.ts#L25)) differs from [DESIGN.md](file:///c:/Projects/dashboard-insight/DESIGN.md#L276) (`~20–30%`), dark `--action` shifts to `#925a6e` ([global.css](file:///c:/Projects/dashboard-insight/frontend/src/styles/global.css#L96-L98)), and [index.astro](file:///c:/Projects/dashboard-insight/frontend/src/pages/index.astro#L53) adds a `rounded-full` pill. |
+| 5 | Error Prevention | 2 | Parameterized backend SQL, `MIN_ORDERS = 20` heatmap guard ([HeatmapChart.tsx](file:///c:/Projects/dashboard-insight/frontend/src/components/HeatmapChart.tsx#L35)), and small-sample `*` sorting prevent misreads, **but** [StoreScatter.tsx](file:///c:/Projects/dashboard-insight/frontend/src/components/StoreScatter.tsx#L212) brushes up to `200` stores against `LIST_CAP = 50` ([filters.ts](file:///c:/Projects/dashboard-insight/frontend/src/lib/filters.ts#L65-L66)), and [PeriodPresets.tsx](file:///c:/Projects/dashboard-insight/frontend/src/components/filters/PeriodPresets.tsx#L136-L141) triggers `btn.click()` on arrowing onto `Datas`. |
+| 6 | Recognition Rather Than Recall | 3 | Active filter chips, `<Term>` glossary popovers, `EvidenceTag`, and agent prompts keep context clear; however, opening the desktop `AgentDock` causes horizontal scroll in [OrdersTable.tsx](file:///c:/Projects/dashboard-insight/frontend/src/components/OrdersTable.tsx#L41-L79) without a sticky key column, and KPI `Trail` sparklines have no hover value/date readout. |
+| 7 | Flexibility and Efficiency of Use | 3 | `Ctrl+K` / `⌘K`, type-to-ask on `AgentAskButton`, arrow-key rail navigation, scatter brush, and CSV/Markdown/PDF export serve power users; [BreakdownTable.tsx](file:///c:/Projects/dashboard-insight/frontend/src/components/BreakdownTable.tsx#L24-L32) puts 7 views in a 2-click `Select`, and [ChartAccess.tsx](file:///c:/Projects/dashboard-insight/frontend/src/components/charts/ChartAccess.tsx#L20-L28) exposes up to 15 hidden sequential Tab stops in `StagesChart`. |
+| 8 | Aesthetic and Minimalist Design | 3 | Clean typography, flat hairlines, and purposeful color restraint; weakened by the permanent `105px` desktop (`117.6px` mobile) sticky FilterBar keeping a largely empty Row 2 pinned over scrolled charts, plus 7 stubs crowding the desktop rail when `Nº A01` appends. |
+| 9 | Error Recovery | 3 | Cold-start `waking` message (~40s), retryable panels, 3-tier agent fallback, and `IgnoredNotice` on invalid URL params cover major paths; `StoreScatter` brushing `51–200` stores collides with `LIST_CAP` downstream instead of warning before dispatch. |
+| 10 | Help and Documentation | 3 | `<Term>` definitions, footer cleaning disclosures, and panel sample hints orient visitors well, though shadowless `<Term>` tooltips rely on faint `1px solid var(--rule)` ([Term.tsx](file:///c:/Projects/dashboard-insight/frontend/src/components/ui/Term.tsx#L73)) and `OrdersTable` doesn't tag `> R$ 5 mil` GMV exclusions inline. |
+| **Total** | | **30/40** | **Good (28–35)** |
+
+#### Design Specificity Verdict
+
+- **LLM assessment:** Genuinely authored for Brazilian delivery operations (`"A comanda na fila"`). The sawtooth `ticket` mask, single-open accordion (`OpenBand`), `Zilla Slab` stamp numerals (`Nº 01 · SLA`, `86,2%`, `41,2 min`, `368.990`), `Libre Franklin` prose, `#ECECEC` newsprint ground, `#3D0B1F` wine masthead, `#7A1E3D`/`#E0789A` chart ramp, zero box-shadows, and strict **"One Red Rule"** (`#D92B20`/`#FF5D50` reserved for critical alerts and the single primary action) belong unmistakably to **Central de Operações**. Category-interchangeability and rule drift appear mainly in three places: below `#comandas` and `KpiStrip`, the charts and tables fall back into standard vertical dashboard stacking; dark mode turns `.action-block` from stark paper-vs-ink (`#1A1A1A`) into muted `#925a6e` mauve ([global.css](file:///c:/Projects/dashboard-insight/frontend/src/styles/global.css#L96-L98)) while `EVIDENCE_DIM = 0.48` ([evidence.ts](file:///c:/Projects/dashboard-insight/frontend/src/lib/evidence.ts#L25)) dulls contrast against `#1B1B1B`; and [index.astro](file:///c:/Projects/dashboard-insight/frontend/src/pages/index.astro#L53) adds a generic `rounded-full` header pill next to the live `API no ar` dot.
+- **Deterministic scan:** `impeccable detect --json frontend/src` exited with code `2` and `6` findings (`5` `warning`, `1` `advisory`; all `category: "slop"`):
+  - `border-accent-on-rounded` (4 warnings — [PeriodPresets.tsx](file:///c:/Projects/dashboard-insight/frontend/src/components/filters/PeriodPresets.tsx#L34), [PeriodPresets.tsx](file:///c:/Projects/dashboard-insight/frontend/src/components/filters/PeriodPresets.tsx#L166), [Panel.tsx](file:///c:/Projects/dashboard-insight/frontend/src/components/ui/Panel.tsx#L275), [Panel.tsx](file:///c:/Projects/dashboard-insight/frontend/src/components/ui/Panel.tsx#L288)): **All 4 are false positives.** Each uses `rounded-t-[4px]` (leaving bottom corners square at `0px`) with `border-b-2` for the sliding segmented-control `ink` underline (and `border-transparent` on inactive segments) explicitly documented in [DESIGN.md](file:///c:/Projects/dashboard-insight/DESIGN.md#L298).
+  - `gradient-text` (1 warning — [motion-content.css](file:///c:/Projects/dashboard-insight/frontend/src/styles/motion-content.css#L110)): **False positive.** Lives inside `@utility shimmer-text` (`::after` pseudo-element) implementing the `"Consultando o recorte…"` wait-state shimmer specified in [DESIGN.md](file:///c:/Projects/dashboard-insight/DESIGN.md#L301), not decorative gradient headlines.
+  - `bounce-easing` (1 advisory — [global.css](file:///c:/Projects/dashboard-insight/frontend/src/styles/global.css#L61)): **Intentional token** (`--ease-bounce: cubic-bezier(0.34, 1.36, 0.64, 1)`), scoped in [DESIGN.md](file:///c:/Projects/dashboard-insight/DESIGN.md#L296) strictly to the agent opener's status-dot entrance.
+  - *Synthesis:* Zero true-positive slop findings confirm the codebase's strong token discipline; meanwhile, the unanchored design review and live browser inspection surfaced behavioral, viewport-efficiency, contrast, and filter-contract bugs that static rules cannot see.
+- **Visual overlays:** `impeccable live-server --background` started on port `8400`, and `impeccable live-server stop --keep-inject` exited `0`, **but mutable DOM/script injection failed** because the browser automation sandbox restricts page-context evaluation (`page.evaluate is undefined`), preventing `document.title` mutation and `<script src="http://localhost:8400/detect.js">` injection. Therefore **no user-visible overlay is available or rendered** in the `[Human]` tab. **Fallback signals observed:** live renders at `http://localhost:4321` reported `0` console errors and `0` failed HTTP requests across `50` requests in Assessment B, and `0` console/network errors across desktop (`1440x900` Light & Dark), float (`1150x800`), and mobile (`390x844`) inspections in Assessment A.
+
+#### Overall Impression
+
+**Central de Operações** achieves a rare level of domain authenticity: the comanda rail → KPIs → evidence-linked chart → action loop immediately communicates both operational utility and portfolio craft without generic SaaS templates. Its biggest weakness is not styling—it is **operational friction at the edges**: a scatter brush that slices `200` stores against a `50`-store filter ceiling, a permanent two-row sticky filter bar that eats vertical analytical space when unfilled, a docked `OrdersTable` that scrolls row identifiers out of view and hides `> R$ 5 mil` GMV exclusions, and dark-mode contrast softening on the `.action-block` and floating menus.
+
+#### What's Working
+
+1. **Cohesive "Comanda → Evidence → Recorte → Ação" Loop:** Every alert in [AlertsPanel.tsx](file:///c:/Projects/dashboard-insight/frontend/src/components/AlertsPanel.tsx#L207-L244) pairs diagnosis with a concrete `Ação` prescription, deep-links to visual evidence (`COMANDA Nº 01 · Hub lento: Color Shopping` inside `StagesChart`) via [evidence.ts](file:///c:/Projects/dashboard-insight/frontend/src/lib/evidence.ts#L28-L45), and keeps KPIs, charts, tables, and the AI agent locked to the same `Filters`.
+2. **Authored Visual Grammar & Token Discipline:** Cool grey `#ECECEC` newsprint, `#3D0B1F` wine masthead, `#7A1E3D`/`#E0789A` data series, `Zilla Slab` stamp figures vs `Libre Franklin` body, sawtooth `ticket` perforation strictly on comandas, zero shadows, and the "One Red Rule" hold together cleanly across light and dark modes (`0` true-positive slop findings).
+3. **Zero-Key Agent Resilience & Stable Hydration:** Instant local rules + optional cancelable LLM enhancement, height-matched `panelFallback` skeletons, `Ctrl+K` / type-to-ask launcher, URL-shareable state, and responsive `dock`/`float`/`sheet` modes ran with zero console or network errors across all inspected states.
+
+#### Priority Issues
+
+- **[P0] What:** Scatter brush permits selecting up to `200` stores (`picked.slice(0, 200)` in [StoreScatter.tsx](file:///c:/Projects/dashboard-insight/frontend/src/components/StoreScatter.tsx#L212)) while the shared filter contract enforces `LIST_CAP = 50` ([filters.ts](file:///c:/Projects/dashboard-insight/frontend/src/lib/filters.ts#L65-L66)).
+  - **Why it matters:** Brushing a dense cluster on `Lojas: volume × problema` pushes >50 `store=` query params into URL state, causing silent truncation / `IgnoredNotice` discrepancies on reload or share and conflicting with backend `Filters` limits.
+  - **Fix:** Import `LIST_CAP` (`50`) from [filters.ts](file:///c:/Projects/dashboard-insight/frontend/src/lib/filters.ts#L66) into [StoreScatter.tsx](file:///c:/Projects/dashboard-insight/frontend/src/components/StoreScatter.tsx), cap or refuse applying >50 brushed stores with a clear inline message in the brush confirmation bar (e.g., advising the operator to zoom or filter by `Cidade`/`Hub` first, or select the top 50 by volume explicitly), and surface a clear brush toggle in `panel-actions`.
+  - **Suggested command:** `/impeccable harden`
+
+- **[P1] What:** Sticky FilterBar (`105px` desktop two-row `<search id="filtros">` in [FilterBar.tsx](file:///c:/Projects/dashboard-insight/frontend/src/components/FilterBar.tsx#L33-L78), `117.6px` sticky `MobileRecorte` + `223px` top stack on `390x844` mobile in [MobileRecorte.tsx](file:///c:/Projects/dashboard-insight/frontend/src/components/filters/MobileRecorte.tsx#L21-L76)) occupies excessive vertical chrome while Row 2 sits ~90% empty when no filter is active.
+  - **Why it matters:** In an Operate dashboard where operators scan charts and tables continuously, permanently pinning an empty Row 2 (desktop) or a redundant `Comandas · N` jump card above `#comandas` (mobile) crowds laptops and clips scrolled chart tops.
+  - **Fix:** In [FilterBar.tsx](file:///c:/Projects/dashboard-insight/frontend/src/components/FilterBar.tsx#L35-L76), move `ShareMenu` inline on Row 1 (or collapse Row 2 completely whenever `m.chips.length === 0`); in [MobileRecorte.tsx](file:///c:/Projects/dashboard-insight/frontend/src/components/filters/MobileRecorte.tsx#L30-L74), compact the sticky bar into a single `min-h-11` (~`56px`) control and remove or hide the duplicate `Comandas` pill while `#comandas` is in view.
+  - **Suggested command:** `/impeccable distill`
+
+- **[P1] What:** Opening the `360–420px` desktop `AgentDock` forces horizontal scrolling across the 12-column [OrdersTable.tsx](file:///c:/Projects/dashboard-insight/frontend/src/components/OrdersTable.tsx#L41-L79) (`1325px` table inside `939.8px` container) with no sticky identifier column, and sorting `Valor ↓` shows `R$ 25.000,00` / `R$ 20.000,00` orders without an inline `fora do GMV` marker.
+  - **Why it matters:** Auditing raw orders alongside the AI agent is a core investigator workflow; losing `Criado em` / `Status` / `Loja` while panning horizontally and seeing R$ 25 mil orders with no badge (while `Ciclo` marks `↑ fora do SLA`) makes GMV totals look inconsistent unless the user reads the footer.
+  - **Fix:** In [OrdersTable.tsx](file:///c:/Projects/dashboard-insight/frontend/src/components/OrdersTable.tsx#L41-L79), pin the lead identifier column (`sticky left-0 bg-surface border-r border-rule`), add a muted `fora do GMV` tag when `amount > 5000` (matching the pattern on `on_time === false`), and group or optionally hide low-priority columns (`Canal`/`Modal`/`Distância`) on narrower docked containers.
+  - **Suggested command:** `/impeccable adapt`
+
+- **[P2] What:** Dark theme softens `.action-block` to `#925a6e` mauve ([global.css](file:///c:/Projects/dashboard-insight/frontend/src/styles/global.css#L96-L98)), `EVIDENCE_DIM = 0.48` ([evidence.ts](file:///c:/Projects/dashboard-insight/frontend/src/lib/evidence.ts#L25)) dulls non-evidence bars below target separation (`DESIGN.md` specifies `~20–30%`), and shadowless floating surfaces ([Popover.tsx](file:///c:/Projects/dashboard-insight/frontend/src/components/filters/Popover.tsx#L54), [ShareMenu.tsx](file:///c:/Projects/dashboard-insight/frontend/src/components/filters/ShareMenu.tsx#L108), [MultiSelect.tsx](file:///c:/Projects/dashboard-insight/frontend/src/components/ui/MultiSelect.tsx#L306), [DatePicker.tsx](file:///c:/Projects/dashboard-insight/frontend/src/components/ui/DatePicker.tsx#L276), [Term.tsx](file:///c:/Projects/dashboard-insight/frontend/src/components/ui/Term.tsx#L73)) use faint `border-rule` over matching `bg-surface` cards.
+  - **Why it matters:** Weakens figure-ground separation on the primary action callout (`Ação`) in dark mode, softens highlighted chart evidence in `StagesChart`, and makes overlapping popovers/tooltips blend into card edges.
+  - **Fix:** Replace `#925a6e` in `:root[data-theme="dark"]` ([global.css](file:///c:/Projects/dashboard-insight/frontend/src/styles/global.css#L96-L98)) with a crisp high-contrast ink-vs-paper dark block (e.g., inverted `#ECECEC`/`#111111` or `#090909` framed by `1px solid var(--ink)`), lower `EVIDENCE_DIM` in [evidence.ts](file:///c:/Projects/dashboard-insight/frontend/src/lib/evidence.ts#L25) to `0.25`, and upgrade floating overlay borders to `border-ink` (consistent with floating `AgentDock`).
+  - **Suggested command:** `/impeccable colorize`
+
+- **[P2] What:** Compounding UX/keyboard paper cuts across header, filters, charts, and agent queue:
+  1. [TopBarStatus.tsx](file:///c:/Projects/dashboard-insight/frontend/src/components/TopBarStatus.tsx#L52) hides `Conectando…` / `Acordando o servidor…` `<640px` (`sr-only sm:hidden`);
+  2. [PeriodPresets.tsx](file:///c:/Projects/dashboard-insight/frontend/src/components/filters/PeriodPresets.tsx#L136-L141) executes `btn.click()` when arrowing onto `Datas`, unexpectedly opening `DatePicker`;
+  3. [ChartAccess.tsx](file:///c:/Projects/dashboard-insight/frontend/src/components/charts/ChartAccess.tsx#L20-L28) creates up to 15 sequential hidden Tab stops inside `StagesChart`;
+  4. [AgentChat.tsx](file:///c:/Projects/dashboard-insight/frontend/src/components/AgentChat.tsx#L72) sets `onRail: true` automatically on every answer, pushing truncated `Nº A01 · AGENTE` stubs onto the 6-alert rail;
+  5. [index.astro](file:///c:/Projects/dashboard-insight/frontend/src/pages/index.astro#L53) renders a `rounded-full` header pill next to the `API no ar` dot.
+  - **Why it matters:** Creates keyboard navigation friction, leaves mobile visitors guessing during Render's ~40s cold start, inflates the curated alert rail with conversational Q&A, and breaks the rectilinear `4px`/`8px` shape grammar.
+  - **Fix:** Keep status text visible `<sm` during `checking`/`waking`/`down` in `TopBarStatus.tsx`; restrict arrow keys in `PeriodPresets.tsx` to moving focus (opening `Datas` on `Enter`/`Space`); add single-stop roving tabindex to `ChartAccess.tsx`; switch `AgentChat.tsx` rail pinning to explicit opt-in (`"Fixar na fila"`, defaulting `onRail: false`); and replace the `rounded-full` pill in `index.astro` with plain inline metadata.
+  - **Suggested command:** `/impeccable polish`
+
+#### Cognitive Load Snapshot
+
+- **Checklist failures (`4 / 8`):** **Single focus** (crowded initial `1440x900` above-the-fold stack), **Chunking** (7 rail stubs, 11-col `BreakdownTable`, 12-col `OrdersTable`), **Minimal choices** (>4 options at 6 decision points), and **Working memory** (horizontal scroll hiding `OrdersTable` identifiers, missing `fora do GMV` badge on `> R$ 5 mil` rows, no sparkline hover values).
+- **Decision points with >4 visible options:**
+  1. Comanda rail (`7` stubs when agent pins `Nº A01`);
+  2. FilterBar Row 1 (`6` concurrent controls: `Period`, `Cidade`, `Hub`, `Loja`, `Mais filtros`, `AgentAskButton`);
+  3. `MultiSelect` lists (`Hub` 32 items, `Loja` `maxVisible = 80` in [MultiSelect.tsx](file:///c:/Projects/dashboard-insight/frontend/src/components/ui/MultiSelect.tsx#L48));
+  4. [BreakdownTable.tsx](file:///c:/Projects/dashboard-insight/frontend/src/components/BreakdownTable.tsx#L24-L32) (`7` dimension options in `Select`, `11` columns per row);
+  5. [OrdersTable.tsx](file:///c:/Projects/dashboard-insight/frontend/src/components/OrdersTable.tsx#L41-L79) (`12` columns, `11` sortable headers);
+  6. [AgentChat.tsx](file:///c:/Projects/dashboard-insight/frontend/src/components/AgentChat.tsx#L22-L30) (`3` starter suggestions expanding to `5`).
+
+#### Persona Red Flags
+
+- **Alex (Impatient Power User):** Brushing >50 stores in `StoreScatter` silently collides with `LIST_CAP = 50`; switching dimensions in `BreakdownTable` takes 2 clicks inside `Select` instead of one-click tabs; arrowing across `PeriodPresets` pops `Datas` unexpectedly; KPI `Trail` sparklines expose no hover values.
+- **Sam (Accessibility-Dependent User):** Keyboard Tab hits up to 15 hidden `.chart-key` buttons in `StagesChart` (`ChartAccess.tsx`); `PeriodPresets` arrow navigation triggers `Datas` popover open on focus move; shadowless `<Term>` tooltips and `Popover`/`ShareMenu` overlays blend into `bg-surface` cards behind `1px solid var(--rule)`; dark-mode `EVIDENCE_DIM = 0.48` lowers contrast of dimmed bars on `#1B1B1B`.
+- **Casey (Distracted Mobile User — `390x844`):** Top stack (`56px` header + `49.4px` `<p>` + `117.6px` `MobileRecorte`) consumes `223px` before `#comandas` and keeps `117.6px` pinned with a redundant `Comandas · N` link above `#comandas`; `TopBarStatus` hides `Conectando…` / `Acordando…` copy `<sm`, leaving a bare 8px dot over skeletons during cold starts; `OrdersTable` requires wide horizontal panning across 12 unpinned columns.
+- **Recrutador(a) iFood — AI Builder:** Asking one agent question automatically appends a truncated `Nº A01 · AGENTE` stub onto `#comandas` (`6 → 7`); sorting `OrdersTable` by `Valor ↓` shows `R$ 25.000,00` / `R$ 20.000,00` without an inline `fora do GMV` tag, creating false arithmetic doubt against the `R$ 34,7 mi` KPI; brushing >50 points on `StoreScatter` exceeds `LIST_CAP = 50`.
+- **Operador(a) de Hub/Praça:** System comandas (`Nº 01–06`) can only collapse (`Recolher`), not be marked acknowledged/resolved like agent tickets (`Tirar da fila`); `Ciclo mediano` (`41,2 min`) displays no status verdict between `No prazo (SLA)` (`Dentro`) and `Cancelamento` (`Dentro`); dark-mode `.action-block` in `#925a6e` loses the urgent contrast of light mode's `#1A1A1A` ticket stamp.
+
+#### Minor Observations
+
+- **`Ciclo mediano` verdict asymmetry:** `KpiStrip.tsx` intentionally omits a verdict on `Ciclo mediano` ([KpiStrip.tsx](file:///c:/Projects/dashboard-insight/frontend/src/components/KpiStrip.tsx#L244)) because `food` (60 min) and `goods` (120 min) share mixed slices, yet visually sitting between two `Dentro` badges makes `41,2 min` look ungraded unless `Segmento` is selected.
+- **`Coleta` stage legibility in `StagesChart`:** Median pickup duration is small enough relative to prep and transit that `Coleta` renders as a 2–4px sliver across bars, hard to read without tooltip hover.
+- **Dark-mode night heatmap cells (`00h–09h`):** Low-volume dark cells appear nearly black against `#1B1B1B`, slightly flattening visual distinction from `<20`-order withheld cells.
+- **`API (Swagger)` in operator masthead:** Translating or softening [index.astro](file:///c:/Projects/dashboard-insight/frontend/src/pages/index.astro#L64) (e.g., `"Docs da API"`) keeps the operator console 100% pt-BR without losing portfolio discoverability.
+
+#### Questions to Consider
+
+1. **Should exploratory agent Q&A auto-mint stubs onto `#comandas`, or stay in the dock unless explicitly pinned?** Keeping `#comandas` strictly for triaged system alerts protects signal-to-noise on the rail.
+2. **Why keep a `105px` two-row filter bar pinned over charts when zero filters are active?** Collapsing Row 2 when `chips.length === 0` (and compacting `MobileRecorte`) returns ~40–60px of vertical analytical viewport immediately.
+3. **What does the physical ink-on-receipt `Ação` stamp look like in Dark Mode without `#925a6e` mauve?** Switching to a stark inverted slab or `#090909` bordered callout could restore Light Mode's unmistakable focal anchor.
+4. **If `OrdersTable` reveals `R$ 25.000,00` orders and `StoreScatter` invites multi-store brushing, shouldn't cleaning and cap rules appear right at the point of surprise?** Inline `fora do GMV` tags and pre-apply `50`-store warnings prevent user distrust before anyone scrolls to the footer.

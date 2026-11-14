@@ -273,7 +273,7 @@ export function DatePicker({ label, value, min, max, rangeOther = null, onChange
           }}
           onKeyDown={onPanelKeyDown}
           onMouseDown={onPanelMouseDown}
-          className={`z-30 mt-1 w-full max-w-[calc(100vw-2rem)] rounded-card border border-rule bg-surface p-1.5 transition-[opacity,scale] duration-(--duration-fast) ease-(--ease-smooth-out) max-lg:static max-lg:mt-2 max-lg:basis-full lg:absolute lg:top-full lg:left-0 lg:w-[16.5rem] lg:origin-top-left ${
+          className={`z-30 mt-1 w-full max-w-[calc(100vw-2rem)] rounded-card border border-ink bg-surface p-1.5 transition-[opacity,scale] duration-(--duration-fast) ease-(--ease-smooth-out) max-lg:static max-lg:mt-2 max-lg:basis-full lg:absolute lg:top-full lg:left-0 lg:w-[16.5rem] lg:origin-top-left ${
             open
               ? "starting:opacity-0 motion-safe:starting:scale-(--scale-medium) motion-reduce:duration-(--duration-quick)"
               : "pointer-events-none opacity-0 duration-(--duration-quick) motion-safe:scale-(--scale-tiny)"

@@ -84,11 +84,13 @@ export function ShareMenu() {
         aria-haspopup="menu"
         aria-expanded={d.isOpen}
         aria-controls={panelId}
+        aria-label="Compartilhar recorte"
+        title="Compartilhar"
         onClick={d.toggle}
-        className="btn-ghost h-8 whitespace-nowrap"
+        className="btn-ghost h-10 whitespace-nowrap px-2.5 @min-[70rem]:px-3"
       >
-        <Share2 className="size-3.5" aria-hidden />
-        Compartilhar
+        <Share2 className="size-3.5 shrink-0" aria-hidden />
+        <span className="hidden @min-[70rem]:inline">Compartilhar</span>
         <ChevronDown
           className={`size-3.5 text-muted transition-[rotate] duration-(--duration-fast) ease-(--ease-smooth-out) motion-reduce:transition-none ${
             d.isOpen ? "rotate-180" : ""
@@ -105,7 +107,7 @@ export function ShareMenu() {
         role="menu"
         aria-label="Compartilhar recorte"
         {...d.panelProps}
-        className={`recorte-popover absolute top-full right-0 z-30 mt-1.5 w-80 max-w-[calc(100vw-2rem)] rounded-card border border-rule bg-surface p-1.5 ${
+        className={`recorte-popover absolute top-full right-0 z-30 mt-1.5 w-80 max-w-[calc(100vw-2rem)] rounded-card border border-ink bg-surface p-1.5 ${
           d.phase === "closed" ? "hidden" : ""
         }`}
       >

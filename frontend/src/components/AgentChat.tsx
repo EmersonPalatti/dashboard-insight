@@ -69,7 +69,7 @@ function toTicket(
     status,
     toolLabels: res.tool_labels ?? [],
     scope,
-    onRail: true,
+    onRail: false,
   };
 }
 

@@ -1,8 +1,8 @@
-import { Filter, X } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Filter, SquareDashedMousePointer, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { BreakdownRow } from "@/lib/api/client";
 import { EVIDENCE_DIM } from "@/lib/evidence";
-import { patchFilters } from "@/lib/filters";
+import { LIST_CAP, patchFilters } from "@/lib/filters";
 import { fmt } from "@/lib/format";
 import { STORE_NAMES_HINT } from "@/lib/glossary";
 import { island, useRecorteQuery } from "@/lib/query";
@@ -37,6 +37,8 @@ const ASK_BY_Y: Record<Y, string> = {
 function StoreScatterInner() {
   const [y, setY] = useState<Y>("cancel_rate");
   const [picked, setPicked] = useState<BreakdownRow[]>([]);
+  const [brushing, setBrushing] = useState(false);
+  const chartRef = useRef<ECInstance | null>(null);
   const { data, error, isPending, refetch, isPlaceholderData, waking, down } = useRecorteQuery("/api/breakdown", {
     by: "store",
     sort: "orders",
@@ -53,8 +55,19 @@ function StoreScatterInner() {
     if (focusMetric && focusMetric !== "orders") {
       setY(focusMetric);
       setPicked([]);
+      setBrushing(false);
     }
   }, [focusId, focusMetric]);
+
+  const toggleBrush = () => {
+    const next = !brushing;
+    setBrushing(next);
+    chartRef.current?.dispatchAction({
+      type: "takeGlobalCursor",
+      key: "brush",
+      brushOption: next ? { brushType: "rect", brushMode: "single" } : false,
+    });
+  };
   const isMarked = useMemo(() => {
     const stores = new Set((focus?.evidence.stores ?? []).map(String));
     const hub = focus?.evidence.hub_label ?? null;
@@ -149,12 +162,22 @@ function StoreScatterInner() {
       busy={isPlaceholderData}
       actions={
         <>
+          <button
+            type="button"
+            aria-pressed={brushing}
+            onClick={toggleBrush}
+            className={`btn-ghost min-h-8 px-2.5 py-1 text-aux max-lg:min-h-11 ${brushing ? "border-ink bg-sunken" : ""}`}
+          >
+            <SquareDashedMousePointer className="size-3.5" aria-hidden />
+            {brushing ? "Sair da seleção" : "Selecionar área"}
+          </button>
           <Segmented
             label="Eixo vertical"
             value={y}
             onChange={(v) => {
               setY(v);
               setPicked([]);
+              setBrushing(false);
             }}
             options={(Object.keys(Y_AXIS) as Y[]).map((k) => ({ value: k, label: Y_AXIS[k].label }))}
           />
@@ -177,6 +200,9 @@ function StoreScatterInner() {
             key={y}
             option={option}
             height={CHART_H}
+            onReady={(c) => {
+              chartRef.current = c;
+            }}
             onEvents={{ brushselected: onBrush }}
             ariaLabel={`Dispersão de lojas: pedidos contra ${Y_AXIS[y].label}`}
           />
@@ -190,33 +216,57 @@ function StoreScatterInner() {
               },
             ]}
           />
-          {picked.length > 0 && (
-            <div className="mt-2 flex flex-wrap items-center gap-2 rounded-card bg-sunken px-3 py-2">
-              <p className="mr-auto text-pretty text-body">
-                {picked.length} loja(s) selecionada(s):{" "}
-                <span className="text-muted">
-                  {picked
-                    .slice(0, 4)
-                    .map((r) => r.label)
-                    .join(", ")}
-                  {picked.length > 4 ? "…" : ""}
-                </span>
-              </p>
-              <button type="button" className="btn-ghost py-1" onClick={() => setPicked([])}>
-                <X className="size-3.5" aria-hidden /> Descartar
-              </button>
-              <button
-                type="button"
-                className="btn-ink py-1"
-                onClick={() => {
-                  patchFilters({ store: picked.slice(0, 200).map((r) => Number(r.key)) });
-                  setPicked([]);
-                }}
-              >
-                <Filter className="size-3.5" aria-hidden /> Filtrar estas lojas
-              </button>
-            </div>
-          )}
+          {picked.length > 0 && (() => {
+            const overCap = picked.length > LIST_CAP;
+            const targetStores = (overCap ? [...picked].sort((a, b) => b.orders - a.orders) : picked).slice(0, LIST_CAP);
+            return (
+              <div className="mt-2 flex flex-wrap items-center gap-2 rounded-card bg-sunken px-3 py-2">
+                <p className="mr-auto text-pretty text-body">
+                  {overCap ? (
+                    <>
+                      <span className="font-semibold text-warn">{picked.length} lojas na área</span>{" "}
+                      <span className="text-muted">
+                        (limite do filtro: {LIST_CAP}; aplica as {LIST_CAP} com mais pedidos — ou filtre antes por Cidade/Hub):{" "}
+                      </span>
+                    </>
+                  ) : (
+                    <>{picked.length} loja(s) selecionada(s): </>
+                  )}
+                  <span className="text-muted">
+                    {targetStores
+                      .slice(0, 4)
+                      .map((r) => r.label)
+                      .join(", ")}
+                    {targetStores.length > 4 ? "…" : ""}
+                  </span>
+                </p>
+                <button
+                  type="button"
+                  className="btn-ghost py-1 max-lg:min-h-11"
+                  onClick={() => {
+                    setPicked([]);
+                    chartRef.current?.dispatchAction({ type: "brush", areas: [] });
+                  }}
+                >
+                  <X className="size-3.5" aria-hidden /> Descartar
+                </button>
+                <button
+                  type="button"
+                  className="btn-ink py-1 max-lg:min-h-11"
+                  onClick={() => {
+                    patchFilters({ store: targetStores.map((r) => Number(r.key)) });
+                    setPicked([]);
+                    setBrushing(false);
+                    chartRef.current?.dispatchAction({ type: "brush", areas: [] });
+                    chartRef.current?.dispatchAction({ type: "takeGlobalCursor", key: "brush", brushOption: false });
+                  }}
+                >
+                  <Filter className="size-3.5" aria-hidden />{" "}
+                  {overCap ? `Filtrar top ${LIST_CAP} lojas` : "Filtrar estas lojas"}
+                </button>
+              </div>
+            );
+          })()}
         </div>
       </AsyncBody>
     </PanelContent>

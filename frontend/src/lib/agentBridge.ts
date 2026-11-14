@@ -107,13 +107,22 @@ export function openComandaCount(alertCount: number, agentOnRecorte: number): nu
   return alertCount + agentOnRecorte;
 }
 
-/** Tira a comanda da fila. A mensagem continua na conversa. */
-export function dismissAgentComanda(id: string) {
+function setAgentComandaOnRail(id: string, onRail: boolean) {
   $agentMessages.set(
     $agentMessages.get().map((message) =>
-      message.comanda?.id === id ? { ...message, comanda: { ...message.comanda, onRail: false } } : message,
+      message.comanda?.id === id ? { ...message, comanda: { ...message.comanda, onRail } } : message,
     ),
   );
+}
+
+/** Tira a comanda da fila. A mensagem continua na conversa. */
+export function dismissAgentComanda(id: string) {
+  setAgentComandaOnRail(id, false);
+}
+
+/** Fixa a comanda na fila de alertas desta sessão. */
+export function pinAgentComanda(id: string) {
+  setAgentComandaOnRail(id, true);
 }
 
 export function agentStamp(series: number) {

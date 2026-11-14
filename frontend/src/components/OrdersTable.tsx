@@ -34,15 +34,16 @@ const ASK_BY_SORT: Record<string, string> = {
 
 const PAGE = 200;
 const ROW_H = 34;
+const GMV_OUTLIER = 5000;
 const col = createColumnHelper<OrderRow>();
 const SORTABLE = new Set(["created_at", "amount", "delivery_fee", "cycle_min", "production_min", "transit_min", "distance_m", "store_name", "hub_name", "city", "status"]);
 const NUMERIC_COLS = new Set(["amount", "cycle_min", "production_min", "transit_min", "distance_m"]);
 
 const columns = [
-  col.accessor("created_at", { header: "Criado em", cell: (c) => fmt.dateTime(c.getValue()), size: 110 }),
+  col.accessor("created_at", { header: "Criado em", cell: (c) => fmt.dateTime(c.getValue()), size: 104 }),
   col.accessor("status", {
     header: "Status",
-    size: 110,
+    size: 96,
     cell: (c) =>
       c.getValue() === "canceled" ? (
         <span className="inline-flex items-center gap-1.5 font-semibold text-ink">
@@ -53,15 +54,33 @@ const columns = [
         label(c.getValue())
       ),
   }),
-  col.accessor("hub_name", { header: "Hub", size: 160 }),
-  col.accessor("store_name", { header: "Loja", size: 170 }),
-  col.accessor("segment", { header: "Segmento", size: 118, cell: (c) => label(c.getValue()) }),
-  col.accessor("channel", { header: "Canal", size: 125 }),
-  col.accessor("modal", { header: "Modal", size: 90, cell: (c) => label(c.getValue()) }),
-  col.accessor("amount", { header: "Valor", size: 95, cell: (c) => fmt.brl(c.getValue()) }),
+  col.accessor("hub_name", { header: "Hub", size: 144 }),
+  col.accessor("store_name", { header: "Loja", size: 148 }),
+  col.accessor("segment", { header: "Segmento", size: 96, cell: (c) => label(c.getValue()) }),
+  col.accessor("channel", { header: "Canal", size: 108 }),
+  col.accessor("modal", { header: "Modal", size: 78, cell: (c) => label(c.getValue()) }),
+  col.accessor("amount", {
+    header: "Valor",
+    size: 108,
+    cell: (c) => {
+      const v = c.getValue();
+      return v > GMV_OUTLIER ? (
+        <span
+          className="inline-flex items-center gap-1 font-semibold text-ink"
+          title="Acima de R$ 5 mil: fora do GMV e do ticket médio"
+        >
+          <ArrowUp className="size-3 shrink-0" aria-hidden />
+          {fmt.brl(v)}
+          <span className="sr-only"> fora do GMV</span>
+        </span>
+      ) : (
+        fmt.brl(v)
+      );
+    },
+  }),
   col.accessor("cycle_min", {
     header: "Ciclo",
-    size: 92,
+    size: 86,
     cell: (c) =>
       c.row.original.on_time === false ? (
         <span className="inline-flex items-center gap-1 font-semibold text-ink" title="Fora do SLA">
@@ -73,9 +92,9 @@ const columns = [
         fmt.min(c.getValue())
       ),
   }),
-  col.accessor("production_min", { header: "Preparo", size: 85, cell: (c) => fmt.min(c.getValue()) }),
-  col.accessor("transit_min", { header: "Trânsito", size: 85, cell: (c) => fmt.min(c.getValue()) }),
-  col.accessor("distance_m", { header: "Distância", size: 85, cell: (c) => (c.getValue() === null ? "—" : fmt.km(c.getValue()! / 1000)) }),
+  col.accessor("production_min", { header: "Preparo", size: 78, cell: (c) => fmt.min(c.getValue()) }),
+  col.accessor("transit_min", { header: "Trânsito", size: 78, cell: (c) => fmt.min(c.getValue()) }),
+  col.accessor("distance_m", { header: "Distância", size: 80, cell: (c) => (c.getValue() === null ? "—" : fmt.km(c.getValue()! / 1000)) }),
 ];
 
 function OrdersTableInner() {
@@ -127,8 +146,8 @@ function OrdersTableInner() {
     <PanelContent
       hint={
         query.data
-          ? `${fmt.int(total)} pedidos · ${fmt.int(rows.length)} carregados. Role para buscar mais; clique nos cabeçalhos para ordenar. ↑ fora do SLA. ${STORE_NAMES_HINT}`
-          : `Paginação e ordenação no servidor. ↑ fora do SLA. ${STORE_NAMES_HINT}`
+          ? `${fmt.int(total)} pedidos · ${fmt.int(rows.length)} carregados. Role para buscar mais; clique nos cabeçalhos para ordenar. ↑ fora do SLA ou do GMV (> R$ 5 mil). ${STORE_NAMES_HINT}`
+          : `Paginação e ordenação no servidor. ↑ fora do SLA ou do GMV (> R$ 5 mil). ${STORE_NAMES_HINT}`
       }
       busy={query.isFetching && !query.isFetchingNextPage && Boolean(query.data)}
       actions={
@@ -149,11 +168,12 @@ function OrdersTableInner() {
       >
         <div ref={scroller} className="content-reveal relative h-[460px] min-w-0 overflow-auto rounded-tick border border-rule" role="region" aria-label="Tabela de pedidos" tabIndex={0}>
           <div style={{ width, minWidth: "100%" }} className="text-aux tabular-nums" role="table" aria-rowcount={total}>
-            <div className="sticky top-0 z-10 flex border-b border-rule bg-sunken" role="row">
+            <div className="sticky top-0 z-20 flex border-b border-rule bg-sunken" role="row">
               {table.getFlatHeaders().map((h) => {
                 const active = sort.id === h.id;
                 const sortable = SORTABLE.has(h.id);
                 const isNumeric = NUMERIC_COLS.has(h.id);
+                const isPinned = h.id === "created_at";
 
                 const sortPhrase = !active ? "sem ordem" : sort.desc ? "ordem decrescente" : "ordem crescente";
                 return (
@@ -164,7 +184,7 @@ function OrdersTableInner() {
                     style={{ width: h.getSize() }}
                     className={`flex shrink-0 items-center gap-1 px-2 py-2 text-aux font-semibold ${
                       isNumeric ? "justify-end text-right tabular-nums" : "justify-start"
-                    }`}
+                    } ${isPinned ? "sticky left-0 z-10 border-r border-rule bg-sunken" : ""}`}
                   >
                     {sortable ? (
                       <button
@@ -192,17 +212,20 @@ function OrdersTableInner() {
                     key={row.id}
                     role="row"
                     aria-rowindex={item.index + 2}
-                    className="absolute left-0 flex w-full border-b border-rule/50 transition-colors duration-(--duration-quick) hover:bg-sunken/60"
+                    className="group/row absolute left-0 flex w-full border-b border-rule/50 transition-colors duration-(--duration-quick) hover:bg-sunken/60"
                     style={{ height: ROW_H, transform: `translateY(${item.start}px)` }}
                   >
                     {row.getVisibleCells().map((cell) => {
                       const isNumeric = NUMERIC_COLS.has(cell.column.id);
+                      const isPinned = cell.column.id === "created_at";
                       return (
                         <div
                           key={cell.id}
                           role="cell"
                           style={{ width: cell.column.getSize() }}
-                          className={`flex shrink-0 items-center px-2 ${isNumeric ? "justify-end text-right tabular-nums" : ""}`}
+                          className={`flex shrink-0 items-center px-2 ${
+                            isNumeric ? "justify-end text-right tabular-nums" : ""
+                          } ${isPinned ? "sticky left-0 z-10 border-r border-rule bg-surface group-hover/row:bg-sunken" : ""}`}
                         >
                           <span className="truncate">{flexRender(cell.column.columnDef.cell, cell.getContext())}</span>
                         </div>
