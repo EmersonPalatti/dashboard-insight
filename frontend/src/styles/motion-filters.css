@@ -55,6 +55,7 @@
   .comanda-actions {
     width: 100%;
     max-width: 100%;
+    padding-right: 3.75rem;
   }
 
   .comanda-actions > .btn-primary {

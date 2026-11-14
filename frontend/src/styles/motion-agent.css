@@ -7,12 +7,17 @@
  * recebe foco nem leitor de tela. O inert do React cobre o intervalo.
  */
 :root {
-  --agent-w: clamp(360px, 28vw, 420px);
+  --agent-w: clamp(320px, 26vw, 420px);
 }
 
 /* Modo lateral: a página abre espaço na hora em que o painel começa a entrar. */
-:root[data-agent-dock] body {
+:root[data-agent-dock="dock"] body {
   padding-right: var(--agent-w);
+}
+
+/* Modo flutuante (1024–1279px): o conteúdo principal recua à esquerda do painel para não ficar sob ele. */
+:root[data-agent-dock="float"] main {
+  padding-right: calc(var(--agent-w) + 1.5rem);
 }
 
 .agent-panel {

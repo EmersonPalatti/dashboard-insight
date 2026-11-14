@@ -1,7 +1,7 @@
 import { ArrowDownRight, ArrowUpRight, Minus } from "lucide-react";
 import { Fragment, useState, type CSSProperties, type ReactNode } from "react";
 import type { KpiResponse, Metrics } from "@/lib/api/client";
-import { fmt, outsideBaseNote } from "@/lib/format";
+import { fmt } from "@/lib/format";
 import type { FocusedEvidence } from "@/lib/evidence";
 import { GLOSS } from "@/lib/glossary";
 import { island, useMeta, useRecorteQuery } from "@/lib/query";
@@ -463,17 +463,7 @@ function KpiStripInner() {
   const { current, previous, period, previous_period, heroes } = data;
 
   if (current.orders === 0) {
-    return (
-      <>
-        <IgnoredNotice />
-        <div className="tile p-4">
-          <p className="font-semibold">Nenhum pedido neste recorte.</p>
-          <p className="label">
-            {outsideBaseNote(period, meta) ?? "Afrouxe período, hub ou loja."} Os painéis abaixo ficam vazios até lá.
-          </p>
-        </div>
-      </>
-    );
+    return <IgnoredNotice />;
   }
 
   const trail = (k: SeriesKey) => (series && series.length > 1 ? series.map((p) => p[k]) : undefined);
@@ -502,8 +492,8 @@ function KpiStripInner() {
         )}
       </div>
       {/* lg+: operação grande à esquerda, volume empilhado numa coluna estreita ao lado (mesma altura) */}
-      <div className="grid gap-2.5 lg:grid-cols-[minmax(0,3fr)_minmax(15rem,1fr)]">
-        <div className="grid grid-cols-1 gap-px overflow-hidden rounded-card border border-rule bg-rule lg:grid-cols-3">
+      <div className="grid gap-2.5 @min-[52rem]:grid-cols-[minmax(0,3fr)_minmax(15rem,1fr)]">
+        <div className="grid grid-cols-1 gap-px overflow-hidden rounded-card border border-rule bg-rule @min-[38rem]:grid-cols-3">
           {OPERATION.map((def) => (
             <Hero
               key={def.key}
@@ -516,7 +506,7 @@ function KpiStripInner() {
             />
           ))}
         </div>
-        <div className="tile grid grid-cols-1 divide-y divide-rule overflow-hidden lg:auto-rows-fr lg:grid-cols-1 lg:divide-y">
+        <div className="tile grid grid-cols-1 divide-y divide-rule overflow-hidden @min-[52rem]:auto-rows-fr @min-[52rem]:grid-cols-1 @min-[52rem]:divide-y">
           {VOLUME.map((def) => (
             <Volume key={def.key} def={def} current={current} previous={previous} focus={focusFor(def.key)} />
           ))}

@@ -78,7 +78,7 @@ const repoUrl = "https://github.com/EmersonPalatti/dashboard-insight";
       </div>
     </search>
 
-    <main class="mx-auto grid max-w-[1440px] grid-cols-[minmax(0,1fr)] gap-5 px-4 pt-5 pb-16 max-lg:pb-24 sm:px-6">
+    <main class="@container mx-auto grid max-w-[1440px] grid-cols-[minmax(0,1fr)] gap-5 px-4 pt-5 pb-16 max-lg:pb-24 sm:px-6">
       <!--
         Trilho de comandas no topo: as comandas penduradas lado a lado e a aberta numa faixa larga.
         KPIs e tendência ganham a largura toda logo abaixo. O agente fica fora da grade (AgentDock).
@@ -95,7 +95,7 @@ const repoUrl = "https://github.com/EmersonPalatti/dashboard-insight";
         Âncoras dos gráficos que provam uma comanda ("Ver no gráfico"). Ficam na casca porque as
         ilhas só hidratam ao aparecer: o alvo da rolagem precisa existir antes delas.
       -->
-      <div class="grid gap-5 lg:grid-cols-2">
+      <div class="grid gap-5 @min-[52rem]:grid-cols-2">
         <div id="grafico-etapas" tabindex="-1" class="evidence-anchor grid min-w-0">
           <Panel title="Onde o tempo vai, por hub" hint="Mediana de cada etapa, sem pedidos presos. Clique numa barra para filtrar o hub.">
             <StagesChart client:visible />

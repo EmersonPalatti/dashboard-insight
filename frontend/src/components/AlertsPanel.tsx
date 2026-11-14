@@ -5,13 +5,13 @@
  * a aberta também publica a evidência dela ($evidence) para KPIs e gráficos.
  */
 import { useStore } from "@nanostores/react";
-import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, CircleSlash, Filter, LineChart, MessageSquareText, ShieldCheck } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, CircleSlash, Filter, LineChart, MessageSquareText, RotateCcw, ShieldCheck } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
 import type { Alert } from "@/lib/api/client";
 import { $railAgentComandas, askAgentAbout, openComandaCount, scopeKey } from "@/lib/agentBridge";
 import { AgentOpenBand, AgentStub } from "./agent/AgentComanda";
 import { $evidence, EVIDENCE_ANCHOR, showEvidence } from "@/lib/evidence";
-import { $filters, applyDrilldown } from "@/lib/filters";
+import { $filters, applyDrilldown, resetFilters } from "@/lib/filters";
 import { prefersReducedMotion } from "@/lib/media";
 import { island, useMeta, useRecorteQuery } from "@/lib/query";
 import { outsideBaseNote } from "@/lib/format";
@@ -204,18 +204,18 @@ function OpenBand({
           }
         />
       </div>
-      <div className="mt-3 grid gap-x-8 gap-y-3.5 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)] lg:grid-rows-[auto_1fr]">
-        <div className="min-w-0 lg:col-start-1 lg:row-start-1">
+      <div className="mt-3 grid gap-x-8 gap-y-3.5 @min-[48rem]:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)] @min-[48rem]:grid-rows-[auto_1fr]">
+        <div className="min-w-0 @min-[48rem]:col-start-1 @min-[48rem]:row-start-1">
           <h3 id={`${BAND_ID}-title`} ref={titleRef} tabIndex={-1} className="text-lead leading-snug font-semibold text-balance">
             {alert.title}
           </h3>
           <p className="mt-1.5 max-w-[68ch] text-body leading-relaxed text-pretty text-ink/85">{alert.detail}</p>
         </div>
-        <div className="self-start action-block rounded-card px-4 py-3.5 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:mt-0.5">
+        <div className="self-start action-block rounded-card px-4 py-3.5 @min-[48rem]:col-start-2 @min-[48rem]:row-span-2 @min-[48rem]:row-start-1 @min-[48rem]:mt-0.5">
           <p className="text-aux font-semibold opacity-70">Ação</p>
           <p className="mt-1 text-body leading-snug text-pretty">{alert.action}</p>
         </div>
-        <div className="comanda-actions no-print flex flex-wrap gap-2 self-start lg:col-start-1 lg:row-start-2">
+        <div className="comanda-actions no-print flex flex-wrap gap-2 self-start @min-[48rem]:col-start-1 @min-[48rem]:row-start-2">
           {alert.drilldown && (
             <button type="button" className="btn-primary max-lg:min-h-11 lg:min-h-9" onClick={() => applyDrilldown(alert.drilldown!.filters)}>
               <Filter className="size-3.5" aria-hidden /> {alert.drilldown.label}
@@ -674,20 +674,27 @@ function AlertsPanelInner() {
           <ErrorState error={error} onRetry={() => refetch()} />
         </div>
       ) : alerts.length === 0 && railAgents.length === 0 ? (
-        <div className="tile flex items-center gap-3 px-5 py-4">
-          {noOrders ? (
-            <CircleSlash className="size-5 shrink-0 text-muted" aria-hidden />
-          ) : (
-            <ShieldCheck className="size-5 shrink-0 text-good" aria-hidden />
+        <div className="tile flex flex-wrap items-center justify-between gap-3 px-5 py-4">
+          <div className="flex min-w-0 flex-1 items-center gap-3">
+            {noOrders ? (
+              <CircleSlash className="size-5 shrink-0 text-muted" aria-hidden />
+            ) : (
+              <ShieldCheck className="size-5 shrink-0 text-good" aria-hidden />
+            )}
+            <p className="text-pretty">
+              <span className="font-semibold">{noOrders ? "Sem pedidos neste recorte." : "Nenhuma comanda aberta neste recorte."}</span>{" "}
+              <span className="text-muted">
+                {noOrders
+                  ? `Não dá para afirmar SLA nem cancelamento sem pedidos. ${outsideBaseNote(filters, meta) ?? "Amplie o período ou tire um filtro."}`
+                  : "SLA, cancelamento e lojas dentro do esperado. Mude o recorte para checar outro hub."}
+              </span>
+            </p>
+          </div>
+          {noOrders && (
+            <button type="button" className="btn-ghost shrink-0 max-lg:min-h-11" onClick={resetFilters}>
+              <RotateCcw className="size-3.5" aria-hidden /> Limpar recorte
+            </button>
           )}
-          <p className="text-pretty">
-            <span className="font-semibold">{noOrders ? "Sem pedidos neste recorte." : "Nenhuma comanda aberta neste recorte."}</span>{" "}
-            <span className="text-muted">
-              {noOrders
-                ? `Não dá para afirmar SLA nem cancelamento sem pedidos. ${outsideBaseNote(filters, meta) ?? "Amplie o período ou tire um filtro."}`
-                : "SLA, cancelamento e lojas dentro do esperado. Mude o recorte para checar outro hub."}
-            </span>
-          </p>
         </div>
       ) : (
         // keyed em printKey: cada recorte novo remonta o trilho e o reimprime inteiro

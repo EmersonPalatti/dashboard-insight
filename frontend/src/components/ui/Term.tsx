@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
  * Termo com definição. O botão abre no clique, no Enter e no toque.
  * O texto sai num portal para não ser cortado por overflow dos cartões.
  */
-export function Term({ term, definition }: { term: string; definition: string }) {
+export function Term({ term, definition, ariaLabel }: { term: string; definition: string; ariaLabel?: string }) {
   const btn = useRef<HTMLButtonElement>(null);
   const panel = useRef<HTMLSpanElement>(null);
   const panelId = useId();
@@ -56,6 +56,7 @@ export function Term({ term, definition }: { term: string; definition: string })
         ref={btn}
         type="button"
         className="hit-target underline decoration-dotted decoration-ink underline-offset-[3px]"
+        aria-label={ariaLabel}
         aria-expanded={open}
         aria-describedby={open ? panelId : undefined}
         onClick={() => setOpen((value) => !value)}

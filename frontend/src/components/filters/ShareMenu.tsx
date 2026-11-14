@@ -87,10 +87,10 @@ export function ShareMenu() {
         aria-label="Compartilhar recorte"
         title="Compartilhar"
         onClick={d.toggle}
-        className="btn-ghost h-10 whitespace-nowrap px-2.5 @min-[70rem]:px-3"
+        className="btn-ghost h-8 px-2.5 text-aux whitespace-nowrap"
       >
         <Share2 className="size-3.5 shrink-0" aria-hidden />
-        <span className="hidden @min-[70rem]:inline">Compartilhar</span>
+        <span>Compartilhar</span>
         <ChevronDown
           className={`size-3.5 text-muted transition-[rotate] duration-(--duration-fast) ease-(--ease-smooth-out) motion-reduce:transition-none ${
             d.isOpen ? "rotate-180" : ""
