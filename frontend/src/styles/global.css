@@ -70,7 +70,7 @@
   --blur-small: 2px; /* troca de ícone/texto, skeleton → conteúdo */
   --blur-medium: 3px; /* revelação de texto */
   /* Altura da barra de filtros fixa. O script da página substitui pelo valor medido. */
-  --sticky-bar: 4rem;
+  --sticky-bar: 6.5rem;
 }
 
 :root[data-theme="dark"] {

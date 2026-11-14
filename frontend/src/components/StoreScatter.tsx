@@ -7,7 +7,7 @@ import { fmt } from "@/lib/format";
 import { STORE_NAMES_HINT } from "@/lib/glossary";
 import { island, useRecorteQuery } from "@/lib/query";
 import { ScatterChart } from "echarts/charts";
-import { BrushComponent, ToolboxComponent } from "echarts/components";
+import { BrushComponent } from "echarts/components";
 import * as echarts from "echarts/core";
 import { ChartAccess, openStoreRanking } from "./charts/ChartAccess";
 import { EChart, type ECInstance, type Tokens } from "./charts/EChart";
@@ -16,7 +16,7 @@ import { EvidenceTag, useEvidence } from "./ui/EvidenceTag";
 import { AsyncBody, Empty, panelFallback, PanelContent, Segmented } from "./ui/Panel";
 
 // Módulos deste gráfico: dispersão, caixa de seleção (brush) e barra de ferramentas que a abriga.
-echarts.use([ScatterChart, BrushComponent, ToolboxComponent]);
+echarts.use([ScatterChart, BrushComponent]);
 
 /** Altura do gráfico e do skeleton. A barra de lojas selecionadas abaixo só aparece após uma seleção do usuário. */
 const CHART_H = 340;
@@ -89,16 +89,9 @@ function StoreScatterInner() {
 
   const option = useCallback(
     (t: Tokens) => ({
-      grid: { left: 56, right: 20, top: 40, bottom: 44 },
-      toolbox: {
-        right: 8,
-        top: 0,
-        iconStyle: { borderColor: t.muted },
-        emphasis: { iconStyle: { borderColor: t.ink } },
-        feature: { brush: { type: ["rect", "clear"], title: { rect: "Selecionar área", clear: "Limpar seleção" } } },
-      },
+      grid: { left: 56, right: 20, top: 20, bottom: 44 },
       brush: {
-        toolbox: ["rect", "clear"],
+        toolbox: [],
         xAxisIndex: 0,
         brushStyle: { color: `${t.ink}14`, borderColor: t.ink, borderWidth: 1 },
         outOfBrush: { colorAlpha: 0.2 },
@@ -170,6 +163,13 @@ function StoreScatterInner() {
           >
             <SquareDashedMousePointer className="size-3.5" aria-hidden />
             {brushing ? "Sair da seleção" : "Selecionar área"}
+          </button>
+          <button
+            type="button"
+            onClick={openStoreRanking}
+            className="btn-ghost min-h-11 px-2.5 py-1 text-aux lg:hidden"
+          >
+            Filtrar no ranking
           </button>
           <Segmented
             label="Eixo vertical"

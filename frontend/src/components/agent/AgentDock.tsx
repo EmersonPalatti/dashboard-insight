@@ -121,10 +121,10 @@ function AgentDockInner() {
     return () => window.removeEventListener("keydown", onKey);
   }, [open]);
 
-  // Modo lateral: a página abre espaço (padding no body) no mesmo quadro em que o painel começa a entrar.
+  // Modo lateral ou flutuante: a página abre espaço no mesmo quadro em que o painel entra.
   useLayoutEffect(() => {
     const root = document.documentElement;
-    if (open && mode === "dock") root.dataset.agentDock = "";
+    if (open && (mode === "dock" || mode === "float")) root.dataset.agentDock = mode;
     else delete root.dataset.agentDock;
     return () => {
       delete root.dataset.agentDock;

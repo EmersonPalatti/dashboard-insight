@@ -270,7 +270,7 @@ export function MultiSelect<V extends string | number>({
         aria-labelledby={`${labelId} ${summaryId}`}
         onClick={() => (open ? setOpen(false) : openAt(0))}
         onKeyDown={onTriggerKeyDown}
-        className={`flex h-10 w-full min-w-0 items-center justify-between gap-2 rounded-card border px-3 text-left text-body max-lg:h-auto max-lg:min-h-11 transition-colors duration-(--duration-quick) disabled:opacity-50 ${
+        className={`flex h-10 w-full min-w-0 items-center justify-between gap-2 rounded-card border px-2.5 text-left text-body max-lg:h-auto max-lg:min-h-11 transition-colors duration-(--duration-quick) disabled:opacity-50 ${
           value.length ? "border-ink bg-surface" : "border-rule bg-surface hover:border-muted"
         }`}
       >

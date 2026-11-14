@@ -8,7 +8,7 @@ import {
   type SortingState,
 } from "@tanstack/react-table";
 import { useStore } from "@nanostores/react";
-import { ArrowDown, ArrowUp, ArrowUpDown, Filter } from "lucide-react";
+import { ArrowDown, ArrowUp, Filter } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { BreakdownRow, Dimension } from "@/lib/api/client";
 import { $focusRank, $view, applyDrilldown, patchFilters, setView } from "@/lib/filters";
@@ -140,14 +140,17 @@ function BreakdownTableInner() {
     return [
       col.accessor("label", {
         header: TABS.find((t) => t.value === tab)?.label.replace(/s$/, "") ?? "Grupo",
-        cell: (c) => (
-          <span className="block max-w-56 truncate">
-            {tab === "weekday" ? WEEKDAYS[Number(c.row.original.key)] : label(c.getValue())}
-            {c.row.original.parent && tab !== "channel" && (
-              <span className="ml-1.5 text-meta text-muted">{label(c.row.original.parent)}</span>
-            )}
-          </span>
-        ),
+        cell: (c) => {
+          const parent = c.row.original.parent && tab !== "channel" ? label(c.row.original.parent) : null;
+          return (
+            <span className="block max-w-36 sm:max-w-56 sm:truncate">
+              <span className="block truncate sm:inline">
+                {tab === "weekday" ? WEEKDAYS[Number(c.row.original.key)] : label(c.getValue())}
+              </span>
+              {parent && <span className="block truncate text-meta text-muted sm:ml-1.5 sm:inline">{parent}</span>}
+            </span>
+          );
+        },
       }),
       col.accessor("orders", { header: "Pedidos", cell: (c) => fmt.int(c.getValue()) }),
       col.accessor("gmv", { header: "GMV", cell: (c) => fmt.brlCompact(c.getValue()) }),
@@ -242,9 +245,20 @@ function BreakdownTableInner() {
                 <tr key={hg.id}>
                   {hg.headers.map((h, i) => {
                     const dir = h.column.getIsSorted();
-                    const Icon = dir === "asc" ? ArrowUp : dir === "desc" ? ArrowDown : ArrowUpDown;
+                    const SortIcon = dir === "asc" ? ArrowUp : dir === "desc" ? ArrowDown : null;
                     const help = HEADER_HELP[h.column.id];
                     const tone = dir ? "text-ink" : "text-muted hover:text-ink";
+                    const sortBtn = (
+                      <button
+                        type="button"
+                        onClick={h.column.getToggleSortingHandler()}
+                        className={`hit-target inline-flex items-center gap-1 ${tone}`}
+                      >
+                        {flexRender(h.column.columnDef.header, h.getContext())}
+                        {SortIcon && <SortIcon className="size-3 shrink-0" aria-hidden />}
+                        <span className="sr-only">, {sortPhrase(dir)}</span>
+                      </button>
+                    );
                     return (
                       <th
                         key={h.id}
@@ -253,32 +267,17 @@ function BreakdownTableInner() {
                         className={`border-b border-rule px-2.5 py-2 text-aux font-semibold whitespace-nowrap ${i === 0 ? "text-left" : "text-right tabular-nums"}`}
                       >
                         {help ? (
-                          <span className={`inline-flex items-center gap-1 max-lg:gap-4 ${dir ? "text-ink" : "text-muted"}`}>
-                            <Term term={help.term} definition={help.definition} />
-                            <button
-                              type="button"
-                              onClick={h.column.getToggleSortingHandler()}
-                              className="hit-target inline-flex size-6 items-center justify-center rounded-tick hover:bg-surface hover:text-ink"
-                              aria-label={`Ordenar por ${help.term}, ${sortPhrase(dir)}`}
-                            >
-                              <Icon className="size-3" aria-hidden />
-                            </button>
+                          <span className="inline-flex items-center gap-1.5 max-lg:gap-3">
+                            {sortBtn}
+                            <Term term="?" definition={help.definition} ariaLabel={`O que é ${help.term}`} />
                           </span>
                         ) : (
-                          <button
-                            type="button"
-                            onClick={h.column.getToggleSortingHandler()}
-                            className={`hit-target inline-flex items-center gap-1 ${tone}`}
-                          >
-                            {flexRender(h.column.columnDef.header, h.getContext())}
-                            <Icon className="size-3" aria-hidden />
-                            <span className="sr-only">, {sortPhrase(dir)}</span>
-                          </button>
+                          sortBtn
                         )}
                       </th>
                     );
                   })}
-                  {canDrill && <th className="sticky right-0 border-b border-rule bg-sunken px-2 py-2" aria-label="Filtrar" />}
+                  {canDrill && <th className="sticky right-0 border-b border-l border-rule bg-sunken px-2 py-2" aria-label="Filtrar" />}
                 </tr>
               ))}
             </thead>
@@ -291,7 +290,7 @@ function BreakdownTableInner() {
                     </td>
                   ))}
                   {canDrill && (
-                    <td className="sticky right-0 bg-surface px-2 py-1 text-right group-hover:bg-sunken">
+                    <td className="sticky right-0 border-l border-rule bg-surface px-2 py-1 text-right group-hover:bg-sunken">
                       {row.original.key != null && (
                         <button
                           type="button"

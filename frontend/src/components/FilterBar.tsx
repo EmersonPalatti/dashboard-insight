@@ -37,8 +37,8 @@ function DesktopBar({ m }: { m: FilterModel }) {
         <div className="shrink-0">
           <PeriodFields m={m} />
         </div>
-        {/* basis equilibrado: cidade, hub e loja mantêm leitura limpa enquanto o agente fica sempre ancorado na linha 1 */}
-        <div className="flex min-w-[22rem] flex-[1_1_26rem] items-center gap-2">
+        {/* Row 1 prioriza período e selects de recorte; Compartilhar fica na linha 2 */}
+        <div className="flex min-w-[18.5rem] flex-1 items-center gap-2">
           <div className="grid min-w-0 flex-1 grid-cols-3 gap-2">
             <PlaceFields m={m} />
           </div>
@@ -47,30 +47,37 @@ function DesktopBar({ m }: { m: FilterModel }) {
               <ExtraFields m={m} />
             </FiltersPopover>
           </div>
-          <div className="shrink-0">
-            <ShareMenu />
-          </div>
         </div>
-        {/* último da linha: fica acima do canto onde o painel abre */}
-        <div className="flex min-w-[9.5rem] max-w-[22rem] flex-[0_6_22rem] border-l border-rule pl-3 @min-[75rem]:pl-4">
+        {/* último da linha em telas largas: fica acima do canto onde o painel abre */}
+        <div className="hidden min-w-[11rem] max-w-[20rem] flex-[0_4_19rem] border-l border-rule pl-3 @min-[68rem]:flex @min-[75rem]:pl-4">
           <AgentAskButton />
         </div>
       </div>
 
-      {m.chips.length > 0 && (
-        <div className="flex min-h-8 flex-wrap items-center gap-x-3 gap-y-1.5">
-          <ActiveChips chips={m.chips} />
-          {m.active > 0 && (
-            <button
-              type="button"
-              className="inline-flex h-8 items-center gap-1.5 rounded-tick px-1.5 text-aux font-medium text-muted transition-colors duration-(--duration-quick) hover:bg-sunken hover:text-ink"
-              onClick={resetFilters}
-            >
-              <RotateCcw className="size-3.5" aria-hidden /> Limpar recorte
-            </button>
-          )}
+      <div className="flex min-h-8 flex-wrap items-center gap-x-3 gap-y-1.5">
+        {m.chips.length > 0 ? (
+          <>
+            <ActiveChips chips={m.chips} />
+            {m.active > 0 && (
+              <button
+                type="button"
+                className="inline-flex h-8 items-center gap-1.5 rounded-tick px-1.5 text-aux font-medium text-muted transition-colors duration-(--duration-quick) hover:bg-sunken hover:text-ink"
+                onClick={resetFilters}
+              >
+                <RotateCcw className="size-3.5" aria-hidden /> Limpar recorte
+              </button>
+            )}
+          </>
+        ) : (
+          <p className="text-aux text-muted">Recorte completo: todos os pedidos.</p>
+        )}
+        <div className="ml-auto flex shrink-0 items-center gap-2">
+          <ShareMenu />
+          <div className="w-56 @min-[68rem]:hidden">
+            <AgentAskButton compact />
+          </div>
         </div>
-      )}
+      </div>
     </div>
   );
 }
@@ -221,6 +228,6 @@ function FilterBarInner() {
  * No desktop, 80px: duas linhas (40px + 8px de respiro + 32px). O breakpoint é o mesmo de
  * `useMediaQuery("(min-width: 1024px)")`, o lg do Tailwind, então a troca não empurra o layout.
  */
-const barSkeleton = <div className="skeleton h-11 w-full lg:h-10" aria-hidden />;
+const barSkeleton = <div className="skeleton h-11 w-full lg:h-20" aria-hidden />;
 
 export default island(FilterBarInner, barSkeleton);
