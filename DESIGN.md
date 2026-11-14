@@ -105,8 +105,8 @@ components:
     rounded: "{rounded.card}"
     padding: "20px 20px 16px"
   ticket-action:
-    backgroundColor: "{colors.ink}"
-    textColor: "{colors.surface}"
+    backgroundColor: "{colors.ink} (claro) / #27131A com borda {colors.wine-raised} (escuro)"
+    textColor: "{colors.surface} (claro) / {colors.ink} (escuro)"
     rounded: "{rounded.card}"
     padding: "14px 16px"
   ticket-stub:
@@ -282,7 +282,7 @@ One panel node (`#agente`, `AgentDock`) holds the conversation at every width. I
 - **Sheet** (< 1024px): full-screen modal. The rest of the page is inert and does not scroll.
 
 Openers. Every opener prefills the question and never sends it; the operator reviews and presses Enviar.
-- **Agent ask field** (`AgentAskButton`) stays anchored at the right end of the filter bar's first row, after a 1px rule, from `lg` up (even when the dock opens). It is styled like a question field: wine (`series`) border, Bot icon, "Pergunte sobre este recorte…" in muted text and a `Ctrl K` / `⌘K` hint. Clicking it or pressing the shortcut toggles the panel. Typing a character while it is focused opens the panel with that character already in the input. When closed and narrower than 18rem it shrinks to "Agente" and keeps the shortcut from 8.5rem up. With the panel open it fills `sunken` and reads "Conversa aberta" (or "Aberta" below 12.5rem). Its status dot sits inside it. The shortcut works from anywhere and is ignored while another dialog is open.
+- **Agent ask field** (`AgentAskButton`) stays anchored at the right end of the filter bar's first row, after a 1px rule, from `lg` up (even when the dock opens). It is styled like a question field: wine (`series`) border, Bot icon, "Pergunte sobre este recorte…" in muted text and a `Ctrl K` / `⌘K` hint. Clicking it or pressing the shortcut toggles the panel. Typing a character while it is focused opens the panel with that character already in the input. When closed and narrower than 15rem it shrinks to "Agente" and keeps the shortcut from 8.5rem up. With the panel open it fills `sunken` and reads "Conversa aberta" (or "Aberta" below 11rem). Its status dot sits inside it. The shortcut works from anywhere and is ignored while another dialog is open.
 - **Perguntar** (`AskAgentButton`, ghost) as the last action of each chart and table panel, and in each comanda's footer beside the drill-down.
 - **Wine FAB** on mobile (see Buttons).
 

@@ -7,15 +7,16 @@ import { useStore } from "@nanostores/react";
 import { keepPreviousData, useInfiniteQuery } from "@tanstack/react-query";
 import { flexRender, getCoreRowModel, useReactTable, createColumnHelper } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { ArrowDown, ArrowUp } from "lucide-react";
+import { ArrowDown, ArrowUp, Filter, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { apiGet, type OrderRow } from "@/lib/api/client";
-import { $filters, $ready, toQuery } from "@/lib/filters";
+import { askAgentAbout } from "@/lib/agentBridge";
+import { $filters, $ready, applyDrilldown, toQuery } from "@/lib/filters";
 import { fmt, label } from "@/lib/format";
 import { STORE_NAMES_HINT } from "@/lib/glossary";
-import { gated, island, useApiGate } from "@/lib/query";
+import { gated, island, useApiGate, useMeta } from "@/lib/query";
 import { AskAgentButton } from "./ui/AskAgentButton";
-import { AsyncBody, PanelContent, panelFallback } from "./ui/Panel";
+import { AsyncBody, Empty, PanelContent, panelFallback } from "./ui/Panel";
 
 // Pergunta pela coluna de ordenação atual (ids de SORTABLE); "Resumo" é o fallback do agente.
 const ASK_BY_SORT: Record<string, string> = {
@@ -80,11 +81,11 @@ const columns = [
   }),
   col.accessor("cycle_min", {
     header: "Ciclo",
-    size: 86,
+    size: 104,
     cell: (c) =>
       c.row.original.on_time === false ? (
         <span className="inline-flex items-center gap-1 font-semibold text-ink" title="Fora do SLA">
-          <ArrowUp className="size-3" aria-hidden />
+          <ArrowUp className="size-3 shrink-0" aria-hidden />
           {fmt.min(c.getValue())}
           <span className="sr-only"> fora do SLA</span>
         </span>
@@ -92,16 +93,18 @@ const columns = [
         fmt.min(c.getValue())
       ),
   }),
-  col.accessor("production_min", { header: "Preparo", size: 78, cell: (c) => fmt.min(c.getValue()) }),
-  col.accessor("transit_min", { header: "Trânsito", size: 78, cell: (c) => fmt.min(c.getValue()) }),
-  col.accessor("distance_m", { header: "Distância", size: 80, cell: (c) => (c.getValue() === null ? "—" : fmt.km(c.getValue()! / 1000)) }),
+  col.accessor("production_min", { header: "Preparo", size: 88, cell: (c) => fmt.min(c.getValue()) }),
+  col.accessor("transit_min", { header: "Trânsito", size: 88, cell: (c) => fmt.min(c.getValue()) }),
+  col.accessor("distance_m", { header: "Distância", size: 88, cell: (c) => (c.getValue() === null ? "—" : fmt.km(c.getValue()! / 1000)) }),
 ];
 
 function OrdersTableInner() {
   const filters = useStore($filters);
   const ready = useStore($ready);
   const gate = useApiGate();
+  const meta = useMeta().data;
   const [sort, setSort] = useState<{ id: string; desc: boolean }>({ id: "created_at", desc: true });
+  const [selectedOrder, setSelectedOrder] = useState<OrderRow | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
 
   const pages = useInfiniteQuery({
@@ -135,10 +138,25 @@ function OrdersTableInner() {
     }
   }, [lastIndex, rows.length, query.hasNextPage, query.isFetchingNextPage, query.isFetchNextPageError, query.fetchNextPage]);
 
-  // recorte ou ordenação novos: volta ao topo
+  // recorte ou ordenação novos: volta ao topo e limpa a seleção
   useEffect(() => {
     scroller.current?.scrollTo({ top: 0 });
   }, [filters, sort]);
+
+  useEffect(() => {
+    setSelectedOrder(null);
+  }, [filters]);
+
+  const selectedHubId = selectedOrder
+    ? meta?.hubs.find((h) => h.label === selectedOrder.hub_name)?.value
+    : undefined;
+  const selectedStoreId = selectedOrder
+    ? meta?.stores.find(
+        (s) =>
+          s.label === selectedOrder.store_name &&
+          (selectedHubId === undefined || Number(s.parent) === Number(selectedHubId)),
+      )?.value ?? meta?.stores.find((s) => s.label === selectedOrder.store_name)?.value
+    : undefined;
 
   const width = table.getTotalSize();
 
@@ -146,8 +164,8 @@ function OrdersTableInner() {
     <PanelContent
       hint={
         query.data
-          ? `${fmt.int(total)} pedidos · ${fmt.int(rows.length)} carregados. Role para buscar mais; clique nos cabeçalhos para ordenar. ↑ fora do SLA ou do GMV (> R$ 5 mil). ${STORE_NAMES_HINT}`
-          : `Paginação e ordenação no servidor. ↑ fora do SLA ou do GMV (> R$ 5 mil). ${STORE_NAMES_HINT}`
+          ? `${fmt.int(total)} pedidos · ${fmt.int(rows.length)} carregados. Clique em um pedido para inspecionar; role para buscar mais e clique nos cabeçalhos para ordenar. ↑ fora do SLA ou do GMV (> R$ 5 mil). ${STORE_NAMES_HINT}`
+          : `Paginação e ordenação no servidor. Clique em um pedido para inspecionar. ↑ fora do SLA ou do GMV (> R$ 5 mil). ${STORE_NAMES_HINT}`
       }
       busy={query.isFetching && !query.isFetchingNextPage && Boolean(query.data)}
       actions={
@@ -165,7 +183,120 @@ function OrdersTableInner() {
         onRetry={() => query.refetch()}
         what="os pedidos"
         height={460}
+        empty={query.data && total === 0 ? <Empty>Sem pedidos neste recorte.</Empty> : null}
       >
+        {selectedOrder && (
+          <div
+            role="region"
+            aria-label={`Detalhes do pedido ${selectedOrder.order_id}`}
+            className="mb-3 rounded-card border border-rule bg-sunken/70 p-3.5 text-aux"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-rule pb-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="cond font-bold text-ink">Pedido #{selectedOrder.order_id}</span>
+                <span className="text-muted">{fmt.dateTime(selectedOrder.created_at)}</span>
+                <span
+                  className={`rounded-tick px-1.5 py-0.5 text-meta font-semibold ${
+                    selectedOrder.on_time === false
+                      ? "bg-crit-soft text-crit"
+                      : selectedOrder.status === "canceled"
+                        ? "bg-sunken-strong text-ink"
+                        : "bg-surface text-ink"
+                  }`}
+                >
+                  {selectedOrder.on_time === false
+                    ? "Fora do SLA"
+                    : selectedOrder.on_time === true
+                      ? "No prazo"
+                      : label(selectedOrder.status)}
+                </span>
+                <span className="text-muted">
+                  {label(selectedOrder.segment)} · {selectedOrder.channel} · {label(selectedOrder.modal)}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedOrder(null)}
+                aria-label="Fechar detalhes do pedido"
+                className="btn-ghost min-h-8 gap-1 px-2 py-1 text-meta max-lg:min-h-11"
+              >
+                <X className="size-3.5" aria-hidden /> Fechar
+              </button>
+            </div>
+            <dl className="mt-2.5 grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4 lg:grid-cols-6">
+              <div>
+                <dt className="text-meta text-muted">Cidade / Hub</dt>
+                <dd className="font-medium text-ink">
+                  {selectedOrder.city} · {selectedOrder.hub_name}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-meta text-muted">Loja</dt>
+                <dd className="font-medium text-ink">{selectedOrder.store_name}</dd>
+              </div>
+              <div>
+                <dt className="text-meta text-muted">Valor / Frete</dt>
+                <dd className="tabular-nums font-medium text-ink">
+                  {fmt.brl(selectedOrder.amount)} · frete {fmt.brl(selectedOrder.delivery_fee)}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-meta text-muted">Pagamento</dt>
+                <dd className="font-medium text-ink">{label(selectedOrder.payment_method)}</dd>
+              </div>
+              <div>
+                <dt className="text-meta text-muted">Ciclo (Preparo + Trânsito)</dt>
+                <dd className="tabular-nums font-medium text-ink">
+                  {fmt.min(selectedOrder.cycle_min)} ({fmt.min(selectedOrder.production_min)} +{" "}
+                  {fmt.min(selectedOrder.transit_min)})
+                </dd>
+              </div>
+              <div>
+                <dt className="text-meta text-muted">Distância</dt>
+                <dd className="tabular-nums font-medium text-ink">
+                  {selectedOrder.distance_m === null ? "—" : fmt.km(selectedOrder.distance_m / 1000)}
+                </dd>
+              </div>
+            </dl>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              {selectedHubId !== undefined && (
+                <button
+                  type="button"
+                  className="btn-ink min-h-8 gap-1.5 px-2.5 py-1 text-meta max-lg:min-h-11"
+                  onClick={() => applyDrilldown({ city: [selectedOrder.city], hub: [Number(selectedHubId)] })}
+                >
+                  <Filter className="size-3" aria-hidden /> Filtrar hub {selectedOrder.hub_name}
+                </button>
+              )}
+              {selectedStoreId !== undefined && (
+                <button
+                  type="button"
+                  className="btn-ghost min-h-8 gap-1.5 px-2.5 py-1 text-meta max-lg:min-h-11"
+                  onClick={() =>
+                    applyDrilldown({
+                      city: [selectedOrder.city],
+                      ...(selectedHubId !== undefined ? { hub: [Number(selectedHubId)] } : {}),
+                      store: [Number(selectedStoreId)],
+                    })
+                  }
+                >
+                  <Filter className="size-3" aria-hidden /> Filtrar loja {selectedOrder.store_name}
+                </button>
+              )}
+              <button
+                type="button"
+                className="btn-ghost min-h-8 px-2.5 py-1 text-meta max-lg:min-h-11"
+                onClick={() =>
+                  askAgentAbout(
+                    `Analise o pedido #${selectedOrder.order_id} na loja ${selectedOrder.store_name} (${selectedOrder.hub_name}, ${selectedOrder.city}), ciclo de ${fmt.min(selectedOrder.cycle_min)} e status ${label(selectedOrder.status).toLowerCase()}: é caso isolado ou padrão do recorte?`,
+                  )
+                }
+              >
+                Perguntar ao agente
+              </button>
+            </div>
+          </div>
+        )}
         <div ref={scroller} className="content-reveal relative h-[460px] min-w-0 overflow-auto rounded-tick border border-rule" role="region" aria-label="Tabela de pedidos" tabIndex={0}>
           <div style={{ width, minWidth: "100%" }} className="text-aux tabular-nums" role="table" aria-rowcount={total}>
             <div className="sticky top-0 z-20 flex border-b border-rule bg-sunken" role="row">
@@ -207,12 +338,26 @@ function OrdersTableInner() {
               {items.map((item) => {
                 const row = table.getRowModel().rows[item.index];
                 if (!row) return null;
+                const isSelected = selectedOrder?.order_id === row.original.order_id;
+                const toggleRow = () =>
+                  setSelectedOrder((prev) => (prev?.order_id === row.original.order_id ? null : row.original));
                 return (
                   <div
                     key={row.id}
                     role="row"
+                    tabIndex={0}
+                    aria-selected={isSelected}
                     aria-rowindex={item.index + 2}
-                    className="group/row absolute left-0 flex w-full border-b border-rule/50 transition-colors duration-(--duration-quick) hover:bg-sunken/60"
+                    onClick={toggleRow}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        toggleRow();
+                      }
+                    }}
+                    className={`group/row absolute left-0 flex w-full cursor-pointer border-b border-rule/50 transition-colors duration-(--duration-quick) ${
+                      isSelected ? "bg-sunken" : "hover:bg-sunken/60"
+                    }`}
                     style={{ height: ROW_H, transform: `translateY(${item.start}px)` }}
                   >
                     {row.getVisibleCells().map((cell) => {
@@ -225,7 +370,11 @@ function OrdersTableInner() {
                           style={{ width: cell.column.getSize() }}
                           className={`flex shrink-0 items-center px-2 ${
                             isNumeric ? "justify-end text-right tabular-nums" : ""
-                          } ${isPinned ? "sticky left-0 z-10 border-r border-rule bg-surface group-hover/row:bg-sunken" : ""}`}
+                          } ${
+                            isPinned
+                              ? `sticky left-0 z-10 border-r border-rule ${isSelected ? "bg-sunken" : "bg-surface group-hover/row:bg-sunken"}`
+                              : ""
+                          }`}
                         >
                           <span className="truncate">{flexRender(cell.column.columnDef.cell, cell.getContext())}</span>
                         </div>

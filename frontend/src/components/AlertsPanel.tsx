@@ -66,7 +66,7 @@ function TicketHead({
 }) {
   const s = SEVERITY[alert.severity];
   return (
-    <span className="cond flex items-center justify-between gap-3 text-meta font-bold">
+    <span className="cond flex items-center justify-between gap-2 text-meta font-bold sm:gap-3">
       <span className={`flex items-center gap-2 ${compact ? "shrink-0" : "min-w-0"}`}>
         <span className={`inline-block shrink-0 ${s.mark}`} aria-hidden />
         <span className={compact ? "whitespace-nowrap" : "truncate"}>
@@ -83,7 +83,7 @@ function TicketHead({
           <ChevronDown className="stub-chevron size-3.5 shrink-0" aria-hidden />
         </span>
       ) : (
-        <span className="flex shrink-0 items-center gap-3">
+        <span className="flex shrink-0 items-center gap-2 sm:gap-3">
           <span className={s.tone}>{s.label}</span>
           {action}
         </span>
@@ -184,7 +184,7 @@ function OpenBand({
     <article
       id={BAND_ID}
       aria-labelledby={`${BAND_ID}-title`}
-      className={`ticket mt-2 bg-surface px-5 pt-5 pb-4 ${MOTION_CLASS[motion]}`}
+      className={`ticket mt-2 bg-surface px-4 pt-5 pb-4 sm:px-5 ${MOTION_CLASS[motion]}`}
       style={printVars(index)}
     >
       <div className="border-b-[1.5px] border-dashed border-rule pb-2.5">
@@ -344,22 +344,22 @@ function AlertsSkeletonBody() {
           </div>
           <div className="skeleton h-4 w-16" />
         </div>
-        <div className="mt-3 grid gap-x-8 gap-y-3.5 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)] lg:grid-rows-[auto_1fr]">
-          <div className="min-w-0 lg:col-start-1 lg:row-start-1">
+        <div className="mt-3 grid gap-x-8 gap-y-3.5 @min-[48rem]:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)] @min-[48rem]:grid-rows-[auto_1fr]">
+          <div className="min-w-0 @min-[48rem]:col-start-1 @min-[48rem]:row-start-1">
             <div className="skeleton h-5 w-3/4 max-w-sm" />
             <div className="mt-2 space-y-1.5">
               <div className="skeleton h-4 w-full" />
               <div className="skeleton h-4 w-5/6" />
             </div>
           </div>
-          <div className="self-start rounded-card bg-sunken-strong/40 p-4 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:mt-0.5">
+          <div className="self-start rounded-card bg-sunken-strong/40 p-4 @min-[48rem]:col-start-2 @min-[48rem]:row-span-2 @min-[48rem]:row-start-1 @min-[48rem]:mt-0.5">
             <div className="skeleton h-3 w-12" />
             <div className="mt-2 space-y-1.5">
               <div className="skeleton h-4 w-full" />
               <div className="skeleton h-4 w-4/5" />
             </div>
           </div>
-          <div className="comanda-actions flex flex-wrap gap-2 self-start lg:col-start-1 lg:row-start-2">
+          <div className="comanda-actions flex flex-wrap gap-2 self-start @min-[48rem]:col-start-1 @min-[48rem]:row-start-2">
             <div className="skeleton h-9 w-28 rounded-card max-lg:h-11 max-lg:w-full max-lg:basis-full" />
             <div className="skeleton h-9 w-32 rounded-card max-lg:h-11 max-lg:w-36" />
             <div className="skeleton h-9 w-36 rounded-card max-lg:h-11 max-lg:w-40" />
@@ -441,7 +441,15 @@ function AlertsPanelInner() {
     }
     $evidence.set(
       open?.evidence && folding !== open.id
-        ? { alertId: open.id, number: num(openIndex), title: open.title, severity: open.severity, evidence: open.evidence }
+        ? {
+            alertId: open.id,
+            number: num(openIndex),
+            title: open.title,
+            severity: open.severity,
+            evidence: open.evidence,
+            detail: open.detail,
+            action: open.action,
+          }
         : null,
     );
   }, [agentOpen, open, openIndex, folding]);

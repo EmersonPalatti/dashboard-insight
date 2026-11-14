@@ -193,6 +193,10 @@ export function AgentConversation({ visible, onClose }: ConversationProps) {
   useLayoutEffect(() => {
     const el = inputRef.current;
     if (!el) return;
+    if (!input) {
+      el.style.height = "";
+      return;
+    }
     el.style.height = "auto";
     el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
   }, [input]);
@@ -336,15 +340,19 @@ export function AgentConversation({ visible, onClose }: ConversationProps) {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <header className="grid gap-2 border-b border-rule px-4 pt-3 pb-3">
+      <header className="grid gap-2 border-b border-rule px-3.5 pt-3 pb-3">
         <div className="flex items-center justify-between gap-2">
-          <h2 id="agent-title" className="section-title flex items-center gap-2">
-            <Bot className="size-4 text-series" aria-hidden /> Agente do recorte
+          <h2 id="agent-title" className="section-title flex min-w-0 items-center gap-1.5 whitespace-nowrap">
+            <Bot className="size-4 shrink-0 text-series" aria-hidden /> <span className="truncate">Agente do recorte</span>
           </h2>
-          <div className="flex items-center gap-1">
+          <div className="flex shrink-0 items-center gap-1">
             {messages.length > 0 && (
-              <button type="button" className="btn-ghost hit-target min-h-8 px-2.5 py-1 text-meta max-lg:min-h-11" onClick={wipe}>
-                <RotateCcw className="size-3.5" aria-hidden /> Nova conversa
+              <button
+                type="button"
+                className="btn-ghost hit-target min-h-8 shrink-0 gap-1 px-2 py-1 text-meta whitespace-nowrap max-lg:min-h-11"
+                onClick={wipe}
+              >
+                <RotateCcw className="size-3.5 shrink-0" aria-hidden /> Nova conversa
               </button>
             )}
             <button
@@ -491,7 +499,7 @@ export function AgentConversation({ visible, onClose }: ConversationProps) {
             send(input);
           }}
           placeholder="Pergunte sobre este recorte…"
-          className="max-h-40 min-h-11 w-full min-w-0 flex-1 resize-none overflow-y-auto rounded-card border border-rule bg-surface px-3 py-2 text-body outline-none placeholder:text-muted focus:border-ink lg:min-h-10"
+          className={`max-h-40 min-h-11 w-full min-w-0 flex-1 resize-none ${input ? "overflow-y-auto" : "overflow-y-hidden"} rounded-card border border-rule bg-surface px-3 py-2 text-body outline-none placeholder:truncate placeholder:text-muted focus:border-ink lg:min-h-10`}
         />
         <button type="submit" className="btn-ink justify-center max-lg:min-h-11 max-lg:min-w-11 lg:h-10 lg:px-3.5" disabled={!input.trim() || phase !== "idle"} aria-label="Enviar">
           <SendHorizontal className="size-4" aria-hidden />

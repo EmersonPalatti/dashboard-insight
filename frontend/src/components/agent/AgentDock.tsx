@@ -26,8 +26,8 @@ function AgentLoadingState({ onClose }: { onClose: () => void }) {
     <div className="flex h-full min-h-0 flex-col" aria-busy="true">
       <header className="grid gap-2 border-b border-rule px-4 pt-3 pb-3">
         <div className="flex items-center justify-between gap-2">
-          <h2 id="agent-title" className="section-title flex items-center gap-2">
-            <Bot className="size-4 text-series" aria-hidden /> Agente do recorte
+          <h2 id="agent-title" className="section-title flex min-w-0 items-center gap-1.5 whitespace-nowrap">
+            <Bot className="size-4 shrink-0 text-series" aria-hidden /> <span className="truncate">Agente do recorte</span>
           </h2>
           <button
             type="button"

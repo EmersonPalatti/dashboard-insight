@@ -76,14 +76,14 @@ export function AgentAskButton({ compact = false }: { compact?: boolean }) {
       <Bot className="size-4 shrink-0 text-series" aria-hidden />
       {open ? (
         <>
-          <span className="min-w-0 flex-1 truncate font-medium text-ink @min-[12.5rem]/ask:hidden">Aberta</span>
-          <span className="hidden min-w-0 flex-1 truncate font-medium text-ink @min-[12.5rem]/ask:inline">Conversa aberta</span>
+          <span className="min-w-0 flex-1 truncate font-medium text-ink @min-[11rem]/ask:hidden">Aberta</span>
+          <span className="hidden min-w-0 flex-1 truncate font-medium text-ink @min-[11rem]/ask:inline">Conversa aberta</span>
         </>
       ) : (
         <>
-          {/* o slot estreito (a barra cedeu a largura ao lugar) mostra "Agente"; 18rem+ de miolo: o convite */}
-          <span className="min-w-fit flex-1 font-medium text-ink @min-[18rem]/ask:hidden">Agente</span>
-          <span className="hidden min-w-0 flex-1 truncate text-muted @min-[18rem]/ask:inline">
+          {/* o slot estreito (a barra cedeu a largura ao lugar) mostra "Agente"; 15rem+ de miolo: o convite */}
+          <span className="min-w-fit flex-1 font-medium text-ink @min-[15rem]/ask:hidden">Agente</span>
+          <span className="hidden min-w-0 flex-1 truncate text-muted @min-[15rem]/ask:inline">
             Pergunte sobre este recorte…
           </span>
         </>

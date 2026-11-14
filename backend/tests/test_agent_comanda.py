@@ -238,3 +238,29 @@ def test_local_engine_keeps_the_body_limits(client):
         },
     )
     assert response.status_code == 422
+
+
+def test_llm_severity_is_translated_to_pt_br(client, monkeypatch):
+    payload = (
+        "Os 2 alertas high mostram queda no SLA (high) e atraso medium.\n\n"
+        "**Ação:** Líder do hub deve revisar os alertas high hoje.\n\n"
+        "```leitura\n"
+        '{"title":"Alertas high no hub","diagnosis":"Dois alertas high e um alerta medium ativos.",'
+        '"action":"Líder deve tratar os alertas high agora.","drilldowns":[]}\n'
+        "```"
+    )
+    _install(monkeypatch, payload)
+    client.app.dependency_overrides[get_settings] = lambda: Settings(
+        openrouter_api_key="test-key", chat_rate_limit_enabled=False
+    )
+    try:
+        body = client.post("/api/agent/chat", json={"question": "quais os alertas?"}).json()
+        assert body["source"] == "llm"
+        assert "alertas críticos" in body["answer"]
+        assert "(crítico)" in body["answer"]
+        assert body["title"] == "Alertas críticos no hub"
+        assert "alertas críticos" in body["diagnosis"]
+        assert "alerta em atenção" in body["diagnosis"]
+        assert "alertas críticos" in body["action"]
+    finally:
+        client.app.dependency_overrides.pop(get_settings, None)

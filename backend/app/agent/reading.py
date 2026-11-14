@@ -39,6 +39,30 @@ _TOOL_LABEL = {
 }
 _FENCE = re.compile(r"```(?:leitura|json)?[^\n]*\n(\{.*?\})\s*```", re.DOTALL)
 _MARKS = re.compile(r"[*_#`]")
+_SEVERITY_PT = [
+    (re.compile(r"\balertas\s+high\b", re.IGNORECASE), "alertas críticos"),
+    (re.compile(r"\balerta\s+high\b", re.IGNORECASE), "alerta crítico"),
+    (re.compile(r"\bseveridade\s+high\b", re.IGNORECASE), "severidade crítica"),
+    (re.compile(r"\balertas\s+medium\b", re.IGNORECASE), "alertas em atenção"),
+    (re.compile(r"\balerta\s+medium\b", re.IGNORECASE), "alerta em atenção"),
+    (re.compile(r"\bseveridade\s+medium\b", re.IGNORECASE), "severidade média"),
+    (re.compile(r"\balertas\s+low\b", re.IGNORECASE), "alertas para observar"),
+    (re.compile(r"\balerta\s+low\b", re.IGNORECASE), "alerta para observar"),
+    (re.compile(r"\bseveridade\s+low\b", re.IGNORECASE), "severidade baixa"),
+    (re.compile(r"\(\s*high\s*\)", re.IGNORECASE), "(crítico)"),
+    (re.compile(r"\(\s*medium\s*\)", re.IGNORECASE), "(em atenção)"),
+    (re.compile(r"\(\s*low\s*\)", re.IGNORECASE), "(observar)"),
+]
+
+
+def _pt_severity(text: str) -> str:
+    """Troca rótulos em inglês de severidade (`high`/`medium`/`low`) por pt-BR."""
+    for pattern, repl in _SEVERITY_PT:
+        text = pattern.sub(
+            lambda m, r=repl: (r[0].upper() + r[1:]) if m.group(0)[0].isupper() else r,
+            text,
+        )
+    return text
 
 
 @dataclass
@@ -308,8 +332,9 @@ def response_llm(
 ) -> ChatResponse:
     """Fecha a comanda do modelo. Sem JSON válido, usa o texto e os atalhos das regras."""
     parsed = parse_leitura(text)
+    clean_text = _pt_severity(text)
     if parsed is None:
-        diagnosis, action = split_markdown(text)
+        diagnosis, action = split_markdown(clean_text)
         if not action:
             fallback = response_local(local)
             return fallback.model_copy(update={"answer": local.answer})
@@ -317,13 +342,13 @@ def response_llm(
         title = clip_title(diagnosis) if diagnosis else local.title
         diagnosis = diagnosis or local.diagnosis
     else:
-        title = parsed.title
-        diagnosis = parsed.diagnosis
-        action = parsed.action
+        title = _pt_severity(parsed.title)[:_TITLE_CAP]
+        diagnosis = _pt_severity(parsed.diagnosis)
+        action = _pt_severity(parsed.action)
         validated = validate_drilldowns(repo, filters, parsed.drilldowns)
         drills = local.drilldowns if not parsed.sent_drilldowns else validated
     return ChatResponse(
-        answer=text,
+        answer=clean_text,
         mode=mode,  # type: ignore[arg-type]
         model=model,
         tools_used=list(tools_used),

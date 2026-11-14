@@ -93,9 +93,9 @@
   --series-deep: #f4b8cb;
   /* Ainda o degrau mais escuro da rampa, claro o bastante para 3:1 sobre a superfície. */
   --series-soft: #a3516c;
-  /* Âncora da comanda: papel invertido (#ececec) no escuro para manter o vermelho exclusivo do estado crítico. */
-  --action: #ececec;
-  --on-action: #111111;
+  /* Âncora da comanda: no escuro usa vinho profundo elevado com borda para destacar sem ofuscar o botão crítico (#ff5d50). */
+  --action: #27131a;
+  --on-action: #f2f2f2;
   color-scheme: dark;
 }
 
@@ -395,6 +395,10 @@ button.ticket:focus-visible {
 .action-block {
   background-color: var(--action);
   color: var(--on-action);
+}
+
+:root[data-theme="dark"] .action-block {
+  border: 1px solid var(--wine-raised);
 }
 
 /* Atalho de teclado dos gráficos: some até receber foco, aí vira um botão.
