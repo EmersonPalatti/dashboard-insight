@@ -7,7 +7,7 @@ import { fmt } from "@/lib/format";
 import { STORE_NAMES_HINT } from "@/lib/glossary";
 import { island, useRecorteQuery } from "@/lib/query";
 import { ScatterChart } from "echarts/charts";
-import { BrushComponent } from "echarts/components";
+import { BrushComponent, ToolboxComponent } from "echarts/components";
 import * as echarts from "echarts/core";
 import { ChartAccess, openStoreRanking } from "./charts/ChartAccess";
 import { EChart, type ECInstance, type Tokens } from "./charts/EChart";
@@ -16,7 +16,7 @@ import { EvidenceTag, useEvidence } from "./ui/EvidenceTag";
 import { AsyncBody, Empty, panelFallback, PanelContent, Segmented } from "./ui/Panel";
 
 // Módulos deste gráfico: dispersão, caixa de seleção (brush) e barra de ferramentas que a abriga.
-echarts.use([ScatterChart, BrushComponent]);
+echarts.use([ScatterChart, BrushComponent, ToolboxComponent]);
 
 /** Altura do gráfico e do skeleton. A barra de lojas selecionadas abaixo só aparece após uma seleção do usuário. */
 const CHART_H = 340;
@@ -90,6 +90,7 @@ function StoreScatterInner() {
   const option = useCallback(
     (t: Tokens) => ({
       grid: { left: 56, right: 20, top: 20, bottom: 44 },
+      toolbox: { show: false },
       brush: {
         toolbox: [],
         xAxisIndex: 0,
@@ -209,6 +210,18 @@ function StoreScatterInner() {
           <ChartAccess
             summary={summary}
             items={[
+              ...[...rows]
+                .filter((r) => r.key != null)
+                .sort((a, b) => {
+                  if (y === "sla_rate") return ((a.sla_rate ?? 1) - (b.sla_rate ?? 1)) || b.orders - a.orders;
+                  return ((b[y] as number) - (a[y] as number)) || b.orders - a.orders;
+                })
+                .slice(0, 3)
+                .map((r) => ({
+                  key: String(r.key),
+                  label: `Filtrar ${r.label} (${Y_AXIS[y].format(r[y] as number)}, ${fmt.int(r.orders)} ped.)`,
+                  onSelect: () => patchFilters({ store: [Number(r.key)] }),
+                })),
               {
                 key: "ranking",
                 label: "Filtrar uma loja no ranking, em Lojas",

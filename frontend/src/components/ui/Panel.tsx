@@ -156,18 +156,14 @@ export function AsyncBody({
     );
   }
   if (empty) {
-    return (
-      <div className="flex items-center justify-center" style={{ minHeight: height }}>
-        {empty}
-      </div>
-    );
+    return <div className="flex items-center justify-center py-2">{empty}</div>;
   }
   return children;
 }
 
 export function Empty({ children = "Sem dados no recorte." }: { children?: ReactNode }) {
   return (
-    <div className="label flex min-h-32 items-center justify-center text-center transition-opacity duration-(--duration-fast) starting:opacity-0 motion-reduce:transition-none">
+    <div className="label flex min-h-20 items-center justify-center text-center transition-opacity duration-(--duration-fast) starting:opacity-0 motion-reduce:transition-none">
       {children}
     </div>
   );
@@ -285,7 +281,7 @@ export function Segmented<T extends string>({ value, options, onChange, label }:
             tabIndex={i === tabStop ? 0 : -1}
             onClick={() => onChange(o.value)}
             onKeyDown={(e) => onArrowKey(e, i)}
-            className={`relative z-[1] rounded-t-[4px] border-b-2 border-transparent px-2.5 py-1 text-aux max-lg:min-h-11 max-lg:min-w-11 transition-colors duration-(--duration-quick) ${
+            className={`relative z-[1] rounded-t-[4px] border-b-2 border-transparent px-2 py-1 text-aux whitespace-nowrap sm:px-2.5 max-lg:min-h-11 max-lg:min-w-11 transition-colors duration-(--duration-quick) ${
               checked ? "font-medium text-ink" : "text-muted hover:text-ink"
             }`}
           >

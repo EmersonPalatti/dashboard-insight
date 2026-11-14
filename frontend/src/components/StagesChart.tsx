@@ -85,7 +85,7 @@ function StagesChartInner() {
           axisPointer: { type: "shadow" },
           valueFormatter: (v: number) => fmt.min(v),
         },
-        xAxis: { type: "value", axisLabel: { formatter: (v: number) => `${v} min` } },
+        xAxis: { type: "value", splitNumber: 4, axisLabel: { hideOverlap: true, formatter: (v: number) => (v === 0 ? "0" : `${v} min`) } },
         yAxis: {
           type: "category",
           data: rows.map((r) => r.label),

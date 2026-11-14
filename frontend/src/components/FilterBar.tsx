@@ -33,12 +33,12 @@ const preloadExportDialog = () => void loadExportDialog().catch(() => {});
 function DesktopBar({ m }: { m: FilterModel }) {
   return (
     <div className="@container flex min-w-0 flex-col gap-2">
-      <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2 @min-[75rem]:flex-nowrap @min-[75rem]:gap-x-4">
+      <div className="flex min-w-0 flex-nowrap items-center gap-x-2.5 @min-[75rem]:gap-x-4">
         <div className="shrink-0">
           <PeriodFields m={m} />
         </div>
         {/* Row 1 prioriza período e selects de recorte; Compartilhar fica na linha 2 */}
-        <div className="flex min-w-[18.5rem] flex-1 items-center gap-2">
+        <div className="flex min-w-0 flex-1 items-center gap-2">
           <div className="grid min-w-0 flex-1 grid-cols-3 gap-2">
             <PlaceFields m={m} />
           </div>
@@ -49,7 +49,7 @@ function DesktopBar({ m }: { m: FilterModel }) {
           </div>
         </div>
         {/* último da linha em telas largas: fica acima do canto onde o painel abre */}
-        <div className="hidden min-w-[11rem] max-w-[20rem] flex-[0_4_19rem] border-l border-rule pl-3 @min-[68rem]:flex @min-[75rem]:pl-4">
+        <div className="flex min-w-[9.5rem] max-w-[21rem] flex-[0_2_20.5rem] border-l border-rule pl-2.5 @min-[75rem]:pl-4">
           <AgentAskButton />
         </div>
       </div>
@@ -73,9 +73,6 @@ function DesktopBar({ m }: { m: FilterModel }) {
         )}
         <div className="ml-auto flex shrink-0 items-center gap-2">
           <ShareMenu />
-          <div className="w-56 @min-[68rem]:hidden">
-            <AgentAskButton compact />
-          </div>
         </div>
       </div>
     </div>

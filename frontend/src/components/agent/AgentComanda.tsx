@@ -32,9 +32,9 @@ function DrillButtons({ ticket, primary }: { ticket: AgentTicket; primary: boole
 }
 
 /** Resume leituras longas (ex.: lista de todos os alertas) para caberem sem dominar o dock. */
-function isLongComanda(detail: string, action: string): boolean {
+function isLongComanda(detail: string): boolean {
   const lines = detail.split("\n").filter((l) => l.trim().length > 0);
-  return detail.length > 150 || action.length > 150 || lines.length > 2;
+  return detail.length > 150 || lines.length > 2;
 }
 
 /** Comanda dentro da conversa. Usa cartão com borda (.tile); o picote fica reservado à fila. */
@@ -50,7 +50,7 @@ export function AgentChatComanda({
   onCancel: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const collapsible = isLongComanda(ticket.detail, ticket.action);
+  const collapsible = isLongComanda(ticket.detail);
   const clamped = collapsible && !expanded;
   const note = waiting ? "Leitura pelas regras. Aprofundando com o modelo…" : readingNote(ticket.status, ticket.toolLabels);
   return (
@@ -70,7 +70,7 @@ export function AgentChatComanda({
       </div>
       <div className="mt-2.5 action-block rounded-card px-3 py-2">
         <p className="text-aux font-semibold opacity-70">Ação</p>
-        <p className={`mt-1 text-body leading-snug text-pretty ${clamped ? "line-clamp-3" : ""}`}>{ticket.action}</p>
+        <p className="mt-1 text-body leading-snug text-pretty">{ticket.action}</p>
       </div>
       {collapsible && (
         <button
@@ -202,7 +202,7 @@ export function AgentOpenBand({
     <article
       id="comanda-aberta"
       aria-labelledby="comanda-aberta-title"
-      className={`ticket mt-2 bg-surface px-5 pt-5 pb-4 ${motion}`}
+      className={`ticket mt-2 bg-surface px-4 pt-5 pb-4 sm:px-5 ${motion}`}
       style={{ "--i": 0 } as CSSProperties}
     >
       <div className="border-b-[1.5px] border-dashed border-rule pb-2.5">
@@ -227,8 +227,8 @@ export function AgentOpenBand({
           </span>
         </span>
       </div>
-      <div className="mt-3 grid gap-x-8 gap-y-3.5 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)] lg:grid-rows-[auto_1fr]">
-        <div className="min-w-0 lg:col-start-1 lg:row-start-1">
+      <div className="mt-3 grid gap-x-8 gap-y-3.5 @min-[48rem]:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)] @min-[48rem]:grid-rows-[auto_1fr]">
+        <div className="min-w-0 @min-[48rem]:col-start-1 @min-[48rem]:row-start-1">
           {stale && <p className="mb-1.5 text-meta text-muted">Recorte mudou</p>}
           <h3 id="comanda-aberta-title" ref={titleRef} tabIndex={-1} className="text-lead leading-snug font-semibold text-balance">
             {ticket.title}
@@ -237,11 +237,11 @@ export function AgentOpenBand({
             <Markdown text={ticket.detail} />
           </div>
         </div>
-        <div className="self-start action-block rounded-card px-4 py-3.5 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:mt-0.5">
+        <div className="self-start action-block rounded-card px-4 py-3.5 @min-[48rem]:col-start-2 @min-[48rem]:row-span-2 @min-[48rem]:row-start-1 @min-[48rem]:mt-0.5">
           <p className="text-aux font-semibold opacity-70">Ação</p>
           <p className="mt-1 text-body leading-snug text-pretty">{ticket.action}</p>
         </div>
-        <div className="min-w-0 self-start lg:col-start-1 lg:row-start-2">
+        <div className="min-w-0 self-start @min-[48rem]:col-start-1 @min-[48rem]:row-start-2">
           <div className="comanda-actions no-print flex flex-wrap gap-2">
             <DrillButtons ticket={ticket} primary />
             <button type="button" className="btn-ghost max-lg:min-h-11 lg:min-h-9" onClick={() => dismissAgentComanda(ticket.id)}>

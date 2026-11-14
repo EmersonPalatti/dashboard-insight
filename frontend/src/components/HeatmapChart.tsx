@@ -89,11 +89,12 @@ function HeatmapChartInner() {
           axisLabel: peak.size
             ? {
                 interval: 0,
+                hideOverlap: true,
                 // com horas marcadas, todas aparecem: as da comanda em tinta, as outras só nas pares
                 formatter: (v: string, i: number) => (peak.has(i) ? `{hl|${v}}` : i % 2 === 0 ? v : ""),
                 rich: { hl: { color: t.ink, fontWeight: "bold" } },
               }
-            : { interval: 1 },
+            : { interval: 1, hideOverlap: true },
         },
         yAxis: { type: "category", data: WEEKDAYS, inverse: true, splitLine: { show: false }, axisLine: { show: false } },
         visualMap: {
@@ -105,9 +106,16 @@ function HeatmapChartInner() {
           orient: "horizontal",
           left: "center",
           bottom: 4,
-          itemHeight: 140,
+          itemHeight: 110,
           itemWidth: 10,
-          text: m.worseIsHigh ? ["alto", "baixo"] : ["melhor", "pior"],
+          text:
+            nums.length > 0
+              ? m.worseIsHigh
+                ? [`alto (${m.format(hi)})`, `baixo (${m.format(lo)})`]
+                : [`melhor (${m.format(hi)})`, `pior (${m.format(lo)})`]
+              : m.worseIsHigh
+                ? ["alto", "baixo"]
+                : ["melhor", "pior"],
           textStyle: { color: t.muted },
           formatter: (v: number) => m.format(v),
           inRange: { color: m.worseIsHigh ? scale : [...scale].reverse() },

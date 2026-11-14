@@ -14,6 +14,8 @@ export interface FocusedEvidence {
   title: string;
   severity: Alert["severity"];
   evidence: Evidence;
+  detail?: string;
+  action?: string;
 }
 
 export const $evidence = atom<FocusedEvidence | null>(null);
