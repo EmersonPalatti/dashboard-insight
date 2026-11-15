@@ -14,7 +14,7 @@ Roda sobre **368.990 pedidos reais** do dataset [Delivery Center](https://www.ka
 
 Um minuto mostrando o painel: comanda aberta, investigação, KPIs, agente e o briefing no Telegram. Clique na capa para assistir.
 
-<a href="assets/video-linkedin.mp4"><img src="assets/video-capa.png" alt="Capa do vídeo: Comanda Nº 01, hub lento Color Shopping, com o problema, o número e a ação" width="360"></a>
+<a href="video/out/linkedin.mp4"><img src="video/out/capa.png" alt="Capa do vídeo: Comanda Nº 01, hub lento Color Shopping, com o problema, o número e a ação" width="360"></a>
 
 O vídeo tem 58 s, sem áudio, em 1080 × 1350, e foi feito em código com [Remotion](https://www.remotion.dev/), recriando a interface do painel. Roteiro: [video/roteiro-linkedin.md](video/roteiro-linkedin.md). Como renderizar e editar: [video/remotion/README.md](video/remotion/README.md).
 

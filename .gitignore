@@ -35,5 +35,7 @@ Thumbs.db
 # Spill do DuckDB (nunca versionar)
 .tmp/
 
-# Vídeo do LinkedIn: MP4, capa e quadros de conferência (regeneráveis com npm run render / capa)
-video/out/
+# Vídeo do LinkedIn: MP4 e capa são versionados; quadros de conferência não
+video/out/*
+!video/out/linkedin.mp4
+!video/out/capa.png

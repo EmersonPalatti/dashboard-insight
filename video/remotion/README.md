@@ -13,7 +13,7 @@ npm run capa      # ../out/capa.png (frame 0:19, comanda Nº 01 aberta)
 npm run lint      # eslint + tsc
 ```
 
-`video/out/` não é versionado: o MP4 e a capa saem dos comandos acima.
+`out/linkedin.mp4` e `out/capa.png` são versionados: depois de `npm run render` ou `npm run capa`, faça o commit da versão nova. Os quadros de conferência (`out/check/`, `out/seams/`) ficam fora do git.
 
 ## Estrutura
 
