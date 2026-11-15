@@ -33,20 +33,23 @@ export const EVIDENCE_ANCHOR: Record<Exclude<Evidence["view"], "kpi">, { id: str
   scatter: { id: "grafico-lojas", label: "Ver no gráfico de lojas" },
 };
 
-/** Leva a tela até o gráfico da evidência e põe o foco nele (sem segundo salto de rolagem). */
+/** Leva a tela até o gráfico da evidência e põe o foco nele. */
 export function showEvidence(view: Evidence["view"]) {
   if (view === "kpi" || typeof document === "undefined") return;
   const el = document.getElementById(EVIDENCE_ANCHOR[view].id);
   if (!el) return;
+  const body = el.querySelector<HTMLElement>("[data-panel-body]");
+  if (body?.hasAttribute("hidden")) {
+    const toggle = el.querySelector<HTMLButtonElement>("[data-panel-toggle]");
+    if (toggle && !toggle.closest("[hidden]")) {
+      toggle.click();
+    } else {
+      body.removeAttribute("hidden");
+      toggle?.setAttribute("aria-expanded", "true");
+      el.querySelector("section.panel-frame")?.setAttribute("data-panel-open", "true");
+    }
+  }
   const reduce = prefersReducedMotion();
   el.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
   el.focus({ preventScroll: true });
-  // Os gráficos no caminho hidratam enquanto a página rola e mudam de altura: o alvo sai do lugar.
-  // No fim da rolagem, um acerto sem animação devolve o gráfico ao topo (abaixo da barra de filtros).
-  const settle = () => {
-    const margin = parseFloat(getComputedStyle(el).scrollMarginTop) || 0;
-    if (Math.abs(el.getBoundingClientRect().top - margin) > 8) el.scrollIntoView({ behavior: "auto", block: "start" });
-  };
-  if ("onscrollend" in window) window.addEventListener("scrollend", settle, { once: true });
-  else setTimeout(settle, 900);
 }

@@ -228,6 +228,10 @@ export interface components {
             category: "sla" | "cancelamento" | "loja" | "frota" | "dados" | "volume" | "custo";
             /** Title */
             title: string;
+            /** Figure */
+            figure?: string | null;
+            /** Figure Ref */
+            figure_ref?: string | null;
             /** Detail */
             detail: string;
             /** Action */

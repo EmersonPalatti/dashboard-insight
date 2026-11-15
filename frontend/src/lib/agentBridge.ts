@@ -7,7 +7,6 @@
  *  - $agentActivity: o que o botão de abrir mostra com o painel fechado.
  */
 import { atom, computed } from "nanostores";
-import { $filters } from "./filters";
 
 /** Pergunta pendente para o campo do agente; `null` quando já foi consumida. */
 export const $agentDraft = atom<string | null>(null);
@@ -98,13 +97,12 @@ export function comandasForRecorte(tickets: readonly AgentTicket[], scope: strin
   return tickets.filter((ticket) => ticket.scope === scope);
 }
 
-export const $railAgentComandas = computed([$agentComandas, $filters], (tickets, filters) =>
-  comandasForRecorte(tickets, scopeKey(filters)),
-);
+/** Comandas do agente fixadas na fila. As de outro recorte aparecem marcadas como desatualizadas. */
+export const $railAgentComandas = computed($agentComandas, (tickets) => tickets);
 
-/** Alertas da API mais comandas do agente que ainda são deste recorte. */
-export function openComandaCount(alertCount: number, agentOnRecorte: number): number {
-  return alertCount + agentOnRecorte;
+/** Alertas da API mais comandas do agente fixadas na fila. */
+export function openComandaCount(alertCount: number, agentOnRail: number): number {
+  return alertCount + agentOnRail;
 }
 
 function setAgentComandaOnRail(id: string, onRail: boolean) {

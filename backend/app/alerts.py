@@ -341,6 +341,8 @@ def _detect(repo: Repository, f: Filters) -> list[Alert]:
             severity="low" if thin_sla else ("high" if sla_level == "critical" else "medium"),
             category="sla",
             title="Entregas fora do prazo",
+            figure=f"{fmt.pct(sla)} no SLA",
+            figure_ref=f"meta {fmt.pct(SLA_WARN, 0)}",
             detail=detail + (f" Recorte com amostra pequena ({base['measured']} pedidos medidos)." if thin_sla else ""),
             action=thin_sla_action if thin_sla else _sla_action(base, hubs, peak),
             evidence=Evidence(view="kpi", kpi="sla_rate"),
@@ -367,6 +369,8 @@ def _detect(repo: Repository, f: Filters) -> list[Alert]:
             severity="high" if sla_band(hub["sla_rate"]) == "critical" else "medium",
             category="sla",
             title=f"Hub lento: {hub['label']}",
+            figure=f"{fmt.pct(hub['sla_rate'])} no SLA",
+            figure_ref=f"recorte {fmt.pct(sla)}",
             detail=(
                 f"SLA de {fmt.pct(hub['sla_rate'])} contra {fmt.pct(sla)} do recorte em "
                 f"{fmt.integer(hub['delivered'])} entregas. {stage_text}"
@@ -392,6 +396,8 @@ def _detect(repo: Repository, f: Filters) -> list[Alert]:
             severity="low" if thin_cancel else ("high" if cancel_level == "critical" else "medium"),
             category="cancelamento",
             title="Cancelamento acima do teto",
+            figure=f"{fmt.pct(cancel)} cancel.",
+            figure_ref=f"teto {fmt.pct(CANCEL_WARN, 0)}",
             detail=(
                 f"{fmt.pct(cancel)} dos pedidos cancelados (teto interno {fmt.pct(CANCEL_WARN, 0)}).{where}"
                 + (f" Recorte com amostra pequena ({base['orders']} pedidos no total)." if thin_cancel else "")
@@ -415,6 +421,8 @@ def _detect(repo: Repository, f: Filters) -> list[Alert]:
                 severity="medium",
                 category="cancelamento",
                 title=f"Cancelamento fora da curva: {hub['label']}",
+                figure=f"{fmt.pct(hub['cancel_rate'])} cancel.",
+                figure_ref=f"recorte {fmt.pct(cancel)}",
                 detail=(
                     f"{fmt.pct(hub['cancel_rate'])} de cancelamento ({_times(hub['cancel_rate'] / cancel)} o recorte) "
                     f"em {fmt.integer(hub['orders'])} pedidos, {fmt.integer(hub['canceled'])} cancelados."
@@ -439,12 +447,22 @@ def _detect(repo: Repository, f: Filters) -> list[Alert]:
         relative.sort(key=lambda s: -s["canceled"])
         critical.extend(relative[: 2 - len(critical)])
     for store in critical:
-        broken = (store["cancel_rate"] or 0) >= BROKEN_CANCEL
+        store_cancel = store["cancel_rate"] or 0.0
+        broken = store_cancel >= BROKEN_CANCEL
+        if broken:
+            rate_str = fmt.pct(store_cancel, 0) if store_cancel >= 0.9995 else fmt.pct(store_cancel)
+            store_figure = f"{rate_str} cancelado"
+            store_figure_ref = None
+        else:
+            store_figure = f"{fmt.pct(store_cancel)} cancel."
+            store_figure_ref = f"recorte {fmt.pct(cancel)}" if cancel > 0 else None
         alerts.append(Alert(
             id=f"cancel-store-{store['key']}",
             severity="high" if store["cancel_rate"] >= 0.15 else "medium",
             category="loja",
             title=f"{'Loja sem entregas' if broken else 'Loja crítica'}: {store['label']}",
+            figure=store_figure,
+            figure_ref=store_figure_ref,
             detail=(
                 f"{fmt.integer(store['canceled'])} cancelamentos em {fmt.integer(store['orders'])} pedidos "
                 f"({fmt.pct(store['cancel_rate'])}) no hub {store['parent']}."
@@ -473,6 +491,8 @@ def _detect(repo: Repository, f: Filters) -> list[Alert]:
                     severity="low" if thin_sla else "medium",
                     category="frota",
                     title="SLA cai no horário de pico",
+                    figure=f"{fmt.pct(peak_sla)} no pico",
+                    figure_ref=f"fora do pico {fmt.pct(off_sla)}",
                     detail=(
                         f"No pico ({_hours_label(peak)}), {fmt.pct(peak_sla)} dos pedidos no prazo contra "
                         f"{fmt.pct(off_sla)} fora dele ({fmt.pp(peak_sla - off_sla)})."
@@ -502,6 +522,8 @@ def _detect(repo: Repository, f: Filters) -> list[Alert]:
             severity="medium",
             category="dados",
             title="Pedidos presos no fluxo",
+            figure=f"{fmt.integer(stuck_n)} presos",
+            figure_ref=f"{fmt.pct(stuck)} (> 4h)",
             detail=(
                 f"{fmt.integer(stuck_n)} entregas ({fmt.pct(stuck)}) com ciclo acima de 4h"
                 + (f"; pior hub: {hub['label']} com {fmt.pct(hub['stuck_rate'])}." if hub else ".")
@@ -533,6 +555,8 @@ def _detect(repo: Repository, f: Filters) -> list[Alert]:
                     severity="medium",
                     category="volume",
                     title="Queda de volume na última semana",
+                    figure=f"−{fmt.pct(abs(change), 0)} pedidos",
+                    figure_ref=f"antes {fmt.integer(prev['orders'])}",
                     detail=(
                         f"{fmt.integer(last['orders'])} pedidos nos últimos 7 dias contra "
                         f"{fmt.integer(prev['orders'])} na semana anterior ({fmt.pct(change)})."
@@ -549,6 +573,8 @@ def _detect(repo: Repository, f: Filters) -> list[Alert]:
             severity="low",
             category="custo",
             title="Custo logístico acima do frete cobrado",
+            figure=f"{fmt.brl(subsidy)} subsídio",
+            figure_ref=f"teto {fmt.brl(SUBSIDY_WARN)}",
             detail=(
                 f"Cada entrega custa {fmt.brl(base['cost_avg'])} e cobra {fmt.brl(base['fee_avg'])} de frete: "
                 f"{fmt.brl(subsidy)} de subsídio por pedido."

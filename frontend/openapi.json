@@ -1948,6 +1948,28 @@
             "type": "string",
             "title": "Title"
           },
+          "figure": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Figure"
+          },
+          "figure_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Figure Ref"
+          },
           "detail": {
             "type": "string",
             "title": "Detail"

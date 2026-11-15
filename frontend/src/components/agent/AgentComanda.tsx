@@ -206,15 +206,15 @@ export function AgentOpenBand({
       style={{ "--i": 0 } as CSSProperties}
     >
       <div className="border-b-[1.5px] border-dashed border-rule pb-2.5">
-        <span className="cond flex items-center justify-between gap-3 text-meta font-bold">
+        <span className="cond flex items-center justify-between gap-2 text-meta font-bold sm:gap-3">
           <span className="flex min-w-0 items-center gap-2">
             <span className={`inline-block shrink-0 ${MARK}`} aria-hidden />
             <span className="truncate">
               {agentStamp(ticket.series)} · Agente
             </span>
           </span>
-          <span className="flex shrink-0 items-center gap-3">
-            <span className="text-series">Agente</span>
+          <span className="flex shrink-0 items-center gap-2 sm:gap-3">
+            {stale && <span className="text-muted">Recorte mudou</span>}
             <button
               type="button"
               aria-expanded={true}
@@ -229,7 +229,6 @@ export function AgentOpenBand({
       </div>
       <div className="mt-3 grid gap-x-8 gap-y-3.5 @min-[48rem]:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)] @min-[48rem]:grid-rows-[auto_1fr]">
         <div className="min-w-0 @min-[48rem]:col-start-1 @min-[48rem]:row-start-1">
-          {stale && <p className="mb-1.5 text-meta text-muted">Recorte mudou</p>}
           <h3 id="comanda-aberta-title" ref={titleRef} tabIndex={-1} className="text-lead leading-snug font-semibold text-balance">
             {ticket.title}
           </h3>

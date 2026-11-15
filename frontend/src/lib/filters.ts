@@ -9,6 +9,7 @@
  */
 import { atom, computed } from "nanostores";
 import type { Filters } from "./api/client";
+import { label } from "./format";
 
 type Segment = NonNullable<Filters["segment"]>[number];
 type ChannelType = NonNullable<Filters["channel_type"]>[number];
@@ -86,8 +87,17 @@ export interface IgnoredValue {
   reason: string;
 }
 
+export interface DrillUndo {
+  /** Recorte anterior ao drill-down, restaurado integralmente ao desfazer. */
+  previous: Recorte;
+  /** Descrição curta em pt-BR do filtro aplicado pelo drill-down (ex.: "Hub 8", "Loja Muspuo Smiru"). */
+  description: string;
+}
+
 /** Recorte atual. Fica vazio até `initFilters()` ler a URL no navegador. */
 export const $filters = atom<Recorte>(EMPTY);
+/** Último drill-down aplicado: permite desfazer em um clique até que o recorte mude por outro caminho. */
+export const $drillUndo = atom<DrillUndo | null>(null);
 /** Vista que um link compartilhado deve reabrir. Não vai para a API. */
 export const $view = atom<PanelView>(DEFAULT_VIEW);
 /** Valores da URL que não entraram no recorte. A ilha avisa uma vez. */
@@ -291,6 +301,8 @@ export function ignoredMessage(items: IgnoredValue[]): string {
 /** Opção de /api/meta. O valor é o id ou o token, não o rótulo. */
 export interface CatalogOption {
   value: string | number;
+  label?: string;
+  parent?: string | number | null;
 }
 
 /** Listas completas do dataset, as mesmas que alimentam os seletores antes do cascade. */
@@ -310,6 +322,16 @@ interface DimensionCatalog {
   segment: ReadonlySet<string>;
   channel_type: ReadonlySet<string>;
   modal: ReadonlySet<string>;
+  hubCity: ReadonlyMap<number, string>;
+  storeHub: ReadonlyMap<number, number>;
+  labels: {
+    city: ReadonlyMap<string, string>;
+    hub: ReadonlyMap<string, string>;
+    store: ReadonlyMap<string, string>;
+    segment: ReadonlyMap<string, string>;
+    channel_type: ReadonlyMap<string, string>;
+    modal: ReadonlyMap<string, string>;
+  };
 }
 
 function textValues(options: readonly CatalogOption[]): Set<string> {
@@ -325,6 +347,39 @@ function idValues(options: readonly CatalogOption[]): Set<number> {
   return ids;
 }
 
+function parentTextMap(options: readonly CatalogOption[]): Map<number, string> {
+  const map = new Map<number, string>();
+  for (const option of options) {
+    const id = Number(option.value);
+    if (Number.isInteger(id) && id > 0 && option.parent != null && option.parent !== "") {
+      map.set(id, String(option.parent));
+    }
+  }
+  return map;
+}
+
+function parentIdMap(options: readonly CatalogOption[]): Map<number, number> {
+  const map = new Map<number, number>();
+  for (const option of options) {
+    const id = Number(option.value);
+    const parentId = Number(option.parent);
+    if (Number.isInteger(id) && id > 0 && Number.isInteger(parentId) && parentId > 0) {
+      map.set(id, parentId);
+    }
+  }
+  return map;
+}
+
+function labelMap(options: readonly CatalogOption[]): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const option of options) {
+    if (option.label !== undefined) {
+      map.set(String(option.value), label(option.label));
+    }
+  }
+  return map;
+}
+
 export function catalogFromMeta(lists: DimensionLists): DimensionCatalog {
   return {
     city: textValues(lists.cities),
@@ -333,6 +388,16 @@ export function catalogFromMeta(lists: DimensionLists): DimensionCatalog {
     segment: textValues(lists.segments),
     channel_type: textValues(lists.channel_types),
     modal: textValues(lists.modals),
+    hubCity: parentTextMap(lists.hubs),
+    storeHub: parentIdMap(lists.stores),
+    labels: {
+      city: labelMap(lists.cities),
+      hub: labelMap(lists.hubs),
+      store: labelMap(lists.stores),
+      segment: labelMap(lists.segments),
+      channel_type: labelMap(lists.channel_types),
+      modal: labelMap(lists.modals),
+    },
   };
 }
 
@@ -457,6 +522,13 @@ function publish(mode: "push" | "replace") {
 
 let started = false;
 let applying = false;
+let preserveUndo = false;
+
+$filters.listen(() => {
+  if (!preserveUndo && $drillUndo.get() !== null) {
+    $drillUndo.set(null);
+  }
+});
 
 function applySearch(search: string) {
   const parsed = readSearch(search);
@@ -510,6 +582,23 @@ export function initFilters() {
     applySearch(location.search);
     publish("replace");
   });
+  window.addEventListener("keydown", (e) => {
+    if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey || e.key.toLowerCase() !== "z") return;
+    if (!$drillUndo.get()) return;
+    const target = e.target as HTMLElement | null;
+    if (
+      target &&
+      (target.tagName === "INPUT" ||
+        target.tagName === "TEXTAREA" ||
+        target.tagName === "SELECT" ||
+        target.isContentEditable)
+    ) {
+      return;
+    }
+    if (document.querySelector("dialog[open]")) return;
+    e.preventDefault();
+    undoDrilldown();
+  });
 }
 
 export function patchFilters(patch: Partial<Recorte>) {
@@ -530,7 +619,141 @@ export function requestStoreRankingFocus() {
 }
 
 export function resetFilters() {
+  $drillUndo.set(null);
   $filters.set(EMPTY);
+}
+
+function sameList<T>(a: readonly T[], b: readonly T[]): boolean {
+  return a.length === b.length && a.every((v, i) => v === b[i]);
+}
+
+function sameRecorte(a: Recorte, b: Recorte): boolean {
+  return (
+    a.start === b.start &&
+    a.end === b.end &&
+    sameList(a.city, b.city) &&
+    sameList(a.hub, b.hub) &&
+    sameList(a.store, b.store) &&
+    sameList(a.segment, b.segment) &&
+    sameList(a.channel_type, b.channel_type) &&
+    sameList(a.modal, b.modal) &&
+    sameList(a.status, b.status)
+  );
+}
+
+/**
+ * Remove pais ou filhos incompatíveis quando o drill-down fixa loja, hub ou cidade,
+ * usando os mesmos vínculos `parent` de /api/meta (sem nomes fixos no código).
+ */
+function reconcileParents(next: Recorte, patch: Partial<Recorte>, cat: DimensionCatalog): Recorte {
+  let { city, hub, store } = next;
+
+  if (patch.store && patch.store.length > 0) {
+    const storeHubs = new Set<number>();
+    const storeCities = new Set<string>();
+    for (const id of store) {
+      const parentHub = cat.storeHub.get(id);
+      if (parentHub !== undefined) {
+        storeHubs.add(parentHub);
+        const parentCity = cat.hubCity.get(parentHub);
+        if (parentCity !== undefined) storeCities.add(parentCity);
+      }
+    }
+    if (!patch.hub && hub.length > 0 && storeHubs.size > 0) {
+      hub = hub.filter((id) => storeHubs.has(id));
+    }
+    if (!patch.city && city.length > 0 && storeCities.size > 0) {
+      city = city.filter((name) => storeCities.has(name));
+    }
+  } else if (patch.hub && patch.hub.length > 0) {
+    const hubCities = new Set<string>();
+    for (const id of hub) {
+      const parentCity = cat.hubCity.get(id);
+      if (parentCity !== undefined) hubCities.add(parentCity);
+    }
+    if (!patch.city && city.length > 0 && hubCities.size > 0) {
+      city = city.filter((name) => hubCities.has(name));
+    }
+    if (!patch.store && store.length > 0) {
+      const hubSet = new Set(hub);
+      store = store.filter((id) => {
+        const parentHub = cat.storeHub.get(id);
+        return parentHub === undefined || hubSet.has(parentHub);
+      });
+    }
+  } else if (patch.city && patch.city.length > 0) {
+    const citySet = new Set(city);
+    if (!patch.hub && hub.length > 0) {
+      hub = hub.filter((id) => {
+        const parentCity = cat.hubCity.get(id);
+        return parentCity === undefined || citySet.has(parentCity);
+      });
+    }
+    if (!patch.store && store.length > 0) {
+      store = store.filter((id) => {
+        const parentHub = cat.storeHub.get(id);
+        const parentCity = parentHub !== undefined ? cat.hubCity.get(parentHub) : undefined;
+        return parentCity === undefined || citySet.has(parentCity);
+      });
+    }
+  }
+
+  return { ...next, city, hub, store };
+}
+
+function drillDescription(patch: Partial<Recorte>, cat: DimensionCatalog | null): string {
+  const parts: string[] = [];
+  if (patch.store?.length) {
+    if (patch.store.length === 1) {
+      const id = patch.store[0];
+      const name = cat?.labels.store.get(String(id));
+      parts.push(name ? `Loja ${name}` : `Loja ${id}`);
+    } else {
+      parts.push(`${patch.store.length} lojas`);
+    }
+  } else if (patch.hub?.length) {
+    if (patch.hub.length === 1) {
+      const id = patch.hub[0];
+      const name = cat?.labels.hub.get(String(id));
+      parts.push(name ? `Hub ${name}` : `Hub ${id}`);
+    } else {
+      parts.push(`${patch.hub.length} hubs`);
+    }
+  } else if (patch.city?.length) {
+    if (patch.city.length === 1) {
+      const name = cat?.labels.city.get(patch.city[0]) ?? patch.city[0];
+      parts.push(`Cidade ${name}`);
+    } else {
+      parts.push(`${patch.city.length} cidades`);
+    }
+  }
+  if (patch.segment?.length) {
+    parts.push(
+      patch.segment.length === 1
+        ? `Segmento ${cat?.labels.segment.get(patch.segment[0]) ?? label(patch.segment[0])}`
+        : `${patch.segment.length} segmentos`,
+    );
+  }
+  if (patch.channel_type?.length) {
+    parts.push(
+      patch.channel_type.length === 1
+        ? `Canal ${cat?.labels.channel_type.get(patch.channel_type[0]) ?? label(patch.channel_type[0])}`
+        : `${patch.channel_type.length} canais`,
+    );
+  }
+  if (patch.modal?.length) {
+    parts.push(
+      patch.modal.length === 1
+        ? `Modal ${cat?.labels.modal.get(patch.modal[0]) ?? label(patch.modal[0])}`
+        : `${patch.modal.length} modais`,
+    );
+  }
+  if (patch.status?.length) {
+    parts.push(
+      patch.status.length === 1 ? `Status ${label(patch.status[0])}` : `${patch.status.length} status`,
+    );
+  }
+  return parts.join(" · ") || "Recorte";
 }
 
 /** Aplica o drill-down de uma comanda (alerta ou agente) por cima do recorte atual. */
@@ -543,7 +766,30 @@ export function applyDrilldown(filters: Record<string, (string | number)[]>) {
   if (filters.channel_type) patch.channel_type = takeEnums(filters.channel_type.map(String), CHANNELS, "Canal", "", []);
   if (filters.modal) patch.modal = takeEnums(filters.modal.map(String), MODALS, "Modal", "", []);
   if (filters.status) patch.status = takeEnums(filters.status.map(String), STATUSES, "Status", "", []);
-  patchFilters(patch);
+
+  const prev = $filters.get();
+  let next: Recorte = { ...prev, ...patch };
+  if (catalog) {
+    next = reconcileParents(next, patch, catalog);
+  }
+  if (sameRecorte(prev, next)) return;
+
+  const description = drillDescription(patch, catalog);
+  preserveUndo = true;
+  try {
+    $drillUndo.set({ previous: prev, description });
+    $filters.set(next);
+  } finally {
+    preserveUndo = false;
+  }
+}
+
+/** Restaura exatamente o recorte anterior ao último drill-down. */
+export function undoDrilldown() {
+  const undo = $drillUndo.get();
+  if (!undo) return;
+  $drillUndo.set(null);
+  $filters.set(undo.previous);
 }
 
 export function shareUrl(): string {
