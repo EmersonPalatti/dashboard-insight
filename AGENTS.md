@@ -35,7 +35,7 @@ pytest                                   # usa parquet sintético, não precisa 
 # tipos do frontend a partir do backend
 python scripts/export_openapi.py && (cd ../frontend && npm run gen:api)
 
-# frontend (Node 20+)
+# frontend (Node 22+)
 cd frontend
 npm install
 npm run dev                              # http://localhost:4321 (PUBLIC_API_URL, padrão localhost:8000)
