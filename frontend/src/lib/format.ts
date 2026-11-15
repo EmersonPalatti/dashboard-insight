@@ -26,8 +26,17 @@ export const fmt = {
     const [y, m, d] = iso.slice(0, 10).split("-");
     return `${d}/${m}/${y}`;
   },
-  dateTime: (iso: string) =>
-    new Date(iso).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }),
+  dateTime: (() => {
+    const opts = { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" } as const;
+    const utc = new Intl.DateTimeFormat("pt-BR", { ...opts, timeZone: "UTC" });
+    const sp = new Intl.DateTimeFormat("pt-BR", { ...opts, timeZone: "America/Sao_Paulo" });
+    return (iso: string) => {
+      if (!iso) return "—";
+      if (/(?:Z|[+-]\d{2}:?\d{2})$/i.test(iso)) return sp.format(new Date(iso));
+      const normalized = iso.includes("T") ? iso : iso.replace(" ", "T");
+      return utc.format(new Date(`${normalized}Z`));
+    };
+  })(),
 };
 
 export const LABELS: Record<string, string> = {
@@ -41,6 +50,21 @@ export const LABELS: Record<string, string> = {
   operator: "Operador logístico",
   delivered: "Entregue",
   canceled: "Cancelado",
+  online: "Online",
+  debit: "Débito",
+  credit: "Crédito",
+  money: "Dinheiro",
+  voucher: "Voucher",
+  meal_benefit: "Vale-refeição",
+  payment_link: "Link de pagamento",
+  store_direct_payment: "Pagamento na loja",
+  debit_store: "Débito na loja",
+  credit_store: "Crédito na loja",
+  voucher_store: "Voucher na loja",
+  installment_credit_store: "Crédito parcelado na loja",
+  voucher_dc: "Voucher DC",
+  voucher_ol: "Voucher OL",
+  bank_transfer_dc: "Transferência bancária",
 };
 
 export const label = (v: string | number | null | undefined) =>

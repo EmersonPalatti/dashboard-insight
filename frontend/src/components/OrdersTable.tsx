@@ -7,13 +7,14 @@ import { useStore } from "@nanostores/react";
 import { keepPreviousData, useInfiniteQuery } from "@tanstack/react-query";
 import { flexRender, getCoreRowModel, useReactTable, createColumnHelper } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { ArrowDown, ArrowUp, Filter, X } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { ArrowDown, ArrowUp, ChevronRight, Filter, X } from "lucide-react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { apiGet, type OrderRow } from "@/lib/api/client";
 import { askAgentAbout } from "@/lib/agentBridge";
 import { $filters, $ready, applyDrilldown, toQuery } from "@/lib/filters";
 import { fmt, label } from "@/lib/format";
 import { STORE_NAMES_HINT } from "@/lib/glossary";
+import { prefersReducedMotion, useMediaQuery } from "@/lib/media";
 import { gated, island, useApiGate, useMeta } from "@/lib/query";
 import { AskAgentButton } from "./ui/AskAgentButton";
 import { AsyncBody, Empty, PanelContent, panelFallback } from "./ui/Panel";
@@ -34,14 +35,15 @@ const ASK_BY_SORT: Record<string, string> = {
 };
 
 const PAGE = 200;
-const ROW_H = 34;
+const ROW_H_DESKTOP = 34;
+const ROW_H_MOBILE = 44;
 const GMV_OUTLIER = 5000;
 const col = createColumnHelper<OrderRow>();
 const SORTABLE = new Set(["created_at", "amount", "delivery_fee", "cycle_min", "production_min", "transit_min", "distance_m", "store_name", "hub_name", "city", "status"]);
 const NUMERIC_COLS = new Set(["amount", "cycle_min", "production_min", "transit_min", "distance_m"]);
 
 const columns = [
-  col.accessor("created_at", { header: "Criado em", cell: (c) => fmt.dateTime(c.getValue()), size: 104 }),
+  col.accessor("created_at", { header: "Criado em", cell: (c) => fmt.dateTime(c.getValue()), size: 120 }),
   col.accessor("status", {
     header: "Status",
     size: 96,
@@ -103,9 +105,15 @@ function OrdersTableInner() {
   const ready = useStore($ready);
   const gate = useApiGate();
   const meta = useMeta().data;
+  const desktop = useMediaQuery("(min-width: 1024px)");
+  const rowH = desktop ? ROW_H_DESKTOP : ROW_H_MOBILE;
   const [sort, setSort] = useState<{ id: string; desc: boolean }>({ id: "created_at", desc: true });
   const [selectedOrder, setSelectedOrder] = useState<OrderRow | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
+  const detailId = useId();
+  const detailRef = useRef<HTMLDivElement>(null);
+  const originOrderIdRef = useRef<number | null>(null);
+  const shouldReturnFocusRef = useRef(false);
 
   const pages = useInfiniteQuery({
     queryKey: ["/api/orders", filters, sort],
@@ -125,10 +133,14 @@ function OrdersTableInner() {
   const virtual = useVirtualizer({
     count: rows.length,
     getScrollElement: () => scroller.current,
-    estimateSize: () => ROW_H,
+    estimateSize: () => rowH,
     overscan: 12,
   });
   const items = virtual.getVirtualItems();
+
+  useEffect(() => {
+    virtual.measure();
+  }, [virtual, rowH]);
 
   // chegou perto do fim do que já foi carregado: busca a próxima página
   const lastIndex = items.at(-1)?.index ?? 0;
@@ -144,8 +156,52 @@ function OrdersTableInner() {
   }, [filters, sort]);
 
   useEffect(() => {
+    shouldReturnFocusRef.current = false;
+    originOrderIdRef.current = null;
     setSelectedOrder(null);
   }, [filters]);
+
+  const openOrder = (order: OrderRow) => {
+    originOrderIdRef.current = order.order_id;
+    shouldReturnFocusRef.current = false;
+    setSelectedOrder(order);
+  };
+
+  const closeDetail = (returnFocus: boolean) => {
+    shouldReturnFocusRef.current = returnFocus;
+    setSelectedOrder(null);
+  };
+
+  useEffect(() => {
+    if (selectedOrder) {
+      const detailEl = detailRef.current;
+      if (!detailEl) return;
+      detailEl.scrollIntoView({
+        block: "nearest",
+        behavior: prefersReducedMotion() ? "auto" : "smooth",
+      });
+      detailEl.focus({ preventScroll: true });
+    } else if (shouldReturnFocusRef.current && originOrderIdRef.current !== null) {
+      shouldReturnFocusRef.current = false;
+      const targetId = originOrderIdRef.current;
+      const rowEl = scroller.current?.querySelector<HTMLElement>(`[data-order-id="${targetId}"]`);
+      if (rowEl) {
+        rowEl.scrollIntoView({
+          block: "nearest",
+          behavior: prefersReducedMotion() ? "auto" : "smooth",
+        });
+        rowEl.focus({ preventScroll: true });
+      } else {
+        const idx = rows.findIndex((r) => r.order_id === targetId);
+        if (idx >= 0) {
+          virtual.scrollToIndex(idx, { align: "auto" });
+          requestAnimationFrame(() => {
+            scroller.current?.querySelector<HTMLElement>(`[data-order-id="${targetId}"]`)?.focus({ preventScroll: true });
+          });
+        }
+      }
+    }
+  }, [selectedOrder?.order_id]);
 
   const selectedHubId = selectedOrder
     ? meta?.hubs.find((h) => h.label === selectedOrder.hub_name)?.value
@@ -187,13 +243,23 @@ function OrdersTableInner() {
       >
         {selectedOrder && (
           <div
+            ref={detailRef}
+            id={detailId}
             role="region"
+            tabIndex={-1}
             aria-label={`Detalhes do pedido ${selectedOrder.order_id}`}
+            style={{ scrollMarginTop: "calc(var(--sticky-bar, 6.5rem) + 0.75rem)" }}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                e.stopPropagation();
+                closeDetail(true);
+              }
+            }}
             className="mb-3 rounded-card border border-rule bg-sunken/70 p-3.5 text-aux"
           >
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-rule pb-2">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="cond font-bold text-ink">Pedido #{selectedOrder.order_id}</span>
+                <span className="font-semibold text-ink tabular-nums">Pedido #{selectedOrder.order_id}</span>
                 <span className="text-muted">{fmt.dateTime(selectedOrder.created_at)}</span>
                 <span
                   className={`rounded-tick px-1.5 py-0.5 text-meta font-semibold ${
@@ -216,7 +282,7 @@ function OrdersTableInner() {
               </div>
               <button
                 type="button"
-                onClick={() => setSelectedOrder(null)}
+                onClick={() => closeDetail(true)}
                 aria-label="Fechar detalhes do pedido"
                 className="btn-ghost min-h-8 gap-1 px-2 py-1 text-meta max-lg:min-h-11"
               >
@@ -339,14 +405,16 @@ function OrdersTableInner() {
                 const row = table.getRowModel().rows[item.index];
                 if (!row) return null;
                 const isSelected = selectedOrder?.order_id === row.original.order_id;
-                const toggleRow = () =>
-                  setSelectedOrder((prev) => (prev?.order_id === row.original.order_id ? null : row.original));
+                const toggleRow = () => (isSelected ? closeDetail(false) : openOrder(row.original));
                 return (
                   <div
                     key={row.id}
                     role="row"
                     tabIndex={0}
+                    data-order-id={row.original.order_id}
                     aria-selected={isSelected}
+                    aria-expanded={isSelected}
+                    aria-controls={isSelected ? detailId : undefined}
                     aria-rowindex={item.index + 2}
                     onClick={toggleRow}
                     onKeyDown={(e) => {
@@ -358,7 +426,7 @@ function OrdersTableInner() {
                     className={`group/row absolute left-0 flex w-full cursor-pointer border-b border-rule/50 transition-colors duration-(--duration-quick) ${
                       isSelected ? "bg-sunken" : "hover:bg-sunken/60"
                     }`}
-                    style={{ height: ROW_H, transform: `translateY(${item.start}px)` }}
+                    style={{ height: rowH, transform: `translateY(${item.start}px)` }}
                   >
                     {row.getVisibleCells().map((cell) => {
                       const isNumeric = NUMERIC_COLS.has(cell.column.id);
@@ -372,11 +440,19 @@ function OrdersTableInner() {
                             isNumeric ? "justify-end text-right tabular-nums" : ""
                           } ${
                             isPinned
-                              ? `sticky left-0 z-10 border-r border-rule ${isSelected ? "bg-sunken" : "bg-surface group-hover/row:bg-sunken"}`
+                              ? `sticky left-0 z-10 justify-between gap-1 border-r border-rule ${isSelected ? "bg-sunken" : "bg-surface group-hover/row:bg-sunken"}`
                               : ""
                           }`}
                         >
                           <span className="truncate">{flexRender(cell.column.columnDef.cell, cell.getContext())}</span>
+                          {isPinned && (
+                            <ChevronRight
+                              className={`size-3.5 shrink-0 transition-transform duration-(--duration-fast) motion-reduce:transition-none ${
+                                isSelected ? "rotate-90 text-ink" : "text-muted group-hover/row:text-ink"
+                              }`}
+                              aria-hidden
+                            />
+                          )}
                         </div>
                       );
                     })}

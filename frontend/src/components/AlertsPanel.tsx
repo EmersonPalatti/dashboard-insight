@@ -12,9 +12,11 @@ import { $railAgentComandas, askAgentAbout, openComandaCount, scopeKey } from "@
 import { AgentOpenBand, AgentStub } from "./agent/AgentComanda";
 import { $evidence, EVIDENCE_ANCHOR, showEvidence } from "@/lib/evidence";
 import { $filters, applyDrilldown, resetFilters } from "@/lib/filters";
+import { $nextComandaRequest, $recorteEmpty } from "@/lib/investigation";
 import { prefersReducedMotion } from "@/lib/media";
 import { island, useMeta, useRecorteQuery } from "@/lib/query";
 import { outsideBaseNote } from "@/lib/format";
+import { STORE_NAMES_HINT } from "@/lib/glossary";
 import { SEVERITY } from "./ui/EvidenceTag";
 import { ErrorState } from "./ui/Panel";
 
@@ -43,6 +45,10 @@ const FOLD_FALLBACK_MS = 330;
 const BAND_ID = "comanda-aberta";
 
 const num = (i: number) => `Nº ${String(i + 1).padStart(2, "0")}`;
+
+export function comandaQuestion(title: string): string {
+  return `Sobre a comanda "${title}": o que explica isso neste recorte e o que fazer hoje?`;
+}
 
 /** Pedido de foco: vai para o título da faixa aberta ou para a comanda no trilho. */
 type FocusRequest = { id: string; on: "title" | "stub" } | null;
@@ -121,6 +127,12 @@ function Stub({
 
   const hoverClasses = !selected ? "hover:after:opacity-100 has-[:focus-visible]:after:opacity-100" : "";
 
+  const figureLabel = alert.figure
+    ? alert.figure_ref
+      ? `, ${alert.figure} (${alert.figure_ref})`
+      : `, ${alert.figure}`
+    : "";
+
   return (
     <li
       data-alert={alert.id}
@@ -135,7 +147,7 @@ function Stub({
         tabIndex={tabIndex}
         aria-expanded={selected}
         aria-controls={bandMounted ? BAND_ID : undefined}
-        aria-label={`${alert.title}, comanda ${index + 1} de ${total}, ${SEVERITY[alert.severity].label}, ${num(index)} ${CATEGORY[alert.category]}`}
+        aria-label={`${alert.title}${figureLabel}, comanda ${index + 1} de ${total}, ${SEVERITY[alert.severity].label}, ${num(index)} ${CATEGORY[alert.category]}`}
         onClick={onToggle}
         className={`group ticket flex h-full w-full flex-col justify-start px-4 pt-4 pb-3.5 text-left transition-colors duration-(--duration-quick) ease-(--ease-smooth-out) ${
           selected ? "bg-surface" : "bg-surface/60 hover:bg-surface"
@@ -144,12 +156,20 @@ function Stub({
         <TicketHead alert={alert} index={index} compact selected={selected} />
         {/* w-0 + min-w-full: o título quebra em duas linhas e não alarga a coluna. A largura mínima fica com o carimbo. */}
         <span
-          className={`mt-1.5 line-clamp-2 w-0 min-w-full text-body leading-snug font-semibold text-pretty transition-colors duration-(--duration-quick) ease-(--ease-smooth-out) ${
+          className={`mt-1.5 line-clamp-2 min-h-[2lh] w-0 min-w-full text-body leading-snug font-semibold text-pretty transition-colors duration-(--duration-quick) ease-(--ease-smooth-out) ${
             selected ? "" : "text-ink/85 group-hover:text-ink"
           }`}
         >
           {alert.title}
         </span>
+        {alert.figure && (
+          <span className="mt-auto flex w-0 min-w-full items-baseline gap-1.5 overflow-hidden pt-2">
+            <span className="figure shrink-0 text-body text-ink">{alert.figure}</span>
+            {alert.figure_ref && (
+              <span className="min-w-0 truncate text-aux text-muted">{alert.figure_ref}</span>
+            )}
+          </span>
+        )}
         <span className="mt-1 hidden text-aux text-pretty print:block">
           <span className="mr-1.5 text-aux font-semibold">Ação</span>
           {alert.action}
@@ -175,7 +195,7 @@ function OpenBand({
 }) {
   const titleRef = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
-    if (focusOnMount) titleRef.current?.focus();
+    if (focusOnMount) titleRef.current?.focus({ preventScroll: true });
   }, [focusOnMount]);
   const view = alert.evidence?.view;
   const anchor = view && view !== "kpi" ? EVIDENCE_ANCHOR[view] : null;
@@ -235,7 +255,7 @@ function OpenBand({
             type="button"
             className="btn-ghost max-lg:min-h-11 lg:min-h-9"
             aria-label="Perguntar ao agente sobre esta comanda"
-            onClick={() => askAgentAbout(`Sobre a comanda "${alert.title}": o que explica isso neste recorte e o que fazer hoje?`)}
+            onClick={() => askAgentAbout(comandaQuestion(alert.title))}
           >
             <MessageSquareText className="size-3.5" aria-hidden /> Perguntar ao agente
           </button>
@@ -322,7 +342,7 @@ function AlertsSkeletonBody() {
         {[0, 1, 2, 3].map((i) => (
           <div
             key={i}
-            className={`ticket flex h-[96px] flex-col justify-start bg-surface px-4 pt-4 pb-3.5 ${
+            className={`ticket flex h-[124px] flex-col justify-start bg-surface px-4 pt-4 pb-3.5 ${
               i === 0 ? "border-b-2 border-ink" : "bg-surface/60"
             } ${i > 1 ? "max-sm:hidden" : ""}`}
           >
@@ -332,6 +352,10 @@ function AlertsSkeletonBody() {
             </div>
             <div className="skeleton mt-2 h-4 w-full" />
             <div className="skeleton mt-1 h-4 w-3/4" />
+            <div className="mt-auto flex items-baseline gap-1.5 pt-2">
+              <div className="skeleton h-4 w-24" />
+              <div className="skeleton h-3 w-12" />
+            </div>
           </div>
         ))}
       </div>
@@ -547,21 +571,26 @@ function AlertsPanelInner() {
     setFolding(id);
   };
 
+  const openComanda = (id: string, focus: FocusRequest = null) => {
+    const wasClosed = effectiveOpen === null || folding !== null;
+    setPrinting(false);
+    setFolding(null);
+    setOpenId(id);
+    setRailCursor(id);
+    setOpenedFromCollapsed(wasClosed);
+    if (wasClosed && !prefersReducedMotion()) {
+      setExpanding(true);
+    }
+    setFocusRequest(focus);
+  };
+
   const toggle = (id: string) => {
     if (id === effectiveOpen && folding !== id) {
       collapse(id);
       return;
     }
-    const wasClosed = effectiveOpen === null || folding !== null;
-    setPrinting(false);
-    setFolding(null);
-    setOpenId(id);
-    setOpenedFromCollapsed(wasClosed);
-    if (wasClosed && !prefersReducedMotion()) {
-      setExpanding(true);
-    }
     // clique no trilho: o foco fica no trilho (o leitor de tela ouve a faixa pelo aria-expanded)
-    setFocusRequest(null);
+    openComanda(id, null);
   };
   const isRequested = (id: string, on: "title" | "stub") => focusRequest?.id === id && focusRequest.on === on;
 
@@ -570,6 +599,31 @@ function AlertsPanelInner() {
     (railCursor && railIds.includes(railCursor) ? railCursor : null) ??
     (effectiveOpen && railIds.includes(effectiveOpen) ? effectiveOpen : null) ??
     railIds[0];
+
+  const nextComandaRequest = useStore($nextComandaRequest);
+  const seenNextRequest = useRef(nextComandaRequest);
+  const scrollQueueRef = useRef(false);
+
+  useEffect(() => {
+    if (nextComandaRequest === seenNextRequest.current) return;
+    seenNextRequest.current = nextComandaRequest;
+    if (railIds.length === 0) return;
+    const activeOpen = folding === null ? effectiveOpen : null;
+    const currentIndex = activeOpen ? railIds.indexOf(activeOpen) : -1;
+    const nextId = currentIndex >= 0 ? railIds[(currentIndex + 1) % railIds.length] : railIds[0];
+    scrollQueueRef.current = true;
+    openComanda(nextId, { id: nextId, on: "title" });
+  }, [nextComandaRequest]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (focusRequest) setFocusRequest(null);
+    if (!scrollQueueRef.current) return;
+    scrollQueueRef.current = false;
+    document.getElementById("comandas")?.scrollIntoView({
+      behavior: prefersReducedMotion() ? "auto" : "smooth",
+      block: "start",
+    });
+  }, [focusRequest]);
 
   const onRailKeyDown = (e: KeyboardEvent<HTMLOListElement>) => {
     const buttons = [...(railRef.current?.querySelectorAll<HTMLButtonElement>(":scope > li > button") ?? [])];
@@ -604,8 +658,13 @@ function AlertsPanelInner() {
     btn.scrollIntoView({ block: "nearest", inline: "nearest" });
   };
 
+  const hasStoreAlert = alerts.some((a) => a.category === "loja" || (a.evidence?.stores?.length ?? 0) > 0);
   // texto anunciado por leitor de tela quando o trilho muda (sem anunciar a lista inteira)
   const noOrders = data?.orders === 0;
+  useEffect(() => {
+    $recorteEmpty.set(!isPending && !error && noOrders);
+  }, [isPending, error, noOrders]);
+  useEffect(() => () => $recorteEmpty.set(false), []);
   const total = openComandaCount(alerts.length, railAgents.length);
   const countText = total === 1 ? "1 comanda aberta" : `${total} comandas abertas`;
   const highText = high === 0 ? "nenhuma crítica" : high === 1 ? "1 crítica" : `${high} críticas`;
@@ -787,6 +846,9 @@ function AlertsPanelInner() {
                 ) : null}
               </div>
             </div>
+          )}
+          {hasStoreAlert && (
+            <p className="mt-2 px-0.5 text-meta text-pretty text-muted">{STORE_NAMES_HINT}</p>
           )}
         </div>
       )}

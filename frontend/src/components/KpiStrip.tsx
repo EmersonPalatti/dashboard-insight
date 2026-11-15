@@ -468,6 +468,15 @@ function KpiStripInner() {
 
   const trail = (k: SeriesKey) => (series && series.length > 1 ? series.map((p) => p[k]) : undefined);
   const readingFor = (key: Key) => heroes.find((item) => item.key === key);
+  const hasNetworkRef =
+    !!series &&
+    series.length > 1 &&
+    OPERATION.some((def) => {
+      const ref = readingFor(def.key)?.network_value;
+      if (ref == null) return false;
+      const ys = series.map((p) => p[def.key as SeriesKey]).filter((v): v is number => v !== null);
+      return ys.length >= 2 && ref >= Math.min(...ys) && ref <= Math.max(...ys);
+    });
   // Resumo para leitor de tela: os três KPIs de operação, com veredito e referência.
   const summary = `Recorte atualizado: ${OPERATION.map((def) => heroSummary(def, current, readingFor(def.key))).join(". ")}.`;
 
@@ -486,8 +495,19 @@ function KpiStripInner() {
             : " · sem período anterior para comparar"}
         </p>
         {meta && (
-          <p className="text-meta text-muted">
-            SLA: food ≤ {meta.sla_food_min} min · goods ≤ {meta.sla_good_min} min
+          <p className="flex flex-wrap items-center gap-x-2 text-meta text-muted">
+            <span>
+              SLA: food ≤ {meta.sla_food_min} min · goods ≤ {meta.sla_good_min} min
+            </span>
+            {hasNetworkRef && (
+              <span className="inline-flex items-center gap-1 whitespace-nowrap">
+                <span aria-hidden="true">·</span>
+                <svg className="h-2 w-4 shrink-0" viewBox="0 0 16 8" aria-hidden="true">
+                  <line x1="0" x2="16" y1="4" y2="4" stroke="currentColor" strokeWidth="1" strokeDasharray="2 1.5" />
+                </svg>
+                <span>rede</span>
+              </span>
+            )}
           </p>
         )}
       </div>

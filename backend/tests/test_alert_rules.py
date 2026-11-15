@@ -25,18 +25,26 @@ def _by_id(repo, f: Filters) -> dict:
 
 
 def test_sla_recorte_fires_on_late_store_not_on_healthy(repo):
-    assert _by_id(repo, Filters(store=[16]))["sla-recorte"].severity == "high"
+    alert = _by_id(repo, Filters(store=[16]))["sla-recorte"]
+    assert alert.severity == "high"
+    assert alert.figure == "0,0% no SLA"
+    assert alert.figure_ref == "meta 85%"
     assert "sla-recorte" not in _by_id(repo, Filters(store=[18]))
 
 
 def test_sla_hub_fires_on_slow_hub_not_on_healthy(repo):
     alerts = _by_id(repo, Filters(segment=["food"]))
     assert "sla-hub-2" in alerts
+    assert alerts["sla-hub-2"].figure and alerts["sla-hub-2"].figure.endswith(" no SLA")
+    assert alerts["sla-hub-2"].figure_ref and alerts["sla-hub-2"].figure_ref.startswith("recorte ")
     assert not any(a.startswith("sla-hub") for a in _by_id(repo, Filters(store=HEALTHY_STORES)))
 
 
 def test_cancel_recorte_fires_on_hot_slice_not_on_healthy(repo):
-    assert _by_id(repo, Filters(store=[25, 18]))["cancel-recorte"].severity == "high"
+    alert = _by_id(repo, Filters(store=[25, 18]))["cancel-recorte"]
+    assert alert.severity == "high"
+    assert alert.figure and alert.figure.endswith(" cancel.")
+    assert alert.figure_ref == "teto 6%"
     assert "cancel-recorte" not in _by_id(repo, Filters(store=[18]))
 
 
@@ -45,13 +53,18 @@ def test_single_broken_store_takes_offline_instead_of_cancel_recorte(repo):
     alone = _by_id(repo, Filters(store=[30]))
     assert alone["cancel-store-30"].severity == "high"
     assert alone["cancel-store-30"].title.startswith("Loja sem entregas")
+    assert alone["cancel-store-30"].figure == "100% cancelado"
+    assert alone["cancel-store-30"].figure_ref is None
     assert "Tirar" in alone["cancel-store-30"].action
     assert "cancel-recorte" not in alone
     assert "cancel-recorte" not in _by_id(repo, Filters(store=[18]))
 
 
 def test_cancel_hub_fires_on_hot_hub_not_on_healthy(repo):
-    assert "cancel-hub-3" in _by_id(repo, Filters())
+    alerts = _by_id(repo, Filters())
+    assert "cancel-hub-3" in alerts
+    assert alerts["cancel-hub-3"].figure and alerts["cancel-hub-3"].figure.endswith(" cancel.")
+    assert alerts["cancel-hub-3"].figure_ref and alerts["cancel-hub-3"].figure_ref.startswith("recorte ")
     assert not any(a.startswith("cancel-hub") for a in _by_id(repo, Filters(store=HEALTHY_STORES)))
 
 
@@ -60,29 +73,40 @@ def test_critical_store_branch_fires_on_non_broken_store(repo):
     alert = _by_id(repo, Filters(store=[25, 18]))["cancel-store-25"]
     assert alert.title.startswith("Loja crítica")
     assert alert.severity == "high"
+    assert alert.figure == "45,0% cancel."
+    assert alert.figure_ref and alert.figure_ref.startswith("recorte ")
     assert not any(a.startswith("cancel-store") for a in _by_id(repo, Filters(store=HEALTHY_STORES)))
 
 
 def test_sla_pico_fires_on_peak_hours_not_on_healthy(repo):
     alert = _by_id(repo, Filters(store=[17]))["sla-pico"]
     assert alert.severity == "medium"
+    assert alert.figure == "0,0% no pico"
+    assert alert.figure_ref == "fora do pico 100,0%"
     assert "12h–14h e 19h–21h" in alert.detail  # item 4 de ponta a ponta
     assert "sla-pico" not in _by_id(repo, Filters(store=[18]))
 
 
 def test_dados_presos_fires_on_stuck_hub_not_on_healthy(repo):
-    assert "dados-presos" in _by_id(repo, Filters())
+    alerts = _by_id(repo, Filters())
+    assert "dados-presos" in alerts
+    assert alerts["dados-presos"].figure and alerts["dados-presos"].figure.endswith(" presos")
+    assert alerts["dados-presos"].figure_ref and alerts["dados-presos"].figure_ref.endswith("(> 4h)")
     assert "dados-presos" not in _by_id(repo, Filters(hub=[1]))
 
 
 def test_volume_queda_fires_on_dropping_store_not_on_healthy(repo):
     alert = _by_id(repo, Filters(store=[19]))["volume-queda"]
+    assert alert.figure == "−59% pedidos"
+    assert alert.figure_ref == "antes 154"
     assert "Hub Centro" in alert.action and "Food Place" in alert.action  # item 6: alvo vem dos dados
     assert "volume-queda" not in _by_id(repo, Filters(store=[18]))
 
 
 def test_custo_frete_fires_on_subsidised_store_not_on_healthy(repo):
     alert = _by_id(repo, Filters(store=[45]))["custo-frete"]
+    assert alert.figure == "R$ 10,00 subsídio"
+    assert alert.figure_ref == "teto R$ 3,00"
     assert "Loja 45" in alert.action and "Hub Goods" in alert.action
     assert "custo-frete" not in _by_id(repo, Filters(store=[18]))
 

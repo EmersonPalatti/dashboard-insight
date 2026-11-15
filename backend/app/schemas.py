@@ -210,6 +210,8 @@ class Alert(BaseModel):
     severity: Literal["high", "medium", "low"]
     category: Literal["sla", "cancelamento", "loja", "frota", "dados", "volume", "custo"]
     title: str
+    figure: str | None = None
+    figure_ref: str | None = None
     detail: str
     action: str
     drilldown: DrillDown | None = None

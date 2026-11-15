@@ -372,6 +372,130 @@ button.ticket:focus-visible {
   .ticket {
     break-inside: avoid;
   }
+  .panel-collapsible:not([data-panel-open]) .panel-toggle-btn {
+    cursor: default;
+  }
+}
+
+/*
+ * Zona de investigação e painéis recolhíveis ("Explorar o recorte").
+ * [data-panel-body][hidden] precisa vencer `.contents` (display: contents).
+ */
+.panel-head[hidden],
+[data-panel-body][hidden] {
+  display: none !important;
+}
+
+.panel-collapsible:not([data-panel-open]) {
+  padding: 0;
+}
+
+.panel-collapsible:not([data-panel-open]) .panel-head-toggle {
+  flex-basis: 100%;
+  margin-right: 0;
+}
+
+.panel-toggle-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--duration-quick) var(--ease-smooth-out);
+}
+
+.panel-collapsible:not([data-panel-open]) .panel-toggle-btn {
+  width: 100%;
+  padding: 0.875rem 1rem;
+  border-radius: var(--radius-card);
+}
+
+.panel-collapsible[data-panel-open="true"] .panel-toggle-btn {
+  display: inline-flex;
+  padding: 0.25rem 0.5rem;
+  margin: -0.25rem -0.5rem;
+  border-radius: var(--radius-tick);
+}
+
+.panel-toggle-btn:hover {
+  background-color: var(--sunken);
+}
+
+@media (max-width: 1023px) {
+  .panel-toggle-btn {
+    min-height: 2.75rem;
+  }
+}
+
+.panel-collapsible:not([data-panel-open]) .panel-toggle-hint,
+.panel-collapsible:not([data-panel-open]) .panel-toggle-label-close,
+.panel-collapsible[data-panel-open="true"] .panel-toggle-summary,
+.panel-collapsible[data-panel-open="true"] .panel-toggle-label-open {
+  display: none;
+}
+
+.panel-toggle-affordance {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: var(--text-aux);
+  font-weight: 500;
+  color: var(--muted);
+  transition: color var(--duration-quick) var(--ease-smooth-out);
+}
+
+.panel-toggle-btn:hover .panel-toggle-affordance {
+  color: var(--ink);
+}
+
+.panel-toggle-chevron {
+  transform-origin: center;
+  transform: scaleY(1);
+  transition: transform var(--duration-fast) var(--ease-smooth-out);
+}
+
+.panel-toggle-btn[aria-expanded="true"] .panel-toggle-chevron {
+  transform: scaleY(-1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .panel-toggle-btn,
+  .panel-toggle-affordance,
+  .panel-toggle-chevron {
+    transition: none;
+  }
+}
+
+/*
+ * A Zona 1 não reserva altura: o painel promovido tem a altura dele. Reservar a do
+ * mais alto deixava um vão vazio sob a Tendência. A troca acontece quando se abre uma
+ * comanda no trilho, acima da dobra, então o que muda de lugar abaixo não está à vista.
+ */
+
+@keyframes investigation-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.investigation-fade {
+  animation: investigation-fade-in var(--duration-fast) var(--ease-smooth-out) backwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .investigation-fade {
+    animation: none;
+  }
+}
+
+main[data-recorte-empty] > :is(#investigacao, #ranking, #explorar, #fechamento) {
+  display: none;
 }
 
 /* Rede de segurança para movimento reduzido: rolagem instantânea e sem pulso. Transições de cor continuam. */

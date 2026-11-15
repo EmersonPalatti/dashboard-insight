@@ -106,6 +106,7 @@ export function AgentConversation({ visible, onClose }: ConversationProps) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const phaseRef = useRef<Phase>("idle");
+  const upgradingIdRef = useRef<number | null>(null);
   const generationRef = useRef(0);
   const scrolled = useRef<string | null>(null);
   /** Rascunho cujo caret vai ao fim assim que o React gravar esse valor no campo. */
@@ -119,6 +120,18 @@ export function AgentConversation({ visible, onClose }: ConversationProps) {
     phaseRef.current = next;
     setPhase(next);
   };
+
+  const setUpgrading = (id: number | null) => {
+    upgradingIdRef.current = id;
+    setUpgradingId(id);
+  };
+
+  useEffect(() => {
+    return () => {
+      generationRef.current += 1;
+      abortRef.current?.abort();
+    };
+  }, []);
 
   const scopeNow = scopeKey(filters);
   const latestAnswer = [...messages].reverse().find((message) => message.role === "assistant");
@@ -243,13 +256,14 @@ export function AgentConversation({ visible, onClose }: ConversationProps) {
         comanda: toTicket(local, assistantId, series, scope, "rules"),
       },
     ]);
-    if (llmEnabledRef.current === false) {
+    if (llmEnabledRef.current === false || local.base.n === 0) {
+      abortRef.current = null;
       setBusy("idle");
       return;
     }
     const llmCtrl = new AbortController();
     abortRef.current = llmCtrl;
-    setUpgradingId(assistantId);
+    setUpgrading(assistantId);
     setBusy("model");
     try {
       const llm = await askAgent(
@@ -276,6 +290,10 @@ export function AgentConversation({ visible, onClose }: ConversationProps) {
               }
             : message,
         );
+      } else if (llmEnabledRef.current === true) {
+        replaceMessage(assistantId, (message) =>
+          message.comanda ? { ...message, comanda: { ...message.comanda, status: "failed" } } : message,
+        );
       }
     } catch {
       if (gen !== generationRef.current) return;
@@ -285,7 +303,8 @@ export function AgentConversation({ visible, onClose }: ConversationProps) {
       );
     } finally {
       if (gen === generationRef.current) {
-        setUpgradingId(null);
+        abortRef.current = null;
+        setUpgrading(null);
         setBusy("idle");
       }
     }
@@ -293,13 +312,26 @@ export function AgentConversation({ visible, onClose }: ConversationProps) {
 
   const send = (question: string) => {
     const q = question.trim();
-    if (!q || phaseRef.current !== "idle") return;
+    if (!q || phaseRef.current === "local") return;
+    const gen = generationRef.current + 1;
+    generationRef.current = gen;
+    if (phaseRef.current === "model") {
+      abortRef.current?.abort();
+      abortRef.current = null;
+      const prevId = upgradingIdRef.current;
+      setUpgrading(null);
+      if (prevId !== null) {
+        replaceMessage(prevId, (message) =>
+          message.comanda && message.comanda.status === "rules"
+            ? { ...message, comanda: { ...message.comanda, status: "cancelled" } }
+            : message,
+        );
+      }
+    }
     setUndo(null);
     const history = historyOf($agentMessages.get());
     const scope = scopeKey(filters);
-    phaseRef.current = "local";
-    const gen = generationRef.current + 1;
-    generationRef.current = gen;
+    setBusy("local");
     const nextTurn = turn + 1;
     setTurn(nextTurn);
     $agentMessages.set([...$agentMessages.get(), { id: nextId++, role: "user", content: q, scope }]);
@@ -314,8 +346,9 @@ export function AgentConversation({ visible, onClose }: ConversationProps) {
     if (!current.length) return;
     generationRef.current += 1;
     abortRef.current?.abort();
+    abortRef.current = null;
     setBusy("idle");
-    setUpgradingId(null);
+    setUpgrading(null);
     setUndo(current);
     $agentMessages.set([]);
   };
@@ -468,7 +501,7 @@ export function AgentConversation({ visible, onClose }: ConversationProps) {
         {announcement}
       </p>
 
-      {scopeChanged && phase === "idle" && (
+      {scopeChanged && phase !== "local" && (
         <p className="mx-4 my-2 rounded-card border border-rule bg-sunken px-3 py-1.5 text-meta text-muted">
           Os filtros mudaram desde a última resposta. A próxima pergunta já usa o recorte novo.
         </p>
@@ -501,7 +534,7 @@ export function AgentConversation({ visible, onClose }: ConversationProps) {
           placeholder="Pergunte sobre este recorte…"
           className={`max-h-40 min-h-11 w-full min-w-0 flex-1 resize-none ${input ? "overflow-y-auto" : "overflow-y-hidden"} rounded-card border border-rule bg-surface px-3 py-2 text-body outline-none placeholder:truncate placeholder:text-muted focus:border-ink lg:min-h-10`}
         />
-        <button type="submit" className="btn-ink justify-center max-lg:min-h-11 max-lg:min-w-11 lg:h-10 lg:px-3.5" disabled={!input.trim() || phase !== "idle"} aria-label="Enviar">
+        <button type="submit" className="btn-ink justify-center max-lg:min-h-11 max-lg:min-w-11 lg:h-10 lg:px-3.5" disabled={!input.trim() || phase === "local"} aria-label="Enviar">
           <SendHorizontal className="size-4" aria-hidden />
         </button>
       </form>
