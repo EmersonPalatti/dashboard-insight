@@ -106,7 +106,7 @@ HTTP Request, `GET {api_base}/api/alerts/routing` com o mesmo `start` e `end`. M
 
 A resposta é um array. Cada elemento vira um item do n8n, com `alert_id`, `severity`, `recipient` e `message`. O destinatário e o texto nascem em `backend/app/routing.py`, por template, a partir do alerta que o servidor já calculou. Esta chamada existe para uma mensagem por alerta, com o papel de quem age. O briefing do operador não traz esse destinatário.
 
-Sucesso segue para Um alerta por vez. Erro segue para Texto da falha. Neste ponto o briefing do operador já foi enviado. Em seguida chega também "Briefing não gerado: API indisponível". O texto de falha é fixo: não diz qual chamada quebrou.
+Sucesso segue para Um alerta por vez. Erro segue para Texto da falha. Neste ponto o briefing do operador já foi enviado; em seguida chega `"Roteamento de alertas não enviado: API indisponível"`. O texto distingue se o briefing já foi entregue ou não.
 
 Lista vazia é sucesso HTTP com zero itens. O loop não manda alerta, e o aviso de falha não entra.
 
@@ -142,11 +142,11 @@ Se um envio falha depois das tentativas, a execução para nesse alerta. Os ante
 
 ### Texto da falha
 
-Edit Fields com o texto fixo `Briefing não gerado: API indisponível`. Não é expressão. Não inclui status HTTP, URL nem o nome do nó que falhou.
+Edit Fields com expressão que verifica se o nó `Telegram: briefing` já rodou (`$('Telegram: briefing').isExecuted`): antes do envio do briefing devolve `Briefing não gerado: API indisponível`; se a falha ocorrer depois em Buscar roteamento, devolve `Roteamento de alertas não enviado: API indisponível`.
 
-Existe para o chat receber alguma coisa quando a API não responde, em vez de a execução só ficar vermelha no n8n. Recebe a saída de erro de Acordar API, Buscar briefing e Buscar roteamento.
+Existe para o chat receber o aviso correto quando a API não responde, em vez de a execução só ficar vermelha no n8n. Recebe a saída de erro de Acordar API, Buscar briefing e Buscar roteamento.
 
-Um Set com texto fixo não falha na prática. Se falhasse, o Telegram de falha não rodaria.
+Um Set simples não falha na prática. Se falhasse, o Telegram de falha não rodaria.
 
 ### Telegram: falha da API
 
@@ -158,7 +158,7 @@ Se este envio falha (chat inexistente, token ruim, Telegram fora), as 3 tentativ
 
 ## Expressões
 
-No JSON, campo de expressão começa com `=`. `api_base`, `chat_id` e o texto de falha não têm `=`: são texto fixo. Quebra de linha dentro de uma expressão aparece como `\\n` no arquivo porque isso é uma string JSON. No editor do n8n é `\n`, uma quebra de linha.
+No JSON, campo de expressão começa com `=`. `api_base` e `chat_id` não têm `=`: são texto fixo. Nos nós `Texto do briefing` e `Texto do alerta`, ocorrências de `_` são escapadas para `\_` antes do envio ao `parse_mode: Markdown` legado do Telegram. Quebra de linha dentro de uma expressão aparece como `\\n` no arquivo porque isso é uma string JSON. No editor do n8n é `\n`, uma quebra de linha.
 
 ### `data_ref`, passo a passo
 

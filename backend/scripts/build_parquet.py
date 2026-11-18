@@ -57,7 +57,7 @@ base as (
     select
         o.order_id,
         o.order_moment_created - interval 3 hour as created_at,
-        case o.order_status when 'FINISHED' then 'delivered' else 'canceled' end as status,
+        case o.order_status when 'FINISHED' then 'delivered' when 'CANCELED' then 'canceled' else 'canceled' end as status,
         o.order_amount as amount,
         o.order_delivery_fee as delivery_fee,
         o.order_delivery_cost as delivery_cost,
@@ -112,7 +112,7 @@ select
     round(transit_min, 2) as transit_min,
     round(cycle_min, 2) as cycle_min,
     coalesce(cycle_min > 240, false) as cycle_outlier,
-    amount > 5000 as amount_outlier
+    coalesce(amount > 5000, false) as amount_outlier
 from base
 where cast(created_at as date) >= date '2021-01-01'
 order by created_at
@@ -140,7 +140,7 @@ def build(raw: Path, out: Path) -> None:
 
     con = duckdb.connect()
     for table in TABLES:
-        path = (raw / f"{table}.csv").as_posix()
+        path = (raw / f"{table}.csv").as_posix().replace("'", "''")
         con.execute(f"create table {table} as select * from read_csv('{path}', header = true, encoding = 'latin-1')")
 
     con.execute(SQL)
@@ -148,8 +148,9 @@ def build(raw: Path, out: Path) -> None:
         _prettify_column(con, column)
 
     out.parent.mkdir(parents=True, exist_ok=True)
+    out_sql = out.as_posix().replace("'", "''")
     con.execute(
-        f"copy (select * from fact order by created_at) to '{out.as_posix()}' "
+        f"copy (select * from fact order by created_at) to '{out_sql}' "
         "(format parquet, compression zstd, row_group_size 100000)"
     )
     rows, start, end = con.execute(

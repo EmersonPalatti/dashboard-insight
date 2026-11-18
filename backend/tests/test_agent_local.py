@@ -36,6 +36,9 @@ QUESTIONS_AND_HANDLERS = [
     ("quais os hubs com maior volume na praca?", "_hubs"),
     ("qual o gmv e faturamento da operacao?", "_revenue"),
     ("me de um briefing com a visao geral", "briefing"),
+    ("como estao as formas de pagamento?", "_payments"),
+    ("quantos pedidos presos no fluxo existem?", "_stuck"),
+    ("houve queda de volume na semana?", "_volume"),
 ]
 
 
@@ -50,11 +53,51 @@ def test_no_hardcoded_names_in_source():
 
 @pytest.mark.parametrize("question,handler_name", QUESTIONS_AND_HANDLERS)
 def test_every_handler_returns_action(repo, question, handler_name):
-    """Todo handler do agente deve fechar com '**Ação:**' e não usar nomes fixos."""
+    """Todo handler do agente deve bater na rota certa, fechar com '**Ação:**' e não usar nomes fixos."""
+    handler = local.resolve_handler(question)
+    assert handler is not None and handler.__name__ == handler_name
     f = Filters()
     res = local.answer(question, repo, f)
     assert "**Ação:**" in res, f"Handler {handler_name} para a pergunta '{question}' não incluiu '**Ação:**'."
     assert len(res.strip().splitlines()) >= 2
+
+
+@pytest.mark.parametrize(
+    ("question", "expected"),
+    [
+        ("como melhorar o sla?", "_sla"),
+        ("qual a situacao dos hubs?", "_hubs"),
+        ("como estao os canais?", "_channels"),
+        ("como estao os modais?", "_modal"),
+        ("No ranking por forma de pagamento, quem está pior e o que fazer?", "_payments"),
+        ('Sobre a comanda "Pedidos presos no fluxo": o que explica isso neste recorte e o que fazer hoje?', "_stuck"),
+        ('Sobre a comanda "Queda de volume na última semana": o que explica isso neste recorte e o que fazer hoje?', "_volume"),
+        ('Sobre a comanda "Loja crítica: Loja 25": o que explica isso neste recorte e o que fazer hoje?', "_stores"),
+    ],
+)
+def test_route_word_boundaries_and_panel_prompts(repo, question, expected):
+    handler = local.resolve_handler(question)
+    assert handler is not None and handler.__name__ == expected
+    res = local.answer(question, repo, Filters())
+    assert "**Ação:**" in res
+
+
+def test_status_filter_honest_responses(repo):
+    f_canc = Filters(status=["canceled"])
+    for q in ("onde esta o gargalo?", "como esta o sla?", "quanto custa o frete?", "como estao os modais?"):
+        res = local.answer(q, repo, f_canc)
+        assert "status cancelado" in res.lower()
+        assert "ampliar o período" not in res.lower()
+        assert "**Ação:**" in res
+
+    res_canc = local.answer("quais lojas cancelam mais?", repo, f_canc)
+    assert "100,0%" not in res_canc
+    assert "**Ação:**" in res_canc
+
+    res_deliv = local.answer("quais lojas cancelam mais?", repo, Filters(status=["delivered"]))
+    assert "0,0%" in res_deliv
+    assert "remover o filtro" in res_deliv.lower()
+    assert "**Ação:**" in res_deliv
 
 
 def test_stages_single_hub(repo):

@@ -136,8 +136,16 @@ def _stage_action(stage: str, gap: float, hub: dict, repo: Repository, f: Filter
         )
     if stage == "production_p50":
         hub_filter = f.model_copy(update={"hub": [int(hub["key"])]})
-        slow = repo.breakdown(hub_filter, "store", sort="orders", limit=40, min_orders=50)
-        slow = sorted((s for s in slow if s["production_p50"]), key=lambda s: -s["production_p50"])[:3]
+        slow = repo.breakdown(hub_filter, "store", sort="cycle_p50", limit=200, min_orders=50)
+        slow = sorted(
+            (s for s in slow if s.get("production_p50") and s.get("measured", 0) >= 20),
+            key=lambda s: -s["production_p50"],
+        )[:3]
+        if not slow:
+            return (
+                f"Ligar hoje para o líder do hub {label}: revisar com as lojas o tempo de preparo informado "
+                f"e a pausa de cardápio nos horários {_hours_label(peak)}."
+            )
         names = ", ".join(f"{s['label']} ({fmt.minutes(s['production_p50'])})" for s in slow)
         return (
             f"Ligar para as lojas com preparo mais lento no hub {label}: {names}. "
@@ -217,7 +225,7 @@ def _freight_action(repo: Repository, f: Filters, base: dict) -> str:
 
 
 def detect_alerts(repo: Repository, f: Filters) -> list[Alert]:
-    return repo._cached("alerts:" + f.cache_key(), lambda: _detect(repo, f))
+    return repo.cached("alerts:" + f.cache_key(), lambda: _detect(repo, f))
 
 
 def _detect(repo: Repository, f: Filters) -> list[Alert]:
@@ -226,6 +234,7 @@ def _detect(repo: Repository, f: Filters) -> list[Alert]:
         return []
 
     alerts: list[Alert] = []
+    only_canceled = set(f.status) == {"canceled"}
     peak = _peak_hours(repo, f)
     hubs = repo.breakdown(f, "hub", sort="orders", limit=100, min_orders=HUB_MIN)
     thin_sla = base["low_sample"]  # SLA: base medida (entregues sem preso)
@@ -281,7 +290,7 @@ def _detect(repo: Repository, f: Filters) -> list[Alert]:
 
     # 2. Cancelamento -------------------------------------------------------
     cancel = base["cancel_rate"] or 0.0
-    if cancel >= CANCEL_WARN:
+    if not only_canceled and cancel >= CANCEL_WARN:
         segments = repo.breakdown(f, "segment", sort="cancel_rate", limit=5)
         worst = segments[0] if segments else None
         where = (
@@ -301,7 +310,7 @@ def _detect(repo: Repository, f: Filters) -> list[Alert]:
             evidence=Evidence(view="kpi", kpi="cancel_rate"),
         ))
 
-    if len(hubs) > 1 and cancel > 0:
+    if not only_canceled and len(hubs) > 1 and cancel > 0:
         hot = [h for h in hubs if h["cancel_rate"] >= max(1.6 * cancel, CANCEL_WARN)]
         if hot:
             hub = max(hot, key=lambda h: h["canceled"])
@@ -320,9 +329,16 @@ def _detect(repo: Repository, f: Filters) -> list[Alert]:
             ))
 
     # 3. Loja crítica -------------------------------------------------------
-    stores = repo.breakdown(f, "store", sort="orders", limit=300, min_orders=STORE_MIN)
-    if len(stores) > 1:
-        critical = [s for s in stores if s["cancel_rate"] >= max(2.5 * cancel, 0.10)]
+    if not only_canceled:
+        stores = repo.breakdown(f, "store", sort="cancel_rate", limit=500, min_orders=STORE_MIN)
+        critical = [
+            s for s in stores
+            if (
+                s["cancel_rate"] >= 0.90 and f.store != [int(s["key"])]
+            ) or (
+                len(stores) > 1 and s["cancel_rate"] >= max(2.5 * cancel, 0.10)
+            )
+        ]
         critical.sort(key=lambda s: -s["canceled"])
         for store in critical[:2]:
             broken = store["cancel_rate"] >= 0.9
@@ -374,8 +390,8 @@ def _detect(repo: Repository, f: Filters) -> list[Alert]:
     # 5. Pedidos presos no fluxo -------------------------------------------
     stuck = base["stuck_rate"]
     if stuck is not None and stuck >= STUCK_WARN:
-        all_hubs = repo.breakdown(f, "hub", sort="stuck_rate", limit=1, min_orders=100)
-        hub = all_hubs[0] if all_hubs else None
+        all_hubs = repo.breakdown(f, "hub", sort="stuck_rate", limit=10, min_orders=100)
+        hub = next((h for h in all_hubs if h["delivered"] >= 100 and h["stuck_rate"] is not None), None)
         stuck_n = round(stuck * base["delivered"])
         alerts.append(Alert(
             id="dados-presos",
@@ -392,33 +408,38 @@ def _detect(repo: Repository, f: Filters) -> list[Alert]:
                 "com retirada posterior) antes de cobrar SLA do hub."
             ),
             drilldown=(
-                DrillDown(label=f"Ver só {hub['label']}", filters={"hub": [int(hub["key"])]}) if hub else None
+                DrillDown(label=f"Ver só {hub['label']}", filters={"hub": [int(hub["key"])]})
+                if hub and f.hub != [int(hub["key"])]
+                else None
             ),
             evidence=Evidence(view="kpi", kpi="sla_rate"),
         ))
 
     # 6. Volume: últimos 7 dias contra os 7 anteriores -----------------------
-    start, end = repo.period(f)
-    if (end - start).days >= 13:
-        last_f = f.with_period(end - timedelta(days=6), end)
-        prev_f = f.with_period(end - timedelta(days=13), end - timedelta(days=7))
-        last = repo.metrics(last_f)
-        prev = repo.metrics(prev_f)
-        if prev["orders"] >= 100:
-            change = last["orders"] / prev["orders"] - 1
-            if change <= -0.15:
-                alerts.append(Alert(
-                    id="volume-queda",
-                    severity="medium",
-                    category="volume",
-                    title="Queda de volume na última semana",
-                    detail=(
-                        f"{fmt.integer(last['orders'])} pedidos nos últimos 7 dias contra "
-                        f"{fmt.integer(prev['orders'])} na semana anterior ({fmt.pct(change)})."
-                    ),
-                    action=_volume_action(repo, last_f, prev_f),
-                    evidence=Evidence(view="kpi", kpi="orders"),
-                ))
+    if not only_canceled:
+        start, end = repo.period(f)
+        eff_start = max(start, repo.min_date)
+        eff_end = min(end, repo.max_date)
+        if (eff_end - eff_start).days >= 13:
+            last_f = f.with_period(eff_end - timedelta(days=6), eff_end)
+            prev_f = f.with_period(eff_end - timedelta(days=13), eff_end - timedelta(days=7))
+            last = repo.metrics(last_f)
+            prev = repo.metrics(prev_f)
+            if prev["orders"] >= 100:
+                change = last["orders"] / prev["orders"] - 1
+                if change <= -0.15:
+                    alerts.append(Alert(
+                        id="volume-queda",
+                        severity="medium",
+                        category="volume",
+                        title="Queda de volume na última semana",
+                        detail=(
+                            f"{fmt.integer(last['orders'])} pedidos nos últimos 7 dias contra "
+                            f"{fmt.integer(prev['orders'])} na semana anterior ({fmt.pct(change)})."
+                        ),
+                        action=_volume_action(repo, last_f, prev_f),
+                        evidence=Evidence(view="kpi", kpi="orders"),
+                    ))
 
     # 7. Subsídio de frete --------------------------------------------------
     subsidy = base["subsidy"]

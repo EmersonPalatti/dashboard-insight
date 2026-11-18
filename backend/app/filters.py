@@ -7,8 +7,9 @@ chamada à API usam o mesmo contrato.
 
 from __future__ import annotations
 
+import json
 from datetime import date
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -16,6 +17,7 @@ Segment = Literal["food", "good"]
 ChannelType = Literal["marketplace", "own"]
 Modal = Literal["moto", "bike"]
 OrderStatus = Literal["delivered", "canceled"]
+CityStr = Annotated[str, Field(max_length=80)]
 
 _MAX_ITEMS = 200
 
@@ -25,7 +27,7 @@ class Filters(BaseModel):
 
     start: date | None = Field(default=None, description="Data inicial (inclusiva, horário de Brasília)")
     end: date | None = Field(default=None, description="Data final (inclusiva)")
-    city: list[str] = Field(default_factory=list, max_length=_MAX_ITEMS)
+    city: list[CityStr] = Field(default_factory=list, max_length=_MAX_ITEMS)
     hub: list[int] = Field(default_factory=list, max_length=_MAX_ITEMS)
     store: list[int] = Field(default_factory=list, max_length=_MAX_ITEMS)
     segment: list[Segment] = Field(default_factory=list)
@@ -65,7 +67,18 @@ class Filters(BaseModel):
         return sql, params
 
     def cache_key(self) -> str:
-        return self.model_dump_json()
+        canonical = {
+            "start": self.start.isoformat() if self.start else None,
+            "end": self.end.isoformat() if self.end else None,
+            "city": sorted(set(self.city)),
+            "hub": sorted(set(self.hub)),
+            "store": sorted(set(self.store)),
+            "segment": sorted(set(self.segment)),
+            "channel_type": sorted(set(self.channel_type)),
+            "modal": sorted(set(self.modal)),
+            "status": sorted(set(self.status)),
+        }
+        return json.dumps(canonical, ensure_ascii=False, separators=(",", ":"))
 
     def with_period(self, start: date, end: date) -> Filters:
         return self.model_copy(update={"start": start, "end": end})

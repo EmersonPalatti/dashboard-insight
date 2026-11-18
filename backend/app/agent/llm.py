@@ -10,7 +10,9 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, get_args
 
@@ -132,22 +134,42 @@ class ToolRunner:
         return {"erro": f"ferramenta desconhecida: {name}"}
 
 
-def _client(settings: Settings, timeout: float | None = None):
+_THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
+
+
+def _clean_answer(raw: str | None) -> str:
+    return _THINK_RE.sub("", raw or "").strip()
+
+
+def _strip_delimiters(text: str) -> str:
+    return text.replace("</pergunta_operador>", "").replace("<pergunta_operador>", "")
+
+
+@lru_cache(maxsize=4)
+def _shared_openai(api_key: str, base_url: str, default_timeout: float):
     from openai import OpenAI
 
     return OpenAI(
-        api_key=settings.openrouter_api_key,
-        base_url="https://openrouter.ai/api/v1",
-        timeout=timeout if timeout is not None else settings.llm_timeout_s,
+        api_key=api_key,
+        base_url=base_url,
+        timeout=default_timeout,
         max_retries=0,
         default_headers={"X-Title": "Central de Operacoes Delivery"},
     )
 
 
+def _client(settings: Settings, timeout: float | None = None):
+    return _shared_openai(
+        settings.openrouter_api_key or "",
+        "https://openrouter.ai/api/v1",
+        timeout if timeout is not None else settings.llm_timeout_s,
+    )
+
+
 def _messages(question: str, history: list[ChatTurn], scope: str) -> list[dict]:
     msgs: list[dict] = [{"role": "system", "content": SYSTEM_PROMPT + f"\n\nRecorte atual: {scope}"}]
-    msgs += [{"role": t.role, "content": t.content} for t in history[-4:]]
-    msgs.append({"role": "user", "content": f"<pergunta_operador>\n{question}\n</pergunta_operador>"})
+    msgs += [{"role": t.role, "content": _strip_delimiters(t.content)} for t in history[-4:]]
+    msgs.append({"role": "user", "content": f"<pergunta_operador>\n{_strip_delimiters(question)}\n</pergunta_operador>"})
     return msgs
 
 
@@ -171,14 +193,19 @@ def answer_with_tools(
         response = client.chat.completions.create(
             model=settings.openrouter_model,
             temperature=0.2,
+            max_tokens=settings.llm_max_tokens,
             messages=messages,
             tools=TOOLS,
             timeout=per_call_timeout,
         )
-        msg = response.choices[0].message
+        choices = getattr(response, "choices", None) or []
+        if not choices:
+            log.warning("Resposta vazia (sem choices) do LLM no round %d", round_idx)
+            return None
+        msg = choices[0].message
         calls = msg.tool_calls or []
         if not calls:
-            text = (msg.content or "").strip()
+            text = _clean_answer(msg.content)
             return (text, runner.used) if text else None
 
         call_ids: list[str] = []
@@ -220,7 +247,26 @@ def answer_with_tools(
                 "tool_call_id": call_id,
                 "content": json.dumps(result, ensure_ascii=False, default=str),
             })
-    return None
+
+    # Esgotou as rodadas com ferramentas: força uma chamada final de síntese sem tools.
+    remaining = (deadline - time.monotonic()) if deadline is not None else settings.chat_budget_s
+    if remaining <= 0:
+        log.warning("Budget de tempo do chat esgotado antes da síntese final")
+        return None
+    per_call_timeout = min(remaining, settings.llm_timeout_s)
+    client = _client(settings, timeout=per_call_timeout)
+    final_resp = client.chat.completions.create(
+        model=settings.openrouter_model,
+        temperature=0.2,
+        max_tokens=settings.llm_max_tokens,
+        messages=messages,
+        timeout=per_call_timeout,
+    )
+    final_choices = getattr(final_resp, "choices", None) or []
+    if not final_choices:
+        return None
+    text = _clean_answer(final_choices[0].message.content)
+    return (text, runner.used) if text else None
 
 
 def answer_with_context(
@@ -249,14 +295,18 @@ def answer_with_context(
     messages[-1]["content"] = (
         "Contexto do recorte (agregados, não o dataset bruto):\n"
         + json.dumps(context, ensure_ascii=False, default=str)
-        + f"\n\n<pergunta_operador>\n{question}\n</pergunta_operador>"
+        + f"\n\n<pergunta_operador>\n{_strip_delimiters(question)}\n</pergunta_operador>"
     )
     client = _client(settings, timeout=per_call_timeout)
     response = client.chat.completions.create(
         model=settings.openrouter_model,
         temperature=0.2,
+        max_tokens=settings.llm_max_tokens,
         messages=messages,
         timeout=per_call_timeout,
     )
-    text = (response.choices[0].message.content or "").strip()
+    choices = getattr(response, "choices", None) or []
+    if not choices:
+        return None
+    text = _clean_answer(choices[0].message.content)
     return text or None

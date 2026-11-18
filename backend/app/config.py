@@ -5,6 +5,7 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
@@ -28,9 +29,19 @@ class Settings(BaseSettings):
     openrouter_api_key: str | None = None
     openrouter_model: str = DEFAULT_MODEL
     llm_timeout_s: float = 45.0
+    llm_max_tokens: int = 900
     chat_budget_s: float = 20.0
     chat_rate_limit_per_minute: int = 8
     chat_rate_limit_enabled: bool = True
+    trusted_ip_header: str = ""
+    trust_xff: bool = True
+
+    @field_validator("cors_origin_regex", mode="before")
+    @classmethod
+    def _empty_regex_is_none(cls, v: str | None) -> str | None:
+        if isinstance(v, str) and not v.strip():
+            return None
+        return v
 
     @property
     def cors_origin_list(self) -> list[str]:

@@ -144,7 +144,7 @@
             {
               "id": "a0000001-0000-4000-8000-000000000003",
               "name": "text",
-              "value": "={{ '📋 Briefing de ' + DateTime.fromISO($('Config').first().json.data_ref).toFormat('dd/LL/yyyy') + '\\n\\n' + $json.markdown.replaceAll('**', '*') }}",
+              "value": "={{ '📋 Briefing de ' + DateTime.fromISO($('Config').first().json.data_ref).toFormat('dd/LL/yyyy') + '\\n\\n' + $json.markdown.replaceAll('_', '\\\\_').replaceAll('**', '*') }}",
               "type": "string"
             }
           ]
@@ -247,7 +247,7 @@
             {
               "id": "a0000001-0000-4000-8000-000000000004",
               "name": "text",
-              "value": "={{ ($json.severity === 'high' ? '🔴' : $json.severity === 'medium' ? '🟠' : '⚪') + ' *Para: ' + $json.recipient + '*\\n\\n' + $json.message }}",
+              "value": "={{ ($json.severity === 'high' ? '🔴' : $json.severity === 'medium' ? '🟠' : '⚪') + ' *Para: ' + $json.recipient.replaceAll('_', '\\\\_') + '*\\n\\n' + $json.message.replaceAll('_', '\\\\_') }}",
               "type": "string"
             }
           ]
@@ -301,7 +301,7 @@
             {
               "id": "a0000001-0000-4000-8000-000000000005",
               "name": "text",
-              "value": "Briefing não gerado: API indisponível",
+              "value": "={{ $('Telegram: briefing').isExecuted ? 'Roteamento de alertas não enviado: API indisponível' : 'Briefing não gerado: API indisponível' }}",
               "type": "string"
             }
           ]

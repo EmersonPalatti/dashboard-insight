@@ -23,6 +23,8 @@ número), então a base encolhe na mesma medida.
 | 46   | 4   | 26–31/03     | 320 entregues atrasados, etapas curtas (goods)            | sla-hub sem etapa acima da mediana |
 | 14   | 1   | 26–31/03     | 320 entregues no prazo, etapas longas                    | contrapeso do cenário acima |
 | 45   | 4   | 01–31/03     | 160 entregas com frete R$ 2 e custo R$ 12                 | custo-frete                |
+| 27   | 2   | 03–04/03     | 10 entregues sem custo + 10 com custo R$ 15               | cost_avg - fee_avg == subsidy |
+| 47   | 4   | 05–07/03     | 160 pedidos 100% cancelados                               | Loja sem entregas com recorte > 40% cancel |
 """
 
 from __future__ import annotations
@@ -99,7 +101,7 @@ from base;
 FLAGS_SQL = """
 alter table fact add column cycle_outlier boolean;
 alter table fact add column amount_outlier boolean;
-update fact set cycle_outlier = cycle_min > 240, amount_outlier = amount > 5000;
+update fact set cycle_outlier = coalesce(cycle_min > 240, false), amount_outlier = coalesce(amount > 5000, false);
 """
 LATE = 90.0  # food passa de 60 min; goods (120 min) também, com folga
 ON_TIME = 30.0
@@ -115,7 +117,7 @@ def _order(
     cycle: float = ON_TIME,
     stages: tuple[float, float, float, float] = LONG_STAGES,
     fee: float = 9.9,
-    cost: float = 8.0,
+    cost: float | None = 8.0,
 ) -> dict:
     hub = store // 10
     hub_name, city, state, segment = HUB_INFO[hub]
@@ -216,6 +218,16 @@ def _planted_rows() -> list[dict]:
     for k in range(160):
         add(_order(45, at(1 + k % 31, 9 + k % 12, (k * 5) % 60), fee=2.0, cost=12.0))
 
+    # 27: 10 entregas com delivery_cost nulo e 10 com custo preenchido (testa denominador único de subsídio).
+    for k in range(10):
+        add(_order(27, at(3, 10 + k % 10, k * 5), fee=5.0, cost=None))
+    for k in range(10):
+        add(_order(27, at(4, 10 + k % 10, k * 5), fee=9.0, cost=15.0))
+
+    # 47: 160 pedidos 100% cancelados (para validar "Loja sem entregas" mesmo quando o recorte passa de 40% cancelado).
+    for k in range(160):
+        add(_order(47, at(5 + k % 3, 9 + k % 12, (k * 4) % 60), status="canceled"))
+
     return rows
 
 
@@ -235,7 +247,8 @@ def _build_parquet(path: Path) -> None:
         [tuple(row[c] for c in COLUMNS) for row in PLANTED],
     )
     con.execute(FLAGS_SQL)
-    con.execute(f"copy fact to '{path.as_posix()}' (format parquet)")
+    dest = path.as_posix().replace("'", "''")
+    con.execute(f"copy fact to '{dest}' (format parquet)")
 
 
 @pytest.fixture(scope="session")

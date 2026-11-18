@@ -6,11 +6,13 @@ ordenação vêm de listas fixas (DIMENSIONS, SORTS, ORDER_SORTS).
 
 from __future__ import annotations
 
+import csv
+import io
 import tempfile
 import threading
 from collections import OrderedDict
-from collections.abc import Callable
-from datetime import date, timedelta
+from collections.abc import Callable, Iterator
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -24,6 +26,8 @@ _VALID = "status = 'delivered' and not cycle_outlier"
 _SALE = "status = 'delivered' and not amount_outlier"
 # Base da medição: entregues com ciclo e sem presos. É o denominador do SLA e o universo da mediana.
 _MEASURED = f"{_VALID} and cycle_min is not null"
+# Base do subsídio de frete: apenas entregas com custo e frete preenchidos, garantindo cost_avg - fee_avg == subsidy.
+_FREIGHT = "status = 'delivered' and delivery_cost is not null and delivery_fee is not null"
 # Abaixo disso, SLA e ciclo mediano saem com aviso de amostra pequena. Com n = 100, a margem de erro
 # de 95% de uma taxa perto de 80% é ±8 p.p. (1,96 · √(0,8 · 0,2 / 100)), mais que o desvio de 5 p.p.
 # (SLA_BELOW_GAP) que o painel usa para marcar uma linha. Abaixo de 100, a figura oscila mais que a
@@ -53,9 +57,9 @@ METRICS_SQL = f"""
     median(expedition_min) filter (where {_VALID}) as expedition_p50,
     median(transit_min) filter (where {_VALID}) as transit_p50,
     median(distance_m) filter (where {_VALID}) / 1000.0 as distance_p50_km,
-    avg(delivery_fee) filter (where status = 'delivered') as fee_avg,
-    avg(delivery_cost) filter (where status = 'delivered') as cost_avg,
-    avg(delivery_cost - delivery_fee) filter (where status = 'delivered') as subsidy
+    avg(delivery_fee) filter (where {_FREIGHT}) as fee_avg,
+    avg(delivery_cost) filter (where {_FREIGHT}) as cost_avg,
+    avg(delivery_cost - delivery_fee) filter (where {_FREIGHT}) as subsidy
 """
 
 # dimensão -> (chave, rótulo, pai)
@@ -121,6 +125,25 @@ VALUE_LABELS = {
 }
 
 
+class _Inflight:
+    __slots__ = ("error", "event", "value")
+
+    def __init__(self) -> None:
+        self.event = threading.Event()
+        self.value: Any = None
+        self.error: BaseException | None = None
+
+
+def _csv_cell(value: Any) -> Any:
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, datetime):
+        return value.strftime("%Y-%m-%d %H:%M:%S")
+    return value
+
+
 class Repository:
     def __init__(self, data_path: Path, sla_food_min: int, sla_good_min: int, cache_size: int = 512):
         if not data_path.exists():
@@ -129,11 +152,27 @@ class Repository:
             )
         self._con = duckdb.connect(":memory:")
         self._con.execute("set memory_limit = '256MB'")
+        self._con.execute("set threads = 2")
+        self._con.execute("set preserve_insertion_order = false")
         # Spill de memória vai para o temp do sistema, nunca para a pasta do projeto.
         spill = (Path(tempfile.gettempdir()) / "central-operacoes-duckdb").as_posix().replace("'", "''")
         self._con.execute(f"set temp_directory = '{spill}'")
         path = data_path.as_posix().replace("'", "''")
         self._con.execute(f"create table orders as select * from read_parquet('{path}')")
+        # Lojas homônimas no mesmo shopping recebem o id para ficarem distinguíveis no filtro e no ranking.
+        self._con.execute(
+            """
+            update orders set store_name = store_name || ' #' || store_id::varchar
+            where store_id in (
+                select unnest(ids) from (
+                    select hub_id, store_name, list(distinct store_id) as ids
+                    from orders
+                    group by 1, 2
+                    having count(distinct store_id) > 1
+                )
+            )
+            """
+        )
         self._con.execute(
             "create macro on_time(seg, cyc) as "
             f"cyc <= case seg when 'good' then {int(sla_good_min)} else {int(sla_food_min)} end"
@@ -143,31 +182,61 @@ class Repository:
         self._cache: OrderedDict[str, Any] = OrderedDict()
         self._cache_size = cache_size
         self._lock = threading.Lock()
+        self._inflight: dict[str, _Inflight] = {}
+        self._query_sem = threading.BoundedSemaphore(2)
         self.min_date, self.max_date, self.total_orders = self._con.execute(
             "select min(created_date), max(created_date), count(*)::int from orders"
         ).fetchone()
 
     # ------------------------------------------------------------------ infra
     def _rows(self, sql: str, params: list | None = None) -> list[dict[str, Any]]:
-        cur = self._con.cursor()  # um cursor por chamada: seguro entre threads
-        try:
-            result = cur.execute(sql, params or [])
-            columns = [d[0] for d in result.description]
-            return [dict(zip(columns, row)) for row in result.fetchall()]
-        finally:
-            cur.close()
+        with self._query_sem:
+            cur = self._con.cursor()  # um cursor por chamada: seguro entre threads
+            try:
+                result = cur.execute(sql, params or [])
+                columns = [d[0] for d in result.description]
+                return [dict(zip(columns, row)) for row in result.fetchall()]
+            finally:
+                cur.close()
 
-    def _cached(self, key: str, compute: Callable[[], Any]) -> Any:
+    def cached(self, key: str, compute: Callable[[], Any]) -> Any:
         with self._lock:
             if key in self._cache:
                 self._cache.move_to_end(key)
                 return self._cache[key]
-        value = compute()
+            slot = self._inflight.get(key)
+            if slot is None:
+                slot = _Inflight()
+                self._inflight[key] = slot
+                owner = True
+            else:
+                owner = False
+
+        if not owner:
+            slot.event.wait()
+            if slot.error is not None:
+                raise slot.error
+            return slot.value
+
+        try:
+            value = compute()
+        except BaseException as exc:
+            slot.error = exc
+            with self._lock:
+                self._inflight.pop(key, None)
+            slot.event.set()
+            raise
+
+        slot.value = value
         with self._lock:
             self._cache[key] = value
             if len(self._cache) > self._cache_size:
                 self._cache.popitem(last=False)
+            self._inflight.pop(key, None)
+        slot.event.set()
         return value
+
+    _cached = cached
 
     # ------------------------------------------------------------------ meta
     def options(self, key: str, label: str, parent: str = "null", where: str = "true") -> list[dict]:
@@ -192,7 +261,7 @@ class Repository:
                 "modals": self.options("modal", "modal"),
             }
 
-        return self._cached("meta", build)
+        return self.cached("meta", build)
 
     def names(self, dimension: str, ids: list[int]) -> list[str]:
         if not ids:
@@ -207,7 +276,9 @@ class Repository:
         end = f.end or self.max_date
         parts = [f"{start:%d/%m/%Y} a {end:%d/%m/%Y}"]
         if f.city:
-            parts.append("cidade " + ", ".join(f.city))
+            valid_cities = {c["value"] for c in self.meta()["cities"]}
+            known = [c for c in f.city if c in valid_cities]
+            parts.append("cidade " + (", ".join(known) if known else "sem correspondência"))
         if f.hub:
             parts.append("hub " + ", ".join(self.names("hub", f.hub)))
         if f.store:
@@ -229,7 +300,7 @@ class Repository:
             where, params = f.where()
             return self._rows(f"select {METRICS_SQL} from orders where {where}", params)[0]
 
-        return self._cached("metrics:" + f.cache_key(), build)
+        return self.cached("metrics:" + f.cache_key(), build)
 
     def period(self, f: Filters) -> tuple[date, date]:
         return (f.start or self.min_date, f.end or self.max_date)
@@ -252,14 +323,14 @@ class Repository:
             )[0]
             return f.start or row["start"], f.end or row["end"]
 
-        return self._cached("covered:" + f.cache_key(), build)
+        return self.cached("covered:" + f.cache_key(), build)
 
     def previous_period(self, f: Filters) -> tuple[date, date] | None:
         start, end = self.period(f)
         length = (end - start).days + 1
         prev_end = start - timedelta(days=1)
         prev_start = prev_end - timedelta(days=length - 1)
-        if prev_start < self.min_date:
+        if prev_start < self.min_date or prev_end > self.max_date:
             return None
         return prev_start, prev_end
 
@@ -268,8 +339,15 @@ class Repository:
 
         def build() -> list[dict]:
             where, params = f.where()
+            if grain == "week":
+                floor_date = max(f.start, self.min_date) if f.start else self.min_date
+                bucket_expr = "greatest(date_trunc('week', created_at), ?::timestamp)"
+                query_params: list[Any] = [floor_date, *params]
+            else:
+                bucket_expr = f"date_trunc('{trunc}', created_at)"
+                query_params = params
             return self._rows(
-                f"""select date_trunc('{trunc}', created_at) as t,
+                f"""select {bucket_expr} as t,
                        count(*)::int as orders,
                        count(*) filter (where status = 'delivered')::int as delivered,
                        coalesce(sum(amount) filter (where {_SALE}), 0)::double as gmv,
@@ -278,10 +356,10 @@ class Repository:
                        avg(on_time(segment, cycle_min)::int)
                            filter (where {_VALID} and cycle_min is not null) as sla_rate
                     from orders where {where} group by 1 order by 1""",
-                params,
+                query_params,
             )
 
-        return self._cached(f"ts:{grain}:" + f.cache_key(), build)
+        return self.cached(f"ts:{grain}:" + f.cache_key(), build)
 
     def heatmap(self, f: Filters) -> list[dict]:
         def build() -> list[dict]:
@@ -296,7 +374,7 @@ class Repository:
                 params,
             )
 
-        return self._cached("heat:" + f.cache_key(), build)
+        return self.cached("heat:" + f.cache_key(), build)
 
     def breakdown(
         self,
@@ -322,7 +400,7 @@ class Repository:
             )
             return _flag_outliers(rows, self.metrics(f))
 
-        return self._cached(f"bd:{by}:{sort}:{desc}:{limit}:{min_orders}:" + f.cache_key(), build)
+        return self.cached(f"bd:{by}:{sort}:{desc}:{limit}:{min_orders}:" + f.cache_key(), build)
 
     def orders_page(self, f: Filters, offset: int, limit: int, sort: str, desc: bool) -> dict:
         if sort not in ORDER_SORTS:
@@ -339,13 +417,40 @@ class Repository:
 
     def export_csv(self, f: Filters, target: Path) -> None:
         where, params = f.where()
-        cur = self._con.cursor()
         dest = target.as_posix().replace("'", "''")  # caminho com aspas simples não quebra o COPY
+        with self._query_sem:
+            cur = self._con.cursor()
+            try:
+                cur.execute(
+                    f"copy (select {ORDER_COLUMNS} from orders where {where} order by created_at) "
+                    f"to '{dest}' (header, delimiter ',')",
+                    params,
+                )
+            finally:
+                cur.close()
+
+    def iter_orders_csv(self, f: Filters, batch_size: int = 5000) -> Iterator[str]:
+        """Gera o CSV do recorte em lotes para não materializar dezenas de MB em disco."""
+        where, params = f.where()
+        cur = self._con.cursor()
         try:
-            cur.execute(
-                f"copy (select {ORDER_COLUMNS} from orders where {where} order by created_at) "
-                f"to '{dest}' (header, delimiter ',')",
-                params,
-            )
+            with self._query_sem:
+                result = cur.execute(f"select {ORDER_COLUMNS} from orders where {where} order by created_at", params)
+                header = [d[0] for d in result.description]
+            buf = io.StringIO()
+            writer = csv.writer(buf, lineterminator="\n")
+            writer.writerow(header)
+            yield buf.getvalue()
+
+            while True:
+                with self._query_sem:
+                    batch = cur.fetchmany(batch_size)
+                if not batch:
+                    break
+                buf.seek(0)
+                buf.truncate(0)
+                for row in batch:
+                    writer.writerow([_csv_cell(v) for v in row])
+                yield buf.getvalue()
         finally:
             cur.close()

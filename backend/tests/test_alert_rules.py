@@ -9,7 +9,7 @@ from datetime import date
 
 import pytest
 
-from app.alerts import THIN_SLA_ACTION, _hours_label, _weighted_sla, detect_alerts
+from app.alerts import THIN_SLA_ACTION, _hours_label, _stage_action, _weighted_sla, detect_alerts
 from app.filters import Filters
 
 HEALTHY_STORES = [18, 26]  # lojas no prazo, sem cancelamento: hub 1 e hub 2
@@ -181,3 +181,35 @@ def test_freight_action_names_store_from_data(repo):
 def test_no_analysis_only_actions(repo, f):
     for alert in detect_alerts(repo, f):
         assert not any(phrase in alert.action for phrase in BANNED_ANALYSIS_ACTIONS), alert.id
+
+
+def test_status_canceled_suppresses_tautological_cancel_and_volume_alerts(repo):
+    alerts = _by_id(repo, Filters(status=["canceled"]))
+    assert not any(aid.startswith("cancel") for aid in alerts)
+    assert "volume-queda" not in alerts
+
+
+def test_broken_store_fires_even_when_recorte_cancel_exceeds_40_pct(repo):
+    alerts = _by_id(repo, Filters(store=[47, 25]))
+    assert "cancel-store-47" in alerts
+    assert alerts["cancel-store-47"].title.startswith("Loja sem entregas")
+
+
+def test_dados_presos_omits_redundant_drilldown_when_hub_already_filtered(repo):
+    alerts = _by_id(repo, Filters(hub=[3]))
+    assert "dados-presos" in alerts
+    assert alerts["dados-presos"].drilldown is None
+
+
+def test_stage_action_production_without_eligible_stores_has_clean_punctuation(repo):
+    # Loja 27 tem apenas 20 pedidos (< min_orders=50), então slow fica vazio no fallback.
+    hub = {"key": 2, "label": "Hub Lento", "distance_p50_km": 2.0}
+    action = _stage_action("production_p50", 5.0, hub, repo, Filters(store=[27]), [12, 13])
+    assert ": ." not in action
+    assert "Hub Lento" in action
+
+
+def test_volume_queda_clamps_end_date_to_max_date(repo):
+    # Loja 18 saudável até 31/03; estender end para maio não deve gerar queda falsa de -100%.
+    alerts = _by_id(repo, Filters(start=date(2021, 3, 18), end=date(2021, 5, 10), store=[18]))
+    assert "volume-queda" not in alerts
