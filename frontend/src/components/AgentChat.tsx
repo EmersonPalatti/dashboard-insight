@@ -36,10 +36,10 @@ for (const message of $agentMessages.get()) {
   if (message.comanda) nextSeries = Math.max(nextSeries, message.comanda.series + 1);
 }
 
-function historyOf(list: AgentMessage[]): ChatTurn[] {
+function historyOf(list: AgentMessage[], scope: string): ChatTurn[] {
   return list
-    .filter((message) => !message.error)
-    .slice(-8)
+    .filter((message) => !message.error && message.scope === scope)
+    .slice(-4)
     .map((message) => ({ role: message.role, content: message.content.slice(0, 2000) }));
 }
 
@@ -329,8 +329,8 @@ export function AgentConversation({ visible, onClose }: ConversationProps) {
       }
     }
     setUndo(null);
-    const history = historyOf($agentMessages.get());
     const scope = scopeKey(filters);
+    const history = historyOf($agentMessages.get(), scope);
     setBusy("local");
     const nextTurn = turn + 1;
     setTurn(nextTurn);

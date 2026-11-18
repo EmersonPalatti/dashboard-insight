@@ -1027,7 +1027,7 @@ export interface operations {
                 /** @description Status do pedido: delivered ou canceled */
                 status?: ("delivered" | "canceled")[];
                 by?: "city" | "hub" | "store" | "channel" | "channel_type" | "segment" | "modal" | "driver_type" | "payment_method" | "hour" | "weekday";
-                sort?: "orders" | "gmv" | "ticket" | "cancel_rate" | "cycle_p50" | "sla_rate" | "stuck_rate" | "subsidy";
+                sort?: "orders" | "gmv" | "ticket" | "cancel_rate" | "cycle_p50" | "cycle_p90" | "sla_rate" | "stuck_rate" | "production_p50" | "collected_p50" | "expedition_p50" | "transit_p50" | "distance_p50_km" | "fee_avg" | "cost_avg" | "subsidy";
                 desc?: boolean;
                 limit?: number;
                 min_orders?: number;

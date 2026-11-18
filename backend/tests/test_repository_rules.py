@@ -223,3 +223,38 @@ def test_weekly_timeseries_clamps_first_bucket_to_dataset_start(repo):
     ts = repo.timeseries(Filters(), "week")
     assert ts
     assert ts[0]["t"] >= datetime(2021, 1, 1)
+
+
+def test_breakdown_sorts_by_stages_and_filters_min_measured(repo):
+    by_transit = repo.breakdown(Filters(), "hub", sort="transit_p50", desc=True, limit=10)
+    transits = [r["transit_p50"] for r in by_transit if r["transit_p50"] is not None]
+    assert transits == sorted(transits, reverse=True)
+    assert by_transit[0]["label"] == "Hub Lento"
+
+    by_prod = repo.breakdown(Filters(), "hub", sort="production_p50", desc=True, limit=10)
+    prods = [r["production_p50"] for r in by_prod if r["production_p50"] is not None]
+    assert prods == sorted(prods, reverse=True)
+
+    reliable_stores = repo.breakdown(Filters(), "store", sort="orders", limit=100, min_measured=MIN_MEASURED)
+    assert reliable_stores
+    assert all(r["measured"] >= MIN_MEASURED and r["low_sample"] is False for r in reliable_stores)
+    assert all(r["label"] != "Loja Quebrada" for r in reliable_stores)
+
+
+def test_subslice_metrics_and_complement_sum_to_base(repo):
+    base = repo.metrics(Filters())
+    peak = repo.subslice_metrics(Filters(), hours=[12, 13, 19, 20])
+    off_peak = repo.subslice_metrics(Filters(), hours=[12, 13, 19, 20], complement=True)
+    assert peak["orders"] > 0 and off_peak["orders"] > 0
+    assert peak["orders"] + off_peak["orders"] == base["orders"]
+    assert peak["delivered"] + off_peak["delivered"] == base["delivered"]
+
+
+def test_subslice_complement_includes_null_dimension_rows(tmp_path: Path):
+    gap_repo = _repo_with_gaps(tmp_path)
+    total = gap_repo.metrics(Filters())
+    moto = gap_repo.subslice_metrics(Filters(), dimension="modal", values=["moto"])
+    rest = gap_repo.subslice_metrics(Filters(), dimension="modal", values=["moto"], complement=True)
+    assert moto["orders"] == 1
+    assert rest["orders"] == 4
+    assert moto["orders"] + rest["orders"] == total["orders"]

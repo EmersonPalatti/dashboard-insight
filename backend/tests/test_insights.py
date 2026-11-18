@@ -115,11 +115,16 @@ def test_llm_tools_stay_in_recorte_and_return_full_hours(repo):
 
     runner = ToolRunner(repo, Filters(city=["Curitiba"]))
     hours = runner.run("get_breakdown", {"by": "hour", "limit": 3, "sort": "cancel_rate"})
-    keys = [h["key"] for h in hours]
-    assert keys == sorted(keys) and len(keys) > 3  # ignora limit/sort em hora
+    h_cols = hours["columns"]
+    labels = [row[h_cols.index("label")] for row in hours["rows"]]
+    assert len(labels) == 24
+    assert labels == [f"{h:02d}h" for h in range(24)]  # ignora limit/sort em hora
     hubs = runner.run("get_breakdown", {"by": "hub", "limit": 50})
-    assert {h["parent"] for h in hubs} == {"Curitiba"}  # filtro forçado no servidor
-    assert runner.run("get_breakdown", {"by": "drop table"}) == {"erro": "dimensão inválida: drop table"}
+    hub_cols = hubs["columns"]
+    assert "id" in hub_cols
+    assert {row[hub_cols.index("parent")] for row in hubs["rows"]} == {"Curitiba"}  # filtro forçado no servidor
+    err = runner.run("get_breakdown", {"by": "drop table"})
+    assert "dimensão inválida" in err["erro"]
     assert runner.used[0] == "get_breakdown(hour)"
 
 
