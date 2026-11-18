@@ -7,6 +7,7 @@ chamada à API usam o mesmo contrato.
 
 from __future__ import annotations
 
+import json
 from datetime import date
 from typing import Annotated, Literal
 
@@ -84,7 +85,18 @@ class Filters(BaseModel):
         return sql, params
 
     def cache_key(self) -> str:
-        return self.model_dump_json()
+        canonical = {
+            "start": self.start.isoformat() if self.start else None,
+            "end": self.end.isoformat() if self.end else None,
+            "city": sorted(set(self.city)),
+            "hub": sorted(set(self.hub)),
+            "store": sorted(set(self.store)),
+            "segment": sorted(set(self.segment)),
+            "channel_type": sorted(set(self.channel_type)),
+            "modal": sorted(set(self.modal)),
+            "status": sorted(set(self.status)),
+        }
+        return json.dumps(canonical, ensure_ascii=False, separators=(",", ":"))
 
     def with_period(self, start: date, end: date) -> Filters:
         return self.model_copy(update={"start": start, "end": end})

@@ -121,7 +121,7 @@ from base;
 FLAGS_SQL = f"""
 alter table fact add column cycle_outlier boolean;
 alter table fact add column amount_outlier boolean;
-update fact set cycle_outlier = cycle_min > {STUCK_CYCLE_MIN}, amount_outlier = amount > {AMOUNT_OUTLIER};
+update fact set cycle_outlier = coalesce(cycle_min > {STUCK_CYCLE_MIN}, false), amount_outlier = coalesce(amount > {AMOUNT_OUTLIER}, false);
 """
 LATE = 90.0  # food passa de 60 min; goods (120 min) continua no prazo
 GOODS_LATE = 150.0  # goods passa de 120 min
@@ -304,7 +304,8 @@ def _build_parquet(path: Path) -> None:
         [tuple(row[c] for c in COLUMNS) for row in PLANTED],
     )
     con.execute(FLAGS_SQL)
-    con.execute(f"copy fact to '{path.as_posix()}' (format parquet)")
+    dest = path.as_posix().replace("'", "''")
+    con.execute(f"copy fact to '{dest}' (format parquet)")
 
 
 @pytest.fixture(scope="session")

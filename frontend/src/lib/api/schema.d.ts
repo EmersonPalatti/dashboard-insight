@@ -1211,6 +1211,7 @@ export interface operations {
                 status?: ("delivered" | "canceled")[];
                 offset?: number;
                 limit?: number;
+                /** @description Coluna de ordenação (fora da lista cai em created_at): created_at, amount, delivery_fee, cycle_min, production_min, transit_min, distance_m, store_name, hub_name, city, status */
                 sort?: string;
                 desc?: boolean;
             };

@@ -9,7 +9,7 @@ from datetime import date
 
 import pytest
 
-from app.alerts import THIN_SLA_ACTION, _hours_label, _weighted_sla, detect_alerts
+from app.alerts import THIN_SLA_ACTION, _hours_label, _stage_action, _weighted_sla, detect_alerts
 from app.filters import Filters
 from app.repository import MIN_MEASURED
 
@@ -370,3 +370,28 @@ def test_cancel_of_exactly_six_percent_is_flagged_when_the_ratio_is_higher(repo)
     assert base["cancel_rate"] * 1.6 < 0.06
     assert hubs[3]["cancel_above"] is True
     assert hubs[4]["cancel_above"] is False
+
+
+def test_status_canceled_suppresses_tautological_cancel_and_volume_alerts(repo):
+    alerts = _by_id(repo, Filters(status=["canceled"]))
+    assert not any(aid.startswith("cancel") for aid in alerts)
+    assert "volume-queda" not in alerts
+
+
+def test_dados_presos_omits_redundant_drilldown_when_hub_already_filtered(repo):
+    alerts = _by_id(repo, Filters(hub=[3]))
+    assert "dados-presos" in alerts
+    assert alerts["dados-presos"].drilldown is None
+
+
+def test_stage_action_production_without_eligible_stores_has_clean_punctuation(repo):
+    # Loja 47 tem só 2 pedidos (< min_orders=50), então slow fica vazio no fallback.
+    hub = {"key": 4, "label": "Hub Goods", "distance_p50_km": 2.0}
+    action = _stage_action("production_p50", 5.0, hub, repo, Filters(store=[47]), [12, 13])
+    assert ": ." not in action
+    assert "Hub Goods" in action
+
+
+def test_volume_queda_clamps_end_date_to_max_date(repo):
+    alerts = _by_id(repo, Filters(start=date(2021, 3, 18), end=date(2021, 5, 10), store=[18]))
+    assert "volume-queda" not in alerts

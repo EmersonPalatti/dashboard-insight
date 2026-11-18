@@ -462,3 +462,59 @@ def test_tool_calls_are_capped_at_six_per_round(client, monkeypatch):
         assert len(tool_msgs) == 6
     finally:
         client.app.dependency_overrides.pop(get_settings, None)
+
+
+def test_empty_slice_does_not_spend_llm_quota(client, monkeypatch):
+    calls: list[int] = []
+    _fast_llm(monkeypatch, calls)
+    client.app.dependency_overrides[get_settings] = lambda: Settings(
+        openrouter_api_key="test-key", chat_rate_limit_per_minute=1
+    )
+    headers = {"X-Forwarded-For": "198.51.100.77"}
+    try:
+        empty = client.post(
+            "/api/agent/chat",
+            json={"question": "resumo", "filters": {"city": ["Nenhuma"]}},
+            headers=headers,
+        )
+        assert empty.status_code == 200
+        assert empty.json()["mode"] == "local"
+        assert calls == []
+
+        valid = client.post("/api/agent/chat", json={"question": "resumo"}, headers=headers)
+        assert valid.status_code == 200
+        assert valid.json()["mode"] == "llm-tools"
+        assert len(calls) == 1
+    finally:
+        client.app.dependency_overrides.pop(get_settings, None)
+
+
+def test_llm_strips_think_block_passes_max_tokens_and_handles_empty_choices(client, monkeypatch):
+    captured: list[dict] = []
+
+    def create_with_think(*_args, **kwargs):
+        captured.append(kwargs)
+        msg = SimpleNamespace(
+            content="<think>raciocinio</think> Resposta final.\n\n**Ação:** Líder do hub deve revisar o SLA hoje.",
+            tool_calls=None,
+        )
+        return SimpleNamespace(choices=[SimpleNamespace(message=msg)])
+
+    _install_llm(monkeypatch, create_with_think)
+    client.app.dependency_overrides[get_settings] = lambda: _llm_settings()
+    try:
+        body = client.post("/api/agent/chat", json={"question": "resumo"}).json()
+        assert body["mode"] == "llm-tools"
+        assert body["answer"].startswith("Resposta final.")
+        assert "<think>" not in body["answer"]
+        assert captured[0]["max_tokens"] == 900
+    finally:
+        client.app.dependency_overrides.pop(get_settings, None)
+
+    _install_llm(monkeypatch, lambda *_args, **_kwargs: SimpleNamespace(choices=[]))
+    client.app.dependency_overrides[get_settings] = lambda: _llm_settings()
+    try:
+        body = client.post("/api/agent/chat", json={"question": "resumo"}).json()
+        assert body["mode"] == "local"
+    finally:
+        client.app.dependency_overrides.pop(get_settings, None)

@@ -25,6 +25,22 @@ def _norm(text: str) -> str:
     return "".join(ch for ch in decomposed if unicodedata.category(ch) != "Mn")
 
 
+def _only_canceled(f: Filters) -> bool:
+    return set(f.status) == {"canceled"}
+
+
+def _only_delivered(f: Filters) -> bool:
+    return set(f.status) == {"delivered"}
+
+
+def _canceled_delivery_notice(m: dict, subject: str) -> str:
+    return (
+        f"O recorte atual filtra apenas pedidos com status cancelado ({fmt.integer(m['canceled'])} pedidos), "
+        f"sem entregas concluídas para medir {subject}.\n\n"
+        "**Ação:** Operador deve remover o filtro de status cancelado para avaliar entregas concluídas neste período."
+    )
+
+
 def _words(text: str) -> list[str]:
     return re.findall(r"[a-z0-9]+", text)
 
@@ -84,6 +100,14 @@ def briefing(repo: Repository, f: Filters) -> str:
             "Nenhum pedido no recorte. Afrouxe período, hub ou loja.\n\n"
             "**Ação:** Operador deve afrouxar os filtros do recorte para carregar dados da operação."
         )
+    if _only_canceled(f):
+        hubs = repo.breakdown(f, "hub", sort="orders", limit=1)
+        top_hub = f" Hub com maior volume: {hubs[0]['label']} ({fmt.integer(hubs[0]['orders'])} cancelados)." if hubs else ""
+        return (
+            f"**Briefing do recorte** ({repo.describe(f)})\n\n"
+            f"- {fmt.integer(m['canceled'])} pedidos cancelados (filtro status = cancelado; sem entregas concluídas neste recorte).{top_hub}\n\n"
+            "**Ação:** Operador deve remover o filtro de status cancelado para comparar taxas e SLA, ou atuar no hub com maior volume de cancelamentos."
+        )
     alerts = detect_alerts(repo, f)
     lines = [
         f"**Briefing do recorte** ({repo.describe(f)})",
@@ -131,6 +155,8 @@ def _alerts(repo: Repository, f: Filters) -> str:
 
 def _stages(repo: Repository, f: Filters) -> str:
     m = repo.metrics(f)
+    if _only_canceled(f):
+        return _canceled_delivery_notice(m, "as etapas do ciclo")
     parts = [f"- {label.capitalize()}: {fmt.minutes(m[key])}" for key, label in STAGES.items()]
     hubs = repo.breakdown(f, "hub", sort="orders", limit=100, min_orders=300)
     lines = [f"Mediana por etapa no recorte (ciclo {fmt.minutes(m['cycle_p50'])}):", *parts]
@@ -203,6 +229,8 @@ def _stages(repo: Repository, f: Filters) -> str:
 
 def _sla(repo: Repository, f: Filters) -> str:
     m = repo.metrics(f)
+    if _only_canceled(f):
+        return _canceled_delivery_notice(m, "SLA e ciclo")
     hubs = repo.breakdown(f, "hub", sort="sla_rate", desc=False, limit=5, min_orders=300)
     lines = [
         (
@@ -255,6 +283,39 @@ def _sla(repo: Repository, f: Filters) -> str:
 
 def _cancel(repo: Repository, f: Filters) -> str:
     m = repo.metrics(f)
+    if _only_delivered(f):
+        return (
+            f"O recorte atual filtra apenas pedidos com status concluído ({fmt.integer(m['delivered'])} entregas), "
+            "portanto o cancelamento é 0,0% por definição do filtro.\n\n"
+            "**Ação:** Operador deve remover o filtro de status concluído para analisar os cancelamentos do período."
+        )
+    if _only_canceled(f):
+        stores = repo.breakdown(f, "store", sort="orders", limit=5, min_orders=1)
+        hubs = repo.breakdown(f, "hub", sort="orders", limit=3, min_orders=1)
+        lines = [f"Cancelamentos no recorte (filtro status = cancelado): {fmt.integer(m['canceled'])} pedidos."]
+        if hubs:
+            lines += [
+                "",
+                "Hubs com mais pedidos cancelados:",
+                *[f"- {h['label']} ({h['parent']}): {fmt.integer(h['orders'])} cancelados" for h in hubs],
+            ]
+        if stores:
+            lines += [
+                "",
+                "Lojas com mais pedidos cancelados:",
+                *[f"- {s['label']} ({s['parent']}): {fmt.integer(s['orders'])} cancelados" for s in stores],
+            ]
+        if stores:
+            action = (
+                f"**Ação:** Gerente de contas deve priorizar a loja {stores[0]['label']} "
+                f"({fmt.integer(stores[0]['orders'])} cancelamentos) e checar ruptura ou cardápio aberto com loja fechada."
+            )
+        elif hubs:
+            action = f"**Ação:** Líder do hub {hubs[0]['label']} deve auditar os {fmt.integer(hubs[0]['orders'])} cancelamentos."
+        else:
+            action = "**Ação:** Operador deve remover o filtro de status cancelado para comparar a taxa sobre o total de pedidos."
+        lines += ["", action]
+        return "\n".join(lines)
     stores = repo.breakdown(f, "store", sort="cancel_rate", limit=5, min_orders=150)
     hubs = repo.breakdown(f, "hub", sort="cancel_rate", limit=3, min_orders=300)
     channels = repo.breakdown(f, "channel_type", sort="cancel_rate", limit=2)
@@ -316,6 +377,14 @@ def _hubs(repo: Repository, f: Filters) -> str:
             f"· cancelamento {fmt.pct(h['cancel_rate'])} · ciclo {fmt.minutes(h['cycle_p50'])}"
         )
 
+    if _only_canceled(f):
+        lead = hubs[0]
+        lines += [
+            "",
+            f"**Ação:** Líder do hub {lead['label']} deve auditar os {fmt.integer(lead['orders'])} pedidos cancelados deste recorte ou remover o filtro de status para comparar taxas.",
+        ]
+        return "\n".join(lines)
+
     worst_sla = min((h for h in hubs if h.get("sla_below")), key=lambda h: h["sla_rate"] or 1.0, default=None)
     worst_cancel = max((h for h in hubs if h.get("cancel_above")), key=lambda h: h["cancel_rate"] or 0.0, default=None)
 
@@ -338,6 +407,20 @@ def _hubs(repo: Repository, f: Filters) -> str:
 
 
 def _stores(repo: Repository, f: Filters) -> str:
+    if _only_canceled(f):
+        stores = repo.breakdown(f, "store", sort="orders", limit=5)
+        if not stores:
+            return (
+                "Nenhuma loja no recorte.\n\n"
+                "**Ação:** Operador deve afrouxar os filtros para analisar dados de lojas."
+            )
+        lines = [
+            "Lojas com mais cancelamentos no recorte (filtro status = cancelado):",
+            *[f"- {s['label']} ({s['parent']}): {fmt.integer(s['orders'])} cancelados" for s in stores],
+            "",
+            f"**Ação:** Gerente de contas da loja {stores[0]['label']} deve checar os {fmt.integer(stores[0]['orders'])} pedidos cancelados neste recorte.",
+        ]
+        return "\n".join(lines)
     top = repo.breakdown(f, "store", sort="gmv", limit=5)
     slow = repo.breakdown(f, "store", sort="cycle_p50", limit=5, min_orders=150)
     if not top and not slow:
@@ -396,6 +479,8 @@ def _peak(repo: Repository, f: Filters) -> str:
 
 def _freight(repo: Repository, f: Filters) -> str:
     m = repo.metrics(f)
+    if _only_canceled(f):
+        return _canceled_delivery_notice(m, "frete e subsídio")
     hubs = repo.breakdown(f, "hub", sort="subsidy", limit=3, min_orders=300)
     lines = [
         (
@@ -457,6 +542,8 @@ def _channels(repo: Repository, f: Filters) -> str:
 
 
 def _modal(repo: Repository, f: Filters) -> str:
+    if _only_canceled(f):
+        return _canceled_delivery_notice(repo.metrics(f), "os modais de entrega")
     rows = repo.breakdown(f, "modal", sort="orders", limit=2)
     if not rows:
         return (
@@ -487,6 +574,12 @@ def _modal(repo: Repository, f: Filters) -> str:
 
 def _revenue(repo: Repository, f: Filters) -> str:
     m = repo.metrics(f)
+    if _only_canceled(f):
+        return (
+            f"O recorte atual filtra apenas status cancelado ({fmt.integer(m['canceled'])} pedidos), "
+            "por isso GMV e ticket de entregas concluídas são R$ 0,00 / —.\n\n"
+            "**Ação:** Operador deve remover o filtro de status cancelado para analisar o faturamento das entregas."
+        )
     seg = repo.breakdown(f, "segment", sort="gmv", limit=2)
     lines = [f"GMV {fmt.brl(m['gmv'])} em {fmt.integer(m['delivered'])} entregas · ticket {fmt.brl(m['ticket'])}."]
     lines += [f"- {s['label']}: {fmt.brl(s['gmv'])} · ticket {fmt.brl(s['ticket'])}" for s in seg]
@@ -508,12 +601,108 @@ def _revenue(repo: Repository, f: Filters) -> str:
     return "\n".join(lines)
 
 
+def _payments(repo: Repository, f: Filters) -> str:
+    rows = repo.breakdown(f, "payment_method", sort="orders", limit=6)
+    if not rows:
+        return (
+            "Nenhuma forma de pagamento no recorte.\n\n"
+            "**Ação:** Time comercial deve afrouxar os filtros para analisar as formas de pagamento."
+        )
+    lines = ["Formas de pagamento por volume:"]
+    for r in rows:
+        lines.append(
+            f"- {r['label']}: {fmt.integer(r['orders'])} pedidos · cancelamento {fmt.pct(r['cancel_rate'])} · ticket {fmt.brl(r['ticket'])}"
+        )
+    if _only_canceled(f):
+        lead = rows[0]
+        action = (
+            f"**Ação:** Time de pagamentos deve auditar os {fmt.integer(lead['orders'])} pedidos cancelados "
+            f"em {lead['label']} ou remover o filtro de status para comparar taxas."
+        )
+    else:
+        worst = max(
+            (r for r in rows if r.get("cancel_rate") is not None and r["orders"] >= MIN_MEASURED),
+            key=lambda r: r["cancel_rate"],
+            default=None,
+        )
+        if worst and (worst.get("cancel_above") or worst["cancel_rate"] > 0.06):
+            action = (
+                f"**Ação:** Time de pagamentos e time comercial devem revisar hoje as falhas de autorização "
+                f"e cancelamentos em {worst['label']} ({fmt.pct(worst['cancel_rate'])})."
+            )
+        else:
+            lead = rows[0]
+            action = (
+                f"**Ação:** Time de pagamentos deve monitorar a aprovação de {lead['label']} "
+                f"({fmt.integer(lead['orders'])} pedidos) durante o pico de hoje."
+            )
+    lines += ["", action]
+    return "\n".join(lines)
+
+
+def _stuck(repo: Repository, f: Filters) -> str:
+    m = repo.metrics(f)
+    if _only_canceled(f):
+        return _canceled_delivery_notice(m, "pedidos presos")
+    stuck_rate = m["stuck_rate"] or 0.0
+    stuck_n = round(stuck_rate * m["delivered"])
+    hubs = [
+        h for h in repo.breakdown(f, "hub", sort="stuck_rate", limit=5, min_orders=50)
+        if h.get("delivered", 0) >= 50 and h.get("stuck_rate") is not None
+    ]
+    lines = [
+        f"Pedidos presos no fluxo (ciclo > 4h): {fmt.integer(stuck_n)} entregas ({fmt.pct(stuck_rate)}), excluídos das medianas e do SLA."
+    ]
+    if hubs:
+        lines += ["", "Hubs com maior taxa de presos:", *_rank_lines(hubs[:3], "stuck_rate", fmt.pct)]
+        lead = hubs[0]
+        action = (
+            f"**Ação:** Líder do hub {lead['label']} deve conferir hoje a rotina de baixa manual e agendamentos "
+            f"({fmt.pct(lead['stuck_rate'])} de presos) antes de cobrar SLA."
+        )
+    else:
+        action = (
+            "**Ação:** Líder de operações deve auditar hoje a rotina de finalização manual e pedidos agendados "
+            "para evitar ciclos acima de 4h."
+        )
+    lines += ["", action]
+    return "\n".join(lines)
+
+
+def _volume(repo: Repository, f: Filters) -> str:
+    m = repo.metrics(f)
+    if _only_canceled(f):
+        hubs = repo.breakdown(f, "hub", sort="orders", limit=3)
+        lines = [f"Volume de cancelamentos no recorte: {fmt.integer(m['canceled'])} pedidos (filtro status = cancelado)."]
+        if hubs:
+            lines += ["", "Hubs com maior volume:", *[f"- {h['label']}: {fmt.integer(h['orders'])} pedidos" for h in hubs]]
+            action = f"**Ação:** Líder do hub {hubs[0]['label']} deve priorizar hoje a apuração dos {fmt.integer(hubs[0]['orders'])} pedidos cancelados."
+        else:
+            action = "**Ação:** Operador deve remover o filtro de status cancelado para comparar o volume total."
+        lines += ["", action]
+        return "\n".join(lines)
+    vol_alert = next((a for a in detect_alerts(repo, f) if a.id == "volume-queda"), None)
+    if vol_alert:
+        return f"**{vol_alert.title}**: {vol_alert.detail}\n\n**Ação:** {vol_alert.action}"
+    hubs = repo.breakdown(f, "hub", sort="orders", limit=3)
+    lines = [f"Volume no recorte: {fmt.integer(m['orders'])} pedidos ({fmt.integer(m['delivered'])} entregues) · GMV {fmt.brl(m['gmv'])}."]
+    if hubs:
+        lines += ["", "Hubs com maior volume:", *_rank_lines(hubs, "orders", fmt.integer)]
+        action = f"**Ação:** Líder do hub {hubs[0]['label']} deve acompanhar a demanda e o dimensionamento de entregadores no pico de hoje."
+    else:
+        action = "**Ação:** Time de operações deve acompanhar a demanda horária durante o pico de hoje."
+    lines += ["", action]
+    return "\n".join(lines)
+
+
 # `token*` casa o começo da palavra. Frases valem mais que um token solto, então
 # "tempo de trânsito por modal" cai em modal e não em etapa. `acao` saiu: entra
 # em situação, operação, duração, informação e avaliação. `moto` e `hora` são
 # palavra inteira, não pedaço de motorista ou melhorar.
 _INTENT_ROUTES: list[tuple[tuple[str, ...], object]] = [
-    (("alerta", "alertas", "problema", "problemas", "risco", "riscos", "prioridade", "fazer hoje"), _alerts),
+    (("alerta", "alertas", "problema", "problemas", "risco", "riscos", "prioridade"), _alerts),
+    (("preso", "presos"), _stuck),
+    (("pagamento*", "chargeback"), _payments),
     (("gargalo", "etapa*", "preparo", "coleta", "expedicao", "transito"), _stages),
     (("cancel*",), _cancel),
     (("frete", "subsid*", "custo", "custos"), _freight),
@@ -524,6 +713,7 @@ _INTENT_ROUTES: list[tuple[tuple[str, ...], object]] = [
     (("loja*", "restaurante*", "parceiro*"), _stores),
     (("hub*", "praca*", "cidade*", "shopping*"), _hubs),
     (("gmv", "ticket", "receita", "faturamento", "venda*"), _revenue),
+    (("queda de volume", "queda na semana"), _volume),
 ]
 _BRIEFING_PATTERNS = ("resumo", "briefing", "visao geral", "panorama", "como esta")
 
@@ -536,6 +726,9 @@ def _route(question: str):
     if _score(words, _BRIEFING_PATTERNS)[0]:
         return briefing
     return None
+
+
+resolve_handler = _route
 
 
 def _turn_text(turn) -> tuple[str, str]:
@@ -613,8 +806,16 @@ def _store_drill(row: dict) -> DrillDown:
 
 def _drills_for(handler, repo: Repository, f: Filters) -> list[DrillDown]:
     """Atalhos montados com linhas do recorte. A validação descarta o que não existir."""
-    if handler is _peak:
+    if handler in (_peak, _payments):
         return []
+    if handler is _stuck:
+        if _only_canceled(f):
+            return []
+        hub = _top(repo, f, "hub", "stuck_rate")
+        return [_hub_drill(hub)] if hub and hub.get("key") is not None else []
+    if handler is _volume:
+        hub = _top(repo, f, "hub", "orders")
+        return [_hub_drill(hub)] if hub and hub.get("key") is not None else []
     if handler is _cancel:
         out = []
         store = _top(repo, f, "store", "cancel_rate")
@@ -696,11 +897,20 @@ def _headline(handler, metrics: dict) -> str:
         return "Hubs do recorte"
     if handler is _revenue:
         return f"GMV de {fmt.brl(metrics.get('gmv'))}"
+    if handler is _payments:
+        return "Formas de pagamento"
+    if handler is _stuck:
+        return "Pedidos presos no fluxo"
+    if handler is _volume:
+        return "Volume do recorte"
     return "Leitura do recorte"
 
 
 _ROUTE_TOOLS = {
     _alerts: ["get_alerts", "get_kpis"],
+    _payments: ["get_breakdown(payment_method)"],
+    _stuck: ["get_kpis", "get_breakdown(hub)"],
+    _volume: ["get_kpis", "get_alerts", "get_breakdown(hub)"],
     _stages: ["get_kpis", "get_breakdown(hub)", "get_breakdown(store)"],
     _cancel: ["get_kpis", "get_breakdown(store)", "get_breakdown(hub)"],
     _freight: ["get_kpis", "get_breakdown(hub)"],
@@ -780,6 +990,6 @@ def answer(question: str, repo: Repository, f: Filters, history: list | None = N
         if previous:
             handler = _route(previous)
     text = handler(repo, f) if handler is not None else _unrouted(repo, f)
-    if _is_thin(metrics):
+    if _is_thin(metrics) and not (_only_canceled(f) and (metrics.get("orders") or 0) >= MIN_MEASURED):
         text = _apply_thin(text, metrics)
     return text

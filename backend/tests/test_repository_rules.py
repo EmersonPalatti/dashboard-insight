@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import tempfile
-from datetime import timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import duckdb
@@ -212,3 +212,14 @@ def test_csv_endpoint_works_when_temp_dir_has_single_quote(client, tmp_path: Pat
     r = client.get("/api/orders.csv", params={"city": "Curitiba"})
     assert r.status_code == 200
     assert r.text.splitlines()[0].startswith("order_id,")
+
+
+def test_filters_cache_key_is_canonical_for_list_order_and_duplicates():
+    assert Filters(hub=[1, 2]).cache_key() == Filters(hub=[2, 1, 1]).cache_key()
+    assert Filters(city=["Curitiba", "São Paulo"]).cache_key() == Filters(city=["São Paulo", "Curitiba"]).cache_key()
+
+
+def test_weekly_timeseries_clamps_first_bucket_to_dataset_start(repo):
+    ts = repo.timeseries(Filters(), "week")
+    assert ts
+    assert ts[0]["t"] >= datetime(2021, 1, 1)

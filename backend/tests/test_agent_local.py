@@ -185,3 +185,40 @@ def test_followup_reuses_the_previous_user_intent(repo):
     alone = local.answer("e agora?", repo, Filters())
     assert "**Briefing do recorte**" in alone
     assert "Cancelamento no recorte" not in alone
+
+
+@pytest.mark.parametrize(
+    ("question", "expected"),
+    [
+        ("como estao as formas de pagamento?", "_payments"),
+        ("quantos pedidos presos no fluxo existem?", "_stuck"),
+        ("houve queda de volume na semana?", "_volume"),
+        ("No ranking por forma de pagamento, quem está pior e o que fazer?", "_payments"),
+        ('Sobre a comanda "Pedidos presos no fluxo": o que explica isso neste recorte e o que fazer hoje?', "_stuck"),
+        ('Sobre a comanda "Queda de volume na última semana": o que explica isso neste recorte e o que fazer hoje?', "_volume"),
+        ('Sobre a comanda "Loja crítica: Loja 25": o que explica isso neste recorte e o que fazer hoje?', "_stores"),
+    ],
+)
+def test_new_handlers_and_comanda_prompts_route_correctly(repo, question, expected):
+    handler = local.resolve_handler(question)
+    assert handler is not None and handler.__name__ == expected
+    res = local.answer(question, repo, Filters())
+    assert "**Ação:**" in res
+
+
+def test_status_filter_honest_responses(repo):
+    f_canc = Filters(status=["canceled"])
+    for q in ("onde esta o gargalo?", "como esta o sla?", "quanto custa o frete?", "como estao os modais?"):
+        res = local.answer(q, repo, f_canc)
+        assert "status cancelado" in res.lower()
+        assert "ampliar o período" not in res.lower()
+        assert "**Ação:**" in res
+
+    res_canc = local.answer("quais lojas cancelam mais?", repo, f_canc)
+    assert "100,0%" not in res_canc
+    assert "**Ação:**" in res_canc
+
+    res_deliv = local.answer("quais lojas cancelam mais?", repo, Filters(status=["delivered"]))
+    assert "0,0%" in res_deliv
+    assert "remover o filtro" in res_deliv.lower()
+    assert "**Ação:**" in res_deliv

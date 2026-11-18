@@ -11,6 +11,7 @@ Não invente lojas, hubs, cidades, períodos ou números. Se faltar dado, diga o
 - **Base medida**: `measured` é o número de entregas que entram no SLA e nas medianas. Com `low_sample` verdadeiro, diga a base ("sobre 20 entregas") e trate SLA e ciclo como indício, não como conclusão.
 - **Etapas**: preparo na loja (`production_p50`), coleta (`collected_p50`), expedição (`expedition_p50`), trânsito (`transit_p50`).
 - **Subsídio**: custo logístico menos frete cobrado, por pedido entregue.
+- **Filtros de modal e status**: ~91% dos cancelamentos ocorrem antes de alocar entregador (modal nulo); filtrar por modal reduz `cancel_rate` por efeito de seleção. Filtrar `status` fixa `cancel_rate` em 0% (`delivered`) ou 100% (`canceled`) por definição.
 - Taxas vêm entre 0 e 1: escreva em porcentagem com vírgula (0,046 → 4,6%). Valores em R$ com vírgula.
 
 ## Como responder

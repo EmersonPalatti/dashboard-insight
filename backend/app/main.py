@@ -5,19 +5,17 @@ from __future__ import annotations
 import hmac
 import json
 import math
-import os
-import tempfile
 import threading
 import time
 from collections import deque
+from collections.abc import Iterator
 from contextlib import asynccontextmanager
-from pathlib import Path
 from typing import Annotated
 
-from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Query, Request
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 
 from app.agent import service as agent
 from app.agent.local import briefing as briefing_text
@@ -223,6 +221,14 @@ class SlidingWindowLimiter:
 chat_limiter = SlidingWindowLimiter()
 chat_global_limiter = SlidingWindowLimiter()
 export_limiter = SlidingWindowLimiter()
+_csv_export_sem = threading.BoundedSemaphore(2)
+
+
+def _guarded_stream(gen: Iterator[str], sem: threading.BoundedSemaphore) -> Iterator[str]:
+    try:
+        yield from gen
+    finally:
+        sem.release()
 
 
 def get_client_ip(request: Request, settings: Settings | None = None) -> str:
@@ -360,16 +366,24 @@ def register_routes(app: FastAPI) -> None:
         f: F,
         offset: Annotated[int, Query(ge=0, le=1_000_000)] = 0,
         limit: Annotated[int, Query(ge=1, le=500)] = 100,
-        sort: str = "created_at",
+        sort: Annotated[
+            str,
+            Query(
+                description=(
+                    "Coluna de ordenação (fora da lista cai em created_at): "
+                    "created_at, amount, delivery_fee, cycle_min, production_min, "
+                    "transit_min, distance_m, store_name, hub_name, city, status"
+                )
+            ),
+        ] = "created_at",
         desc: bool = True,
     ):
         return repo.orders_page(f, offset, limit, sort, desc)
 
-    @app.get("/api/orders.csv", tags=["pedidos"], response_class=FileResponse)
+    @app.get("/api/orders.csv", tags=["pedidos"], response_class=StreamingResponse)
     def export_orders(
         repo: Repo,
         f: F,
-        background: BackgroundTasks,
         request: Request,
         settings: Annotated[Settings, Depends(get_settings)],
     ):
@@ -395,13 +409,24 @@ def register_routes(app: FastAPI) -> None:
                     )
                 },
             )
-        fd, tmp = tempfile.mkstemp(suffix=".csv")
-        os.close(fd)
-        path = Path(tmp)
-        repo.export_csv(f, path)
-        background.add_task(path.unlink, missing_ok=True)
-        return FileResponse(path, media_type="text/csv", filename="pedidos-recorte.csv",
-                            headers={"Cache-Control": "no-store"})
+        if not _csv_export_sem.acquire(blocking=False):
+            return JSONResponse(
+                status_code=429,
+                content={"detail": "Muitas exportações simultâneas. Tente novamente em instantes."},
+            )
+        try:
+            stream = _guarded_stream(repo.iter_orders_csv(f), _csv_export_sem)
+            return StreamingResponse(
+                stream,
+                media_type="text/csv",
+                headers={
+                    "Content-Disposition": 'attachment; filename="pedidos-recorte.csv"',
+                    "Cache-Control": "no-store",
+                },
+            )
+        except BaseException:
+            _csv_export_sem.release()
+            raise
 
     @app.post("/api/agent/chat", response_model=ChatResponse, tags=["insights"])
     def chat(
@@ -410,8 +435,9 @@ def register_routes(app: FastAPI) -> None:
         settings: Annotated[Settings, Depends(get_settings)],
         request: Request,
     ):
-        # engine=local não passa no limitador: a cota é só da chamada ao modelo.
-        use_llm = req.engine != "local" and llm_allowed(request, settings)
+        # engine=local ou recorte vazio não passam no limitador: a cota é só da chamada ao modelo.
+        has_orders = repo.metrics(req.filters)["orders"] > 0
+        use_llm = req.engine != "local" and has_orders and llm_allowed(request, settings)
         return agent.chat(req, repo, settings, use_llm=use_llm)
 
 

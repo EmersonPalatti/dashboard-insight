@@ -87,6 +87,7 @@ export function useFilterModel() {
 
   const opts = useMemo(() => {
     const hubCity = new Map(meta?.hubs.map((h) => [Number(h.value), String(h.parent)]) ?? []);
+    const hubName = new Map(meta?.hubs.map((h) => [Number(h.value), h.label]) ?? []);
     const toOpt = <V extends string | number>(o: { value: string | number; label: string; orders: number }) =>
       ({ value: o.value as V, label: label(o.label), hint: fmt.intCompact(o.orders) });
     return {
@@ -98,7 +99,11 @@ export function useFilterModel() {
       stores:
         meta?.stores
           .filter((s) => (!f.hub.length || f.hub.includes(Number(s.parent))) && (!f.city.length || f.city.includes(hubCity.get(Number(s.parent)) ?? "")))
-          .map((o) => toOpt<number>(o)) ?? [],
+          .map((o) => {
+            const base = toOpt<number>(o);
+            const hLabel = hubName.get(Number(o.parent));
+            return f.hub.length === 1 || !hLabel ? base : { ...base, hint: `${hLabel} · ${base.hint}` };
+          }) ?? [],
       segments: meta?.segments.map((o) => toOpt<string>(o)) ?? [],
       channels: meta?.channel_types.map((o) => toOpt<string>(o)) ?? [],
       modals: meta?.modals.map((o) => toOpt<string>(o)) ?? [],

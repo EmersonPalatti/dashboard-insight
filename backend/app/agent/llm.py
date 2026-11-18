@@ -10,7 +10,9 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, get_args
 
@@ -174,15 +176,31 @@ class ToolRunner:
         return {"erro": f"ferramenta desconhecida: {name}"}
 
 
-def _client(settings: Settings, timeout: float | None = None):
+_THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
+
+
+def _clean_answer(raw: str | None) -> str:
+    return _THINK_RE.sub("", raw or "").strip()
+
+
+@lru_cache(maxsize=4)
+def _shared_openai(api_key: str, base_url: str, default_timeout: float):
     from openai import OpenAI
 
     return OpenAI(
-        api_key=settings.openrouter_api_key,
-        base_url="https://openrouter.ai/api/v1",
-        timeout=timeout if timeout is not None else settings.llm_timeout_s,
+        api_key=api_key,
+        base_url=base_url,
+        timeout=default_timeout,
         max_retries=0,
         default_headers={"X-Title": "Central de Operacoes Delivery"},
+    )
+
+
+def _client(settings: Settings, timeout: float | None = None):
+    return _shared_openai(
+        settings.openrouter_api_key or "",
+        "https://openrouter.ai/api/v1",
+        timeout if timeout is not None else settings.llm_timeout_s,
     )
 
 
@@ -236,16 +254,21 @@ def answer_with_tools(
         kwargs: dict[str, Any] = {
             "model": settings.openrouter_model,
             "temperature": 0.2,
+            "max_tokens": settings.llm_max_tokens,
             "messages": messages,
             "timeout": per_call_timeout,
         }
         if not force_final:
             kwargs["tools"] = TOOLS
         response = client.chat.completions.create(**kwargs)
-        msg = response.choices[0].message
+        choices = getattr(response, "choices", None) or []
+        if not choices:
+            log.warning("Resposta vazia (sem choices) do LLM no round %d", round_idx)
+            return None
+        msg = choices[0].message
         calls = list(msg.tool_calls or [])
         if force_final or not calls:
-            text = (msg.content or "").strip()
+            text = _clean_answer(msg.content)
             return (text, runner.used) if text else None
         calls = calls[:MAX_TOOL_CALLS_PER_ROUND]
 
@@ -325,8 +348,13 @@ def answer_with_context(
     response = client.chat.completions.create(
         model=settings.openrouter_model,
         temperature=0.2,
+        max_tokens=settings.llm_max_tokens,
         messages=messages,
         timeout=per_call_timeout,
     )
-    text = (response.choices[0].message.content or "").strip()
+    choices = getattr(response, "choices", None) or []
+    if not choices:
+        log.warning("Resposta vazia (sem choices) do LLM em answer_with_context")
+        return None
+    text = _clean_answer(choices[0].message.content)
     return (text, runner.used) if text else None
