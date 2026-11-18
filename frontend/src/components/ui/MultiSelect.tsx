@@ -2,6 +2,7 @@ import { Check, ChevronDown, Search, X } from "lucide-react";
 import {
   useEffect,
   useId,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -56,12 +57,17 @@ export function MultiSelect<V extends string | number>({
     setWasOpen(open);
     setClosing(!open);
   }
+  const [yieldLabel, setYieldLabel] = useState(false);
   const [term, setTerm] = useState("");
   // Guarda a opção ativa pelo valor (não pelo índice): ao marcar, a opção sobe
   // para o topo (selecionados primeiro) e o foco do teclado deve acompanhá-la.
   const [activeKey, setActiveKey] = useState<string | null>(null);
   const root = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const rowRef = useRef<HTMLSpanElement>(null);
+  const labelMeasure = useRef<HTMLSpanElement>(null);
+  const valueMeasure = useRef<HTMLSpanElement>(null);
+  // O rótulo mudo ("Hub") sai quando o nome não cabe. O nome acessível continua nos dois ids.
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
   const uid = useId();
@@ -231,6 +237,27 @@ export function MultiSelect<V extends string | number>({
 
   const activeDescendant = activeIdx >= 0 ? optionId(activeIdx) : undefined;
 
+  // Compara as larguras inteiras (não as cortadas): se rótulo + valor selecionado não cabem, o rótulo sai.
+  // Sem seleção ("Todos"), o rótulo fica sempre à vista para não criar vários "Todos ▾" anônimos.
+  useLayoutEffect(() => {
+    if (value.length === 0) {
+      setYieldLabel(false);
+      return;
+    }
+    const row = rowRef.current;
+    const labelEl = labelMeasure.current;
+    const valueEl = valueMeasure.current;
+    if (!row || !labelEl || !valueEl) return;
+    const check = () => {
+      const gap = 6;
+      setYieldLabel(labelEl.offsetWidth + valueEl.offsetWidth + gap > row.clientWidth + 1);
+    };
+    check();
+    const ro = new ResizeObserver(check);
+    ro.observe(row);
+    return () => ro.disconnect();
+  }, [summary, label, value.length]);
+
   return (
     <div ref={root} className="relative" onBlur={onRootBlur}>
       <button
@@ -243,12 +270,16 @@ export function MultiSelect<V extends string | number>({
         aria-labelledby={`${labelId} ${summaryId}`}
         onClick={() => (open ? setOpen(false) : openAt(0))}
         onKeyDown={onTriggerKeyDown}
-        className={`flex h-10 w-full min-w-0 items-center justify-between gap-2 rounded-card border px-3 text-left text-body max-lg:h-auto max-lg:min-h-11 transition-colors duration-(--duration-quick) disabled:opacity-50 ${
+        className={`flex h-10 w-full min-w-0 items-center justify-between gap-2 rounded-card border px-2.5 text-left text-body max-lg:h-auto max-lg:min-h-11 transition-colors duration-(--duration-quick) disabled:opacity-50 ${
           value.length ? "border-ink bg-surface" : "border-rule bg-surface hover:border-muted"
         }`}
       >
-        <span className="flex min-w-0 flex-1 items-baseline gap-1.5">
-          <span id={labelId} className="shrink-0 text-muted">
+        <span ref={rowRef} className="relative flex min-w-0 flex-1 items-baseline gap-1.5 overflow-hidden">
+          <span aria-hidden className="pointer-events-none invisible absolute top-0 left-0 whitespace-nowrap">
+            <span ref={labelMeasure} className="inline-block">{label}</span>
+            <span ref={valueMeasure} className="inline-block">{summary}</span>
+          </span>
+          <span id={labelId} className={yieldLabel ? "sr-only" : "shrink-0 text-muted"}>
             {label}
           </span>
           <span id={summaryId} className="min-w-0 flex-1 truncate text-left text-ink">
@@ -272,14 +303,14 @@ export function MultiSelect<V extends string | number>({
           }}
           onKeyDown={onPanelKeyDown}
           onMouseDown={onPanelMouseDown}
-          className={`absolute left-0 z-30 mt-1 w-72 max-w-[calc(100vw-2rem)] origin-top-left rounded-card border border-rule bg-surface p-1.5 transition-[opacity,scale] duration-(--duration-fast) ease-(--ease-smooth-out) ${
+          className={`absolute left-0 z-30 mt-1 w-72 max-w-[calc(100vw-2rem)] origin-top-left rounded-card border border-ink bg-surface p-1.5 transition-[opacity,scale] duration-(--duration-fast) ease-(--ease-smooth-out) ${
             open
               ? "starting:opacity-0 motion-safe:starting:scale-(--scale-medium) motion-reduce:duration-(--duration-quick)"
               : "pointer-events-none opacity-0 duration-(--duration-quick) motion-safe:scale-(--scale-tiny)"
           }`}
         >
           {searchable && (
-            <div className="mb-1 flex items-center gap-1.5 rounded-[4px] border border-rule px-2 py-1">
+            <div className="mb-1 flex items-center gap-1.5 rounded-[4px] border border-rule px-2 py-1 focus-within:border-ink max-lg:min-h-11">
               <Search className="size-3.5 text-muted" aria-hidden />
               <input
                 ref={inputRef}
@@ -296,7 +327,7 @@ export function MultiSelect<V extends string | number>({
                   setActiveKey(null);
                 }}
                 placeholder={`Buscar ${label.toLowerCase()}`}
-                className="w-full bg-transparent text-body outline-none placeholder:text-muted"
+                className="w-full bg-transparent text-body placeholder:text-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
               />
             </div>
           )}
@@ -308,7 +339,7 @@ export function MultiSelect<V extends string | number>({
             aria-label={label}
             tabIndex={searchable ? -1 : 0}
             aria-activedescendant={searchable ? undefined : activeDescendant}
-            className="max-h-72 overflow-auto outline-none"
+            className="max-h-72 overflow-auto focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ink"
           >
             {visible.map((o, i) => {
               const on = selected.has(o.value);
@@ -323,7 +354,7 @@ export function MultiSelect<V extends string | number>({
                     setActiveKey(String(o.value));
                     toggle(o.value);
                   }}
-                  className={`flex w-full items-center gap-2 rounded-[4px] px-2 py-1.5 text-body font-medium transition-colors duration-(--duration-quick) hover:bg-sunken ${
+                  className={`flex w-full items-center gap-2 rounded-[4px] px-2 py-1.5 text-body font-medium transition-colors duration-(--duration-quick) hover:bg-sunken max-lg:min-h-11 ${
                     active ? "bg-sunken outline outline-1 -outline-offset-1 outline-ink" : ""
                   }`}
                 >
@@ -356,7 +387,7 @@ export function MultiSelect<V extends string | number>({
             <p className="px-2 py-1.5 text-pretty text-meta text-muted">+{ordered.length - maxVisible} opções. Refine a busca.</p>
           )}
           {value.length > 0 && (
-            <button type="button" onClick={clear} className="btn mt-1 w-full justify-center text-muted hover:text-ink">
+            <button type="button" onClick={clear} className="btn mt-1 w-full justify-center text-muted hover:text-ink max-lg:min-h-11">
               <X className="size-3.5" aria-hidden /> Limpar {label.toLowerCase()}
             </button>
           )}

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hmac
+import json
 import math
 import threading
 import time
@@ -10,14 +12,14 @@ from collections.abc import Iterator
 from contextlib import asynccontextmanager
 from typing import Annotated
 
-from fastapi import Depends, FastAPI, Query, Request
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from app.agent import service as agent
 from app.agent.local import briefing as briefing_text
-from app.alerts import detect_alerts
+from app.alerts import detect_alerts, hero_readings
 from app.config import Settings, get_settings
 from app.filters import Filters
 from app.repository import Repository
@@ -40,83 +42,108 @@ from app.schemas import (
     TimePoint,
 )
 
+MAX_BODY_BYTES = 64 * 1024
+_BODY_TOO_BIG = "Corpo da requisição excede o limite de 64 KB."
+_BODY_BAD_LENGTH = "Content-Length inválido."
+_MIN_ORDERS_MAX = 100_000
+
+
+async def _send_json(send, status: int, detail: str) -> None:
+    body = json.dumps({"detail": detail}, ensure_ascii=False).encode()
+    await send(
+        {
+            "type": "http.response.start",
+            "status": status,
+            "headers": [
+                (b"content-type", b"application/json; charset=utf-8"),
+                (b"content-length", str(len(body)).encode()),
+            ],
+        }
+    )
+    await send({"type": "http.response.body", "body": body, "more_body": False})
+
+
+class BodySizeLimitMiddleware:
+    """Recusa POST acima de 64 KB contando os bytes do receive.
+
+    Content-Length ausente, quebrado ou menor que o corpo não libera o pedido.
+    """
+
+    def __init__(self, app, max_bytes: int = MAX_BODY_BYTES):
+        self.app = app
+        self.max_bytes = max_bytes
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http" or scope.get("method") != "POST":
+            await self.app(scope, receive, send)
+            return
+
+        declared = _declared_length(scope)
+        if declared == "bad":
+            await _send_json(send, 400, _BODY_BAD_LENGTH)
+            return
+        if isinstance(declared, int) and declared > self.max_bytes:
+            await _send_json(send, 413, _BODY_TOO_BIG)
+            return
+
+        body, too_big = await _read_body(receive, self.max_bytes)
+        if too_big:
+            await _send_json(send, 413, _BODY_TOO_BIG)
+            return
+
+        sent = False
+
+        async def replay():
+            nonlocal sent
+            if sent:
+                return {"type": "http.request", "body": b"", "more_body": False}
+            sent = True
+            return {"type": "http.request", "body": body, "more_body": False}
+
+        await self.app(scope, replay, send)
+
+
+def _declared_length(scope) -> int | None | str:
+    """Inteiro do Content-Length, None se o header não veio, ou 'bad' se estiver quebrado."""
+    raws = [
+        value.decode("latin-1").strip()
+        for key, value in scope.get("headers", [])
+        if key.lower() == b"content-length"
+    ]
+    if not raws:
+        return None
+    raw = raws[0]
+    if len(raws) != 1 or not raw.isdigit():
+        return "bad"
+    # Mais de 8 dígitos já passa de 64 KB. Evita int() num header enorme.
+    if len(raw) > 8:
+        return MAX_BODY_BYTES + 1
+    return int(raw)
+
+
+async def _read_body(receive, max_bytes: int) -> tuple[bytes, bool]:
+    chunks: list[bytes] = []
+    total = 0
+    while True:
+        message = await receive()
+        if message["type"] != "http.request":
+            break
+        piece = message.get("body", b"") or b""
+        total += len(piece)
+        if total > max_bytes:
+            return b"", True
+        if piece:
+            chunks.append(piece)
+        if not message.get("more_body", False):
+            break
+    return b"".join(chunks), False
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = get_settings()
     app.state.repo = Repository(settings.data_path, settings.sla_food_min, settings.sla_good_min)
     yield
-
-
-class MaxBodySizeMiddleware:
-    """Limita o corpo de escrita (POST/PUT/PATCH) por Content-Length e também em streaming chunked."""
-
-    def __init__(self, app, max_bytes: int = 64 * 1024):
-        self.app = app
-        self.max_bytes = max_bytes
-
-    async def __call__(self, scope, receive, send):
-        if scope["type"] != "http" or scope.get("method") not in ("POST", "PUT", "PATCH"):
-            await self.app(scope, receive, send)
-            return
-
-        cl_values = [v for k, v in scope.get("headers", []) if k.lower() == b"content-length"]
-        if len(cl_values) > 1:
-            await JSONResponse(
-                status_code=400, content={"detail": "Cabeçalho Content-Length inválido."}
-            )(scope, receive, send)
-            return
-        if cl_values:
-            try:
-                cl = int(cl_values[0])
-            except ValueError:
-                await JSONResponse(
-                    status_code=400, content={"detail": "Cabeçalho Content-Length inválido."}
-                )(scope, receive, send)
-                return
-            if cl < 0:
-                await JSONResponse(
-                    status_code=400, content={"detail": "Cabeçalho Content-Length inválido."}
-                )(scope, receive, send)
-                return
-            if cl > self.max_bytes:
-                await JSONResponse(
-                    status_code=413, content={"detail": "Corpo da requisição excede o limite de 64 KB."}
-                )(scope, receive, send)
-                return
-
-        chunks: list[bytes] = []
-        total = 0
-        more_body = True
-        while more_body:
-            message = await receive()
-            msg_type = message.get("type")
-            if msg_type == "http.disconnect":
-                return
-            if msg_type == "http.request":
-                chunk = message.get("body", b"")
-                if chunk:
-                    total += len(chunk)
-                    if total > self.max_bytes:
-                        await JSONResponse(
-                            status_code=413,
-                            content={"detail": "Corpo da requisição excede o limite de 64 KB."},
-                        )(scope, receive, send)
-                        return
-                    chunks.append(chunk)
-                more_body = bool(message.get("more_body", False))
-
-        body = b"".join(chunks)
-        sent = False
-
-        async def replay_receive():
-            nonlocal sent
-            if not sent:
-                sent = True
-                return {"type": "http.request", "body": body, "more_body": False}
-            return await receive()
-
-        await self.app(scope, replay_receive, send)
 
 
 def create_app() -> FastAPI:
@@ -128,7 +155,8 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
     app.add_middleware(GZipMiddleware, minimum_size=1024)
-    app.add_middleware(MaxBodySizeMiddleware, max_bytes=64 * 1024)
+    # Dentro do CORS, para o 413/400 sair com o header de origem.
+    app.add_middleware(BodySizeLimitMiddleware, max_bytes=MAX_BODY_BYTES)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origin_list,
@@ -191,6 +219,8 @@ class SlidingWindowLimiter:
 
 
 chat_limiter = SlidingWindowLimiter()
+chat_global_limiter = SlidingWindowLimiter()
+export_limiter = SlidingWindowLimiter()
 _csv_export_sem = threading.BoundedSemaphore(2)
 
 
@@ -202,32 +232,59 @@ def _guarded_stream(gen: Iterator[str], sem: threading.BoundedSemaphore) -> Iter
 
 
 def get_client_ip(request: Request, settings: Settings | None = None) -> str:
-    if settings and settings.trusted_ip_header:
-        hdr = request.headers.get(settings.trusted_ip_header.strip())
-        if hdr:
-            ip = hdr.split(",")[0].strip()
-            if ip:
-                return ip
-    if settings is None or settings.trust_xff:
-        # O último IP é o que o proxy acrescentou; os anteriores vêm do cliente e podem ser forjados.
-        xff = request.headers.get("x-forwarded-for")
-        if xff:
-            ip = xff.split(",")[-1].strip()
-            if ip:
-                return ip
+    """IP do cliente para a cota.
+
+    Com `client_ip_header` (ex.: true-client-ip), esse header vale quando vem preenchido.
+    Sem ele, o último hop de X-Forwarded-For: é o que o proxy acrescenta. Os anteriores podem ser forjados.
+    """
+    settings = settings or get_settings()
+    trusted = (settings.client_ip_header or "").strip()
+    if trusted:
+        raw = request.headers.get(trusted)
+        if raw and raw.split(",")[0].strip():
+            return raw.split(",")[0].strip()
+    xff = request.headers.get("x-forwarded-for")
+    if xff:
+        ip = xff.split(",")[-1].strip()
+        if ip:
+            return ip
     if request.client and request.client.host:
         return request.client.host
     return "127.0.0.1"
 
 
-def llm_allowed(request: Request, settings: Settings, has_orders: bool = True) -> bool:
-    """Cota de chamadas ao LLM por cliente. Estourou ou recorte vazio: cai no agente local, sem erro."""
-    if not settings.llm_enabled or not has_orders:
+def llm_allowed(request: Request, settings: Settings) -> bool:
+    """Cota de chamadas ao LLM. Estourou (por IP ou no teto global): a pergunta vai para o agente local."""
+    if not settings.llm_enabled:
         return False
-    if not settings.chat_rate_limit_enabled or settings.chat_rate_limit_per_minute <= 0:
+    if not settings.chat_rate_limit_enabled:
         return True
-    allowed, _ = chat_limiter.check(get_client_ip(request, settings), settings.chat_rate_limit_per_minute)
+    ip_limit = settings.chat_rate_limit_per_minute
+    global_limit = settings.chat_global_rate_limit_per_minute
+    if ip_limit <= 0 and global_limit <= 0:
+        return True
+    if ip_limit > 0 and not chat_limiter.check(get_client_ip(request, settings), ip_limit)[0]:
+        return False
+    if global_limit <= 0:
+        return True
+    allowed, _ = chat_global_limiter.check("global", global_limit)
     return allowed
+
+
+def require_automation(
+    settings: Annotated[Settings, Depends(get_settings)],
+    x_automation_token: Annotated[
+        str | None,
+        Header(description="Obrigatório só se AUTOMATION_TOKEN estiver definido no servidor."),
+    ] = None,
+) -> None:
+    """Sem AUTOMATION_TOKEN o endpoint segue aberto. Com o token, o header tem que bater."""
+    expected = settings.automation_token or ""
+    if not expected:
+        return
+    provided = x_automation_token or ""
+    if not hmac.compare_digest(provided, expected):
+        raise HTTPException(status_code=401, detail="Token de automação inválido.")
 
 
 def repo_dep(request: Request) -> Repository:
@@ -246,7 +303,8 @@ def register_routes(app: FastAPI) -> None:
     @app.get("/api/meta", response_model=Meta, tags=["recorte"])
     def meta(repo: Repo, settings: Annotated[Settings, Depends(get_settings)]):
         return {**repo.meta(), "llm_enabled": settings.llm_enabled,
-                "llm_model": settings.openrouter_model if settings.llm_enabled else None}
+                "llm_model": settings.openrouter_model if settings.llm_enabled else None,
+                "csv_max_rows": settings.csv_export_max_rows}
 
     @app.get("/api/kpis", response_model=KpiResponse, tags=["analytics"])
     def kpis(repo: Repo, f: F):
@@ -257,6 +315,7 @@ def register_routes(app: FastAPI) -> None:
             "current": repo.metrics(f),
             "previous_period": {"start": prev[0], "end": prev[1]} if prev else None,
             "previous": repo.metrics(f.with_period(*prev)) if prev else None,
+            "heroes": hero_readings(repo, f),
         }
 
     @app.get("/api/timeseries", response_model=list[TimePoint], tags=["analytics"])
@@ -275,7 +334,7 @@ def register_routes(app: FastAPI) -> None:
         sort: SortKey = "orders",
         desc: bool = True,
         limit: Annotated[int, Query(ge=1, le=1000)] = 50,
-        min_orders: Annotated[int, Query(ge=0)] = 0,
+        min_orders: Annotated[int, Query(ge=0, le=_MIN_ORDERS_MAX)] = 0,
     ):
         return {"by": by, "rows": repo.breakdown(f, by, sort, desc, limit, min_orders)}
 
@@ -284,7 +343,7 @@ def register_routes(app: FastAPI) -> None:
         return {"alerts": detect_alerts(repo, f), "orders": repo.metrics(f)["orders"]}
 
     @app.get("/api/briefing", response_model=BriefingResponse, tags=["automacao"])
-    def briefing(repo: Repo, f: F):
+    def briefing(repo: Repo, f: F, _: Annotated[None, Depends(require_automation)]):
         alerts_now = detect_alerts(repo, f)
         start, end = repo.covered_period(f)
         return {
@@ -295,8 +354,11 @@ def register_routes(app: FastAPI) -> None:
         }
 
     @app.get("/api/alerts/routing", response_model=list[AlertRoute], tags=["automacao"])
-    def alert_routing(repo: Repo, f: F):
-        return route_alerts(detect_alerts(repo, f))
+    def alert_routing(repo: Repo, f: F, _: Annotated[None, Depends(require_automation)]):
+        meta = repo.meta()
+        hub_names = {int(h["value"]): h["label"] for h in meta["hubs"]}
+        store_names = {int(s["value"]): s["label"] for s in meta["stores"]}
+        return route_alerts(detect_alerts(repo, f), hub_names, store_names)
 
     @app.get("/api/orders", response_model=OrdersPage, tags=["pedidos"])
     def orders(
@@ -319,7 +381,34 @@ def register_routes(app: FastAPI) -> None:
         return repo.orders_page(f, offset, limit, sort, desc)
 
     @app.get("/api/orders.csv", tags=["pedidos"], response_class=StreamingResponse)
-    def export_orders(repo: Repo, f: F):
+    def export_orders(
+        repo: Repo,
+        f: F,
+        request: Request,
+        settings: Annotated[Settings, Depends(get_settings)],
+    ):
+        per_minute = settings.csv_export_per_minute
+        if per_minute > 0:
+            allowed, wait_s = export_limiter.check(get_client_ip(request, settings), per_minute)
+            if not allowed:
+                return JSONResponse(
+                    status_code=429,
+                    content={"detail": "Muitas exportações em seguida. Espere um pouco e tente de novo."},
+                    headers={"Retry-After": str(wait_s)},
+                )
+        orders = repo.metrics(f)["orders"]
+        if orders > settings.csv_export_max_rows:
+            cap = f"{settings.csv_export_max_rows:,}".replace(",", ".")
+            found = f"{orders:,}".replace(",", ".")
+            return JSONResponse(
+                status_code=413,
+                content={
+                    "detail": (
+                        f"O recorte tem {found} pedidos, acima do limite de {cap}. "
+                        "Afine o filtro para exportar."
+                    )
+                },
+            )
         if not _csv_export_sem.acquire(blocking=False):
             return JSONResponse(
                 status_code=429,
@@ -346,8 +435,10 @@ def register_routes(app: FastAPI) -> None:
         settings: Annotated[Settings, Depends(get_settings)],
         request: Request,
     ):
+        # engine=local ou recorte vazio não passam no limitador: a cota é só da chamada ao modelo.
         has_orders = repo.metrics(req.filters)["orders"] > 0
-        return agent.chat(req, repo, settings, use_llm=llm_allowed(request, settings, has_orders=has_orders))
+        use_llm = req.engine != "local" and has_orders and llm_allowed(request, settings)
+        return agent.chat(req, repo, settings, use_llm=use_llm)
 
 
 app = create_app()

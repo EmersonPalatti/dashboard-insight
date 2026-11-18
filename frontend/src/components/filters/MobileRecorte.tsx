@@ -1,5 +1,8 @@
-import { SlidersHorizontal } from "lucide-react";
-import type { RefObject } from "react";
+import { useStore } from "@nanostores/react";
+import { SlidersHorizontal, Undo2 } from "lucide-react";
+import { useEffect, useState, type RefObject } from "react";
+import { $railAgentComandas, openComandaCount } from "@/lib/agentBridge";
+import { $drillUndo, undoDrilldown } from "@/lib/filters";
 import { useRecorteQuery } from "@/lib/query";
 import { SubtleNumber } from "./SubtleNumber";
 
@@ -12,63 +15,102 @@ interface Props {
 }
 
 /**
- * Mobile (abaixo de lg): uma faixa de 44px com o resumo do recorte, que abre a
- * folha de filtros, e à direita o atalho para a fila de comandas. Cada bloco é
- * rótulo em cima e valor embaixo, para o resumo caber numa linha sem cortar a
- * palavra. A consulta é a mesma de AlertsPanel (mesma chave), então o cache é compartilhado.
+ * Mobile (abaixo de lg): o resumo do recorte ocupa a largura toda e abre a folha.
+ * O atalho da fila de comandas fica na linha de baixo, para o período não ser
+ * cortado pelo link. A consulta é a mesma de AlertsPanel (mesma chave), então o cache é compartilhado.
  */
 export function MobileRecorte({ summary, activeCount, onOpen, buttonRef }: Props) {
   const { data } = useRecorteQuery("/api/alerts");
+  const railAgents = useStore($railAgentComandas);
+  const undo = useStore($drillUndo);
+  const [announcement, setAnnouncement] = useState("");
   const alerts = data?.alerts ?? [];
-  const total = data ? alerts.length : null;
+  const total = data ? openComandaCount(alerts.length, railAgents.length) : null;
   const critical = alerts.filter((a) => a.severity === "high").length;
   const filtersText = activeCount === 1 ? "1 filtro ativo" : `${activeCount} filtros ativos`;
 
-  return (
-    <div className="flex min-w-0 items-stretch gap-2">
-      <button
-        ref={buttonRef}
-        type="button"
-        aria-haspopup="dialog"
-        aria-label={`Recorte: ${summary}${activeCount ? `, ${filtersText}` : ""}. Editar`}
-        onClick={onOpen}
-        className={`flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-card border bg-surface px-3 py-1.5 text-left ${
-          activeCount ? "border-ink" : "border-rule"
-        }`}
-      >
-        <SlidersHorizontal className="size-4 shrink-0" aria-hidden />
-        <span className="flex min-w-0 flex-1 flex-col leading-tight" aria-hidden>
-          <span className="text-aux leading-none font-semibold text-muted tabular-nums">
-            Recorte{activeCount > 0 ? ` · ${activeCount}` : ""}
-          </span>
-          <span className="mt-0.5 truncate text-body font-medium">{summary}</span>
-        </span>
-        {/* o verbo da linha: ink, negrito e sublinhado, para ler como ação e não como rótulo */}
-        <span aria-hidden className="shrink-0 text-aux font-semibold text-ink underline decoration-muted underline-offset-4">
-          Editar
-        </span>
-      </button>
+  useEffect(() => {
+    if (!undo) {
+      setAnnouncement("");
+      return;
+    }
+    if (document.getElementById("page")?.inert || document.querySelector("dialog[open]")) {
+      setAnnouncement("");
+      return;
+    }
+    const frame = requestAnimationFrame(() => {
+      setAnnouncement(`Filtro aplicado: ${undo.description}. Botão Desfazer filtro disponível.`);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [undo]);
 
-      {/* "Comandas · N" na primeira linha; "X críticas" embaixo, só quando há críticas */}
-      <a
-        href="#comandas"
-        className="flex min-h-11 shrink-0 flex-col justify-center rounded-card border border-rule bg-surface px-3 py-1 leading-tight whitespace-nowrap"
-      >
-        <span className="text-body">
-          Comandas
-          {total !== null && (
+  return (
+    <div className="grid min-w-0 gap-1.5">
+      <div className="flex min-w-0 items-center gap-1.5">
+        <button
+          ref={buttonRef}
+          type="button"
+          aria-haspopup="dialog"
+          aria-label={`Recorte: ${summary}${activeCount ? `, ${filtersText}` : ""}. Editar`}
+          onClick={onOpen}
+          className={`flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-card border bg-surface px-2.5 py-1 text-left ${
+            activeCount ? "border-ink" : "border-rule"
+          }`}
+        >
+          <SlidersHorizontal className="size-4 shrink-0" aria-hidden />
+          <span className="flex min-w-0 flex-1 flex-col leading-tight" aria-hidden>
+            <span className="text-meta leading-none font-semibold text-muted tabular-nums">
+              Recorte{activeCount > 0 ? ` · ${activeCount}` : ""}
+            </span>
+            <span className="mt-0.5 truncate text-aux font-medium text-ink">{summary}</span>
+          </span>
+          {/* o verbo da linha: ink, negrito e sublinhado, para ler como ação e não como rótulo */}
+          <span aria-hidden className="shrink-0 text-aux font-semibold text-ink underline decoration-muted underline-offset-4">
+            Editar
+          </span>
+        </button>
+
+        {/* atalho compacto em 1 linha, alinhado com o botão Recorte (44px) */}
+        <a
+          href="#comandas"
+          className="inline-flex min-h-11 shrink-0 items-center gap-1 rounded-card border border-rule bg-surface px-2.5 py-1 text-aux whitespace-nowrap"
+        >
+          <span>
+            Comandas
+            {total !== null && (
+              <>
+                {" · "}
+                <SubtleNumber value={total} />
+              </>
+            )}
+          </span>
+          {critical > 0 && (
             <>
-              {" · "}
-              <SubtleNumber value={total} />
+              <span className="font-semibold text-crit tabular-nums" aria-hidden>
+                ({critical})
+              </span>
+              <span className="sr-only">
+                , {critical} {critical === 1 ? "crítica" : "críticas"}
+              </span>
             </>
           )}
-        </span>
-        {critical > 0 && (
-          <span className="text-meta font-semibold text-crit tabular-nums">
-            <SubtleNumber value={critical} /> {critical === 1 ? "crítica" : "críticas"}
-          </span>
-        )}
-      </a>
+        </a>
+      </div>
+      {undo && (
+        <button
+          type="button"
+          onClick={undoDrilldown}
+          aria-label={`Desfazer filtro: ${undo.description}`}
+          className="btn-ghost min-h-11 w-full justify-start px-2.5 py-1 text-aux transition-[color,background-color,opacity,scale] duration-(--duration-fast) ease-(--ease-smooth-out) starting:scale-(--scale-medium) starting:opacity-0 motion-reduce:transition-none"
+        >
+          <Undo2 className="size-3.5 shrink-0 text-muted" aria-hidden />
+          <span className="shrink-0 font-medium text-ink">Desfazer filtro</span>
+          <span className="min-w-0 truncate text-muted">· {undo.description}</span>
+        </button>
+      )}
+      <p className="sr-only" aria-live="polite" aria-atomic="true">
+        {announcement}
+      </p>
     </div>
   );
 }

@@ -71,7 +71,7 @@ def test_routing_on_planted_store_is_deterministic(client):
     assert rows == second.json()
     assert rows
     routed = next(row for row in rows if row["alert_id"] == "cancel-store-25")
-    assert routed["recipient"] == "Loja 25"
+    assert routed["recipient"] == "Loja Loja 25 (25)"  # nome sintético + id
     assert routed["severity"] == "high"
     assert "Ação:" in routed["message"]
     assert "%" in routed["message"]
@@ -82,7 +82,7 @@ def test_routing_on_planted_store_is_deterministic(client):
 def test_routing_hub_comes_from_drilldown(client):
     rows = client.get("/api/alerts/routing", params=[("store", 46), ("store", 14)]).json()
     hub = next(row for row in rows if row["alert_id"] == "sla-hub-4")
-    assert hub["recipient"] == "Líder do hub 4"
+    assert hub["recipient"] == "Líder do hub Hub Goods (4)"
     assert all(row["recipient"] for row in rows)
 
 
@@ -103,6 +103,23 @@ def test_routing_empty_slice(client):
 def test_invalid_dates_match_the_rest_of_the_api(client, path):
     assert client.get(path, params={"start": "2021-04-01", "end": "2021-03-01"}).status_code == 422
     assert client.get(path, params={"start": "not-a-date"}).status_code == 422
+
+
+@pytest.mark.parametrize("path", ["/api/briefing", "/api/alerts/routing"])
+def test_automation_token_is_optional_until_configured(client, path):
+    from app.config import Settings, get_settings
+
+    assert client.get(path, params={"city": "Nenhuma"}).status_code == 200
+    client.app.dependency_overrides[get_settings] = lambda: Settings(automation_token="segredo")
+    try:
+        assert client.get(path, params={"city": "Nenhuma"}).status_code == 401
+        wrong = client.get(path, params={"city": "Nenhuma"}, headers={"X-Automation-Token": "outro"})
+        assert wrong.status_code == 401
+        assert wrong.json()["detail"] == "Token de automação inválido."
+        ok = client.get(path, params={"city": "Nenhuma"}, headers={"X-Automation-Token": "segredo"})
+        assert ok.status_code == 200
+    finally:
+        client.app.dependency_overrides.pop(get_settings, None)
 
 
 def test_recipient_templates_and_message_are_pure():
@@ -141,3 +158,16 @@ def test_recipient_templates_and_message_are_pure():
     assert "Ação: Ligar para a loja hoje." in routes[0].message
     assert route_alerts([store, hub, from_evidence, from_id, plain]) == routes
     assert recipient_for(plain) == "Time de operações da praça"
+
+
+def test_recipient_names_hub_and_store_with_id():
+    hub = _alert(id="sla-hub-31", evidence=Evidence(view="stages", hubs=[31]))
+    hubs = _alert(id="x", evidence=Evidence(view="stages", hubs=[3, 8]))
+    store = _alert(id="cancel-store-25")
+    names = {31: "Pagode Shopping", 3: "Hub A"}
+    routes = route_alerts([hub, hubs, store], hub_names=names, store_names={25: "Muspuo Smiru"})
+    assert [r.recipient for r in routes] == [
+        "Líder do hub Pagode Shopping (31)",
+        "Líder dos hubs Hub A (3) e 8",
+        "Loja Muspuo Smiru (25)",
+    ]

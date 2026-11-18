@@ -32,9 +32,20 @@ class Settings(BaseSettings):
     llm_max_tokens: int = 900
     chat_budget_s: float = 20.0
     chat_rate_limit_per_minute: int = 8
+    # Teto de chamadas ao LLM por minuto, somando todos os IPs. 0 desliga.
+    chat_global_rate_limit_per_minute: int = 60
     chat_rate_limit_enabled: bool = True
-    trusted_ip_header: str = ""
-    trust_xff: bool = True
+    # Header de IP confiável (ex.: true-client-ip ou cf-connecting-ip).
+    # Vazio: último hop de X-Forwarded-For, que é o IP acrescentado pelo proxy.
+    # A documentação do Render não garante True-Client-IP; a Cloudflare, quando está na frente, envia os dois.
+    client_ip_header: str = ""
+
+    # Exportação CSV: acima do teto a API pede um recorte menor. 0 desliga a cota por IP.
+    csv_export_max_rows: int = 50_000
+    csv_export_per_minute: int = 30
+
+    # Se preenchido, /api/briefing e /api/alerts/routing exigem o header X-Automation-Token.
+    automation_token: str | None = None
 
     @field_validator("cors_origin_regex", mode="before")
     @classmethod

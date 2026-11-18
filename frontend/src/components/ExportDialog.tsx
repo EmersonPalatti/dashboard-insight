@@ -1,8 +1,6 @@
-import { useStore } from "@nanostores/react";
 import { Check, ClipboardCopy, FileSpreadsheet, Printer, X } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef } from "react";
-import { EXPORT_ACTIONS, csvHref, printAfterClose, useBriefingCopy } from "@/lib/exportActions";
-import { $filters } from "@/lib/filters";
+import { EXPORT_ACTIONS, printAfterClose, useBriefingCopy, useCsvDownload } from "@/lib/exportActions";
 
 interface Props {
   open: boolean;
@@ -33,8 +31,8 @@ export function ExportDialog({ open, onClose }: Props) {
   const ref = useRef<HTMLDialogElement>(null);
   // Fechamento em curso: função que cancela o timer e o listener; null quando o modal não está fechando.
   const stopClosing = useRef<(() => void) | null>(null);
-  const filters = useStore($filters);
   const briefing = useBriefingCopy();
+  const csv = useCsvDownload();
 
   /**
    * Fecha com animação: marca data-closing, espera o fim da transição (ou o fallback) e só
@@ -99,7 +97,7 @@ export function ExportDialog({ open, onClose }: Props) {
       <div className="p-5">
         <div className="mb-4 flex items-start justify-between gap-4">
           <div>
-            <h2 className="text-lg font-semibold">Exportar recorte</h2>
+            <h2 className="section-title">Exportar recorte</h2>
             <p className="label">Tudo segue os filtros ativos agora.</p>
           </div>
           <button type="button" onClick={onClose} className="btn-ghost px-2 max-lg:min-h-11 max-lg:min-w-11 max-lg:justify-center" aria-label="Fechar">
@@ -107,13 +105,13 @@ export function ExportDialog({ open, onClose }: Props) {
           </button>
         </div>
         <div className="grid gap-2">
-          <a className="btn-ghost justify-start py-3" href={csvHref(filters)} download>
+          <button type="button" className="btn-ghost justify-start py-3 text-left" onClick={() => void csv.download()} disabled={csv.busy || csv.blocked}>
             <FileSpreadsheet className="size-4 text-series" aria-hidden />
             <span>
-              <span className="block font-semibold">{EXPORT_ACTIONS.csv.title}</span>
-              <span className="label">{EXPORT_ACTIONS.csv.detail}</span>
+              <span className="block font-semibold">{csv.title}</span>
+              <span className="label">{csv.detail}</span>
             </span>
-          </a>
+          </button>
           <button type="button" className="btn-ghost justify-start py-3 text-left" onClick={briefing.copy} disabled={briefing.state === "busy"}>
             {briefing.state === "done" ? <Check className="size-4 text-good" aria-hidden /> : <ClipboardCopy className="size-4 text-series" aria-hidden />}
             <span>

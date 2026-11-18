@@ -15,7 +15,7 @@ uvicorn app.main:app
 
 A API fica em `http://127.0.0.1:8000` (`/docs` para o contrato). Use `127.0.0.1`, não `localhost`. No Windows, `localhost` resolveu para o IPv6 `::1`, e o uvicorn escuta só IPv4.
 
-Para a API no Render, depois do deploy, a base é `https://central-operacoes-api.onrender.com`. O passo 5 troca esse valor.
+O workflow já vem apontado para a API no Render, `https://central-operacoes-api.onrender.com`. Para testar com a API local, o passo 5 troca esse valor.
 
 ## 2. Importar o workflow
 
@@ -61,17 +61,17 @@ O número antes dos dois-pontos do token é o id do bot, não o seu. Colocar o i
 
 Abra o workflow importado, no nó Config:
 
-- `api_base`: `http://127.0.0.1:8000` com a API local. No Render, `https://central-operacoes-api.onrender.com`.
+- `api_base`: vem com `https://central-operacoes-api.onrender.com`. Com a API local, troque por `http://127.0.0.1:8000`.
 - `data_ref`: deixe a expressão como está. Ela escolhe o dia do dataset. A conta está em [COMO-FUNCIONA.md](COMO-FUNCIONA.md).
 - `chat_id`: o id que o @userinfobot mostrou.
 
-Nos nós Telegram: briefing, Telegram: alerta e Telegram: falha da API, selecione a credencial criada no passo 3. O nome gravado no arquivo é "Telegram account"; na sua instância você aponta a credencial real. Salve o workflow.
+Nos cinco nós Telegram (briefing, alerta, as duas cópias "(texto puro)" e falha da API), selecione a credencial criada no passo 3. O nome gravado no arquivo é "Telegram account"; na sua instância você aponta a credencial real. Salve o workflow.
 
 ## 6. Executar
 
 Com a API no ar, use Execute no editor (gatilho Executar manualmente) ou a CLI do passo 2.
 
-O chat recebe o briefing e, em seguida, uma mensagem por alerta. Se a API estiver fora, depois de 3 tentativas a mensagem é `Briefing não gerado: API indisponível`.
+O chat recebe o briefing e, em seguida, uma mensagem por alerta. Se a API não acordar (3 tentativas, espera de 30 s, mais 3 tentativas), a mensagem é `Briefing não gerado: API indisponível`. Se o briefing saiu e só o roteamento falhou, a mensagem é `Alertas não encaminhados: ...`.
 
 ## 7. Ativar o horário
 

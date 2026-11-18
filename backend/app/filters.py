@@ -17,23 +17,41 @@ Segment = Literal["food", "good"]
 ChannelType = Literal["marketplace", "own"]
 Modal = Literal["moto", "bike"]
 OrderStatus = Literal["delivered", "canceled"]
-CityStr = Annotated[str, Field(max_length=80)]
 
-_MAX_ITEMS = 200
+# Teto de cada lista e de cada texto. A URL do painel usa as mesmas chaves.
+_MAX_LIST = 50
+_MAX_TEXT = 80
+_DATE_MIN = date(2000, 1, 1)
+_DATE_MAX = date(2100, 12, 31)
+
+ShortText = Annotated[str, Field(max_length=_MAX_TEXT)]
 
 
 class Filters(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
-    start: date | None = Field(default=None, description="Data inicial (inclusiva, horário de Brasília)")
-    end: date | None = Field(default=None, description="Data final (inclusiva)")
-    city: list[CityStr] = Field(default_factory=list, max_length=_MAX_ITEMS)
-    hub: list[int] = Field(default_factory=list, max_length=_MAX_ITEMS)
-    store: list[int] = Field(default_factory=list, max_length=_MAX_ITEMS)
-    segment: list[Segment] = Field(default_factory=list)
-    channel_type: list[ChannelType] = Field(default_factory=list)
-    modal: list[Modal] = Field(default_factory=list, description="Pedidos sem entregador saem do recorte")
-    status: list[OrderStatus] = Field(default_factory=list, description="Status do pedido: delivered ou canceled")
+    start: date | None = Field(
+        default=None,
+        ge=_DATE_MIN,
+        le=_DATE_MAX,
+        description="Data inicial (inclusiva, horário de Brasília)",
+    )
+    end: date | None = Field(default=None, ge=_DATE_MIN, le=_DATE_MAX, description="Data final (inclusiva)")
+    city: list[ShortText] = Field(default_factory=list, max_length=_MAX_LIST)
+    hub: list[int] = Field(default_factory=list, max_length=_MAX_LIST)
+    store: list[int] = Field(default_factory=list, max_length=_MAX_LIST)
+    segment: list[Segment] = Field(default_factory=list, max_length=_MAX_LIST)
+    channel_type: list[ChannelType] = Field(default_factory=list, max_length=_MAX_LIST)
+    modal: list[Modal] = Field(
+        default_factory=list,
+        max_length=_MAX_LIST,
+        description="Pedidos sem entregador saem do recorte",
+    )
+    status: list[OrderStatus] = Field(
+        default_factory=list,
+        max_length=_MAX_LIST,
+        description="Status do pedido: delivered ou canceled",
+    )
 
     @model_validator(mode="after")
     def _check_range(self) -> Filters:
@@ -82,3 +100,10 @@ class Filters(BaseModel):
 
     def with_period(self, start: date, end: date) -> Filters:
         return self.model_copy(update={"start": start, "end": end})
+
+    def is_full_network(self) -> bool:
+        """True quando só o período restringe. A referência do KPI é a rede nesse período."""
+        return not (
+            self.city or self.hub or self.store or self.segment
+            or self.channel_type or self.modal or self.status
+        )

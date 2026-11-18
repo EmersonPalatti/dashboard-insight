@@ -1,16 +1,19 @@
-import { Filter, X } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Filter, SquareDashedMousePointer, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { BreakdownRow } from "@/lib/api/client";
-import { patchFilters } from "@/lib/filters";
+import { EVIDENCE_DIM } from "@/lib/evidence";
+import { LIST_CAP, patchFilters } from "@/lib/filters";
 import { fmt } from "@/lib/format";
+import { STORE_NAMES_HINT } from "@/lib/glossary";
 import { island, useRecorteQuery } from "@/lib/query";
 import { ScatterChart } from "echarts/charts";
 import { BrushComponent, ToolboxComponent } from "echarts/components";
 import * as echarts from "echarts/core";
+import { ChartAccess, openStoreRanking } from "./charts/ChartAccess";
 import { EChart, type ECInstance, type Tokens } from "./charts/EChart";
 import { AskAgentButton } from "./ui/AskAgentButton";
 import { EvidenceTag, useEvidence } from "./ui/EvidenceTag";
-import { Empty, ErrorState, panelFallback, PanelContent, Segmented, Skeleton } from "./ui/Panel";
+import { AsyncBody, Empty, panelFallback, PanelContent, Segmented } from "./ui/Panel";
 
 // Módulos deste gráfico: dispersão, caixa de seleção (brush) e barra de ferramentas que a abriga.
 echarts.use([ScatterChart, BrushComponent, ToolboxComponent]);
@@ -34,7 +37,9 @@ const ASK_BY_Y: Record<Y, string> = {
 function StoreScatterInner() {
   const [y, setY] = useState<Y>("cancel_rate");
   const [picked, setPicked] = useState<BreakdownRow[]>([]);
-  const { data, error, isPending, refetch, isPlaceholderData } = useRecorteQuery("/api/breakdown", {
+  const [brushing, setBrushing] = useState(false);
+  const chartRef = useRef<ECInstance | null>(null);
+  const { data, error, isPending, refetch, isPlaceholderData, waking, down } = useRecorteQuery("/api/breakdown", {
     by: "store",
     sort: "orders",
     limit: 1000,
@@ -50,8 +55,19 @@ function StoreScatterInner() {
     if (focusMetric && focusMetric !== "orders") {
       setY(focusMetric);
       setPicked([]);
+      setBrushing(false);
     }
   }, [focusId, focusMetric]);
+
+  const toggleBrush = () => {
+    const next = !brushing;
+    setBrushing(next);
+    chartRef.current?.dispatchAction({
+      type: "takeGlobalCursor",
+      key: "brush",
+      brushOption: next ? { brushType: "rect", brushMode: "single" } : false,
+    });
+  };
   const isMarked = useMemo(() => {
     const stores = new Set((focus?.evidence.stores ?? []).map(String));
     const hub = focus?.evidence.hub_label ?? null;
@@ -61,19 +77,22 @@ function StoreScatterInner() {
   // poucas lojas marcadas: o nome aparece ao lado do ponto
   const nameMarked = markedCount > 0 && markedCount <= 3;
   const maxGmv = useMemo(() => Math.max(1, ...rows.map((r) => r.gmv)), [rows]);
+  const hi = rows.reduce((best, row) => ((row[y] as number) > (best[y] as number) ? row : best), rows[0]);
+  const lo = rows.reduce((best, row) => ((row[y] as number) < (best[y] as number) ? row : best), rows[0]);
+  const axis = Y_AXIS[y];
+  const summary =
+    rows.length === 0
+      ? ""
+      : hi === lo
+        ? `${hi.label}: ${axis.format(hi[y] as number)} em ${axis.label}.`
+        : `Maior ${axis.label}: ${hi.label}, ${axis.format(hi[y] as number)}. Menor: ${lo.label}, ${axis.format(lo[y] as number)}.`;
 
   const option = useCallback(
     (t: Tokens) => ({
-      grid: { left: 56, right: 20, top: 40, bottom: 44 },
-      toolbox: {
-        right: 8,
-        top: 0,
-        iconStyle: { borderColor: t.muted },
-        emphasis: { iconStyle: { borderColor: t.ink } },
-        feature: { brush: { type: ["rect", "clear"], title: { rect: "Selecionar área", clear: "Limpar seleção" } } },
-      },
+      grid: { left: 56, right: 20, top: 20, bottom: 44 },
+      toolbox: { show: false },
       brush: {
-        toolbox: ["rect", "clear"],
+        toolbox: [],
         xAxisIndex: 0,
         brushStyle: { color: `${t.ink}14`, borderColor: t.ink, borderWidth: 1 },
         outOfBrush: { colorAlpha: 0.2 },
@@ -97,13 +116,16 @@ function StoreScatterInner() {
             const on = isMarked(r);
             return {
               value: [r.orders, r[y]],
-              itemStyle: on ? { color: t.ink, opacity: 1, borderColor: t.surface, borderWidth: 1.5 } : { opacity: 0.16 },
+              symbol: on ? "diamond" : "circle",
+              itemStyle: on
+                ? { color: t.ink, opacity: 1, borderColor: t.ink, borderWidth: 1.5 }
+                : { opacity: EVIDENCE_DIM },
               label: on && nameMarked ? { show: true, position: "right", formatter: r.label, color: t.ink, fontWeight: "bold" } : undefined,
               z: on ? 3 : 2,
             };
           }),
           symbolSize: (_: unknown, p: { dataIndex: number }) => 5 + 18 * Math.sqrt((rows[p.dataIndex]?.gmv ?? 0) / maxGmv),
-          itemStyle: { color: t.series, opacity: 0.55, borderColor: t.seriesDeep, borderWidth: 0.5 },
+          itemStyle: { color: t.series, opacity: markedCount ? 1 : 0.55, borderColor: t.seriesDeep, borderWidth: 0.5 },
           emphasis: { itemStyle: { opacity: 1 } },
           large: rows.length > 2000,
         },
@@ -130,15 +152,33 @@ function StoreScatterInner() {
           />
         )
       }
+      hint={STORE_NAMES_HINT}
       busy={isPlaceholderData}
       actions={
         <>
+          <button
+            type="button"
+            aria-pressed={brushing}
+            onClick={toggleBrush}
+            className={`btn-ghost min-h-8 px-2.5 py-1 text-aux max-lg:min-h-11 ${brushing ? "border-ink bg-sunken" : ""}`}
+          >
+            <SquareDashedMousePointer className="size-3.5" aria-hidden />
+            {brushing ? "Sair da seleção" : "Selecionar área"}
+          </button>
+          <button
+            type="button"
+            onClick={openStoreRanking}
+            className="btn-ghost min-h-11 px-2.5 py-1 text-aux lg:hidden"
+          >
+            Filtrar no ranking
+          </button>
           <Segmented
             label="Eixo vertical"
             value={y}
             onChange={(v) => {
               setY(v);
               setPicked([]);
+              setBrushing(false);
             }}
             options={(Object.keys(Y_AXIS) as Y[]).map((k) => ({ value: k, label: Y_AXIS[k].label }))}
           />
@@ -146,56 +186,104 @@ function StoreScatterInner() {
         </>
       }
     >
-      {isPending ? (
-        <Skeleton height={CHART_H} />
-      ) : error ? (
-        <div className="flex items-center justify-center" style={{ minHeight: CHART_H }}>
-          <ErrorState error={error} onRetry={() => refetch()} />
-        </div>
-      ) : rows.length === 0 ? (
-        <div className="flex items-center justify-center" style={{ minHeight: CHART_H }}>
-          <Empty>Nenhuma loja com 30+ pedidos no recorte.</Empty>
-        </div>
-      ) : (
+      <AsyncBody
+        waking={waking}
+        pending={isPending}
+        error={error}
+        down={down}
+        onRetry={() => refetch()}
+        what="o gráfico de lojas"
+        height={CHART_H}
+        empty={rows.length === 0 ? <Empty>Nenhuma loja com 30+ pedidos no recorte.</Empty> : null}
+      >
         <div className="content-reveal min-w-0">
           <EChart
             key={y}
             option={option}
             height={CHART_H}
+            onReady={(c) => {
+              chartRef.current = c;
+            }}
             onEvents={{ brushselected: onBrush }}
             ariaLabel={`Dispersão de lojas: pedidos contra ${Y_AXIS[y].label}`}
           />
-          {picked.length > 0 && (
-            <div className="mt-2 flex flex-wrap items-center gap-2 rounded-card bg-sunken px-3 py-2">
-              <p className="mr-auto text-pretty text-body">
-                {picked.length} loja(s) selecionada(s):{" "}
-                <span className="text-muted">
-                  {picked
-                    .slice(0, 4)
-                    .map((r) => r.label)
-                    .join(", ")}
-                  {picked.length > 4 ? "…" : ""}
-                </span>
-              </p>
-              <button type="button" className="btn-ghost py-1" onClick={() => setPicked([])}>
-                <X className="size-3.5" aria-hidden /> Descartar
-              </button>
-              <button
-                type="button"
-                className="btn-ink py-1"
-                onClick={() => {
-                  patchFilters({ store: picked.slice(0, 200).map((r) => Number(r.key)) });
-                  setPicked([]);
-                }}
-              >
-                <Filter className="size-3.5" aria-hidden /> Filtrar estas lojas
-              </button>
-            </div>
-          )}
+          <ChartAccess
+            summary={summary}
+            items={[
+              ...[...rows]
+                .filter((r) => r.key != null)
+                .sort((a, b) => {
+                  if (y === "sla_rate") return ((a.sla_rate ?? 1) - (b.sla_rate ?? 1)) || b.orders - a.orders;
+                  return ((b[y] as number) - (a[y] as number)) || b.orders - a.orders;
+                })
+                .slice(0, 3)
+                .map((r) => ({
+                  key: String(r.key),
+                  label: `Filtrar ${r.label} (${Y_AXIS[y].format(r[y] as number)}, ${fmt.int(r.orders)} ped.)`,
+                  onSelect: () => patchFilters({ store: [Number(r.key)] }),
+                })),
+              {
+                key: "ranking",
+                label: "Filtrar uma loja no ranking, em Lojas",
+                onSelect: openStoreRanking,
+              },
+            ]}
+          />
+          {picked.length > 0 && (() => {
+            const overCap = picked.length > LIST_CAP;
+            const targetStores = (overCap ? [...picked].sort((a, b) => b.orders - a.orders) : picked).slice(0, LIST_CAP);
+            return (
+              <div className="mt-2 flex flex-wrap items-center gap-2 rounded-card bg-sunken px-3 py-2">
+                <p className="mr-auto text-pretty text-body">
+                  {overCap ? (
+                    <>
+                      <span className="font-semibold text-warn">{picked.length} lojas na área</span>{" "}
+                      <span className="text-muted">
+                        (limite do filtro: {LIST_CAP}; aplica as {LIST_CAP} com mais pedidos — ou filtre antes por Cidade/Hub):{" "}
+                      </span>
+                    </>
+                  ) : (
+                    <>{picked.length} loja(s) selecionada(s): </>
+                  )}
+                  <span className="text-muted">
+                    {targetStores
+                      .slice(0, 4)
+                      .map((r) => r.label)
+                      .join(", ")}
+                    {targetStores.length > 4 ? "…" : ""}
+                  </span>
+                </p>
+                <button
+                  type="button"
+                  className="btn-ghost py-1 max-lg:min-h-11"
+                  onClick={() => {
+                    setPicked([]);
+                    chartRef.current?.dispatchAction({ type: "brush", areas: [] });
+                  }}
+                >
+                  <X className="size-3.5" aria-hidden /> Descartar
+                </button>
+                <button
+                  type="button"
+                  className="btn-ink py-1 max-lg:min-h-11"
+                  onClick={() => {
+                    patchFilters({ store: targetStores.map((r) => Number(r.key)) });
+                    setPicked([]);
+                    setBrushing(false);
+                    chartRef.current?.dispatchAction({ type: "brush", areas: [] });
+                    chartRef.current?.dispatchAction({ type: "takeGlobalCursor", key: "brush", brushOption: false });
+                  }}
+                >
+                  <Filter className="size-3.5" aria-hidden />{" "}
+                  {overCap ? `Filtrar top ${LIST_CAP} lojas` : "Filtrar estas lojas"}
+                </button>
+              </div>
+            );
+          })()}
         </div>
-      )}
+      </AsyncBody>
     </PanelContent>
   );
 }
 
-export default island(StoreScatterInner, panelFallback(CHART_H));
+export default island(StoreScatterInner, panelFallback(CHART_H, { hint: true }));

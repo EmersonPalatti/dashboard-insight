@@ -35,7 +35,11 @@
   --shell-warn: #f0a93b;
   --series: #7a1e3d;
   --series-deep: #4a0f25;
-  --series-soft: #e7b3c4;
+  /* Mais claro da rampa de vinho, ainda com 3:1 sobre a superfície. */
+  --series-soft: #c07d93;
+  /* Bloco Ação. No claro é a inversão tinta/papel. O escuro troca o valor para não brilhar mais que o vermelho. */
+  --action: #1a1a1a;
+  --on-action: #ffffff;
   color-scheme: light;
 
   /*
@@ -65,6 +69,8 @@
   --scale-tiny: 0.99; /* menu fechando */
   --blur-small: 2px; /* troca de ícone/texto, skeleton → conteúdo */
   --blur-medium: 3px; /* revelação de texto */
+  /* Altura da barra de filtros fixa. O script da página substitui pelo valor medido. */
+  --sticky-bar: 6.5rem;
 }
 
 :root[data-theme="dark"] {
@@ -85,7 +91,11 @@
   --on-wine: #e6c3cf;
   --series: #e0789a;
   --series-deep: #f4b8cb;
-  --series-soft: #5c2337;
+  /* Ainda o degrau mais escuro da rampa, claro o bastante para 3:1 sobre a superfície. */
+  --series-soft: #a3516c;
+  /* Âncora da comanda: no escuro usa vinho profundo elevado com borda para destacar sem ofuscar o botão crítico (#ff5d50). */
+  --action: #27131a;
+  --on-action: #f2f2f2;
   color-scheme: dark;
 }
 
@@ -187,7 +197,7 @@
  * dica dinâmica e nota numa linha inteira, corpo por último.
  */
 @utility panel-frame {
-  @apply panel flex min-w-0 flex-wrap items-start gap-x-2 p-4;
+  @apply panel flex min-w-0 flex-wrap content-start items-start gap-x-2 p-4;
 }
 @utility panel-head {
   /* min-h igual à altura das ações: a linha do título não cresce quando a ilha monta */
@@ -213,15 +223,15 @@
   mask: radial-gradient(circle 5px at 7px 0, #0000 98%, #000) 0 0 / 14px 100% repeat-x;
 }
 
-/* A comanda aberta desdobra de cima para baixo, como papel saindo da impressora. */
+/* A comanda aberta desdobra de cima para baixo, como papel saindo da impressora (sem clip-path sobre mask). */
 @keyframes ticket-unfold {
   from {
-    clip-path: inset(0 0 55% 0);
-    opacity: 0.6;
+    opacity: 0.45;
+    transform: translateY(calc(var(--distance-small) * -1));
   }
   to {
-    clip-path: inset(0 0 0 0);
     opacity: 1;
+    transform: none;
   }
 }
 
@@ -234,7 +244,7 @@
 
 /* Reimpressão do recorte: a fila sai em ordem, 40ms por comanda (--i vai até 5). */
 @utility ticket-print {
-  animation: ticket-unfold 280ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: ticket-unfold 280ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
   animation-delay: calc(var(--i, 0) * var(--duration-stagger));
   @media (prefers-reduced-motion: reduce) {
     animation: none;
@@ -256,7 +266,7 @@
   overflow: hidden;
   min-height: 0;
   opacity: 1;
-  filter: blur(0);
+  filter: none;
   transition:
     opacity var(--duration-fast) var(--ease-smooth-out),
     filter var(--duration-fast) var(--ease-smooth-out);
@@ -308,9 +318,10 @@ button.ticket:focus-visible {
   outline-offset: -6px;
 }
 
-/* Gráfico que prova uma comanda: alvo de "Ver no gráfico", abaixo da barra de filtros fixa. */
+/* Gráfico que prova uma comanda: alvo de "Ver no gráfico", abaixo da barra de filtros fixa.
+   --sticky-bar é a altura medida da barra (o script da casca); 6.5rem cobre o primeiro quadro. */
 .evidence-anchor {
-  scroll-margin-top: 8rem;
+  scroll-margin-top: calc(var(--sticky-bar, 6.5rem) + 0.75rem);
   outline: none;
 }
 
@@ -361,6 +372,130 @@ button.ticket:focus-visible {
   .ticket {
     break-inside: avoid;
   }
+  .panel-collapsible:not([data-panel-open]) .panel-toggle-btn {
+    cursor: default;
+  }
+}
+
+/*
+ * Zona de investigação e painéis recolhíveis ("Explorar o recorte").
+ * [data-panel-body][hidden] precisa vencer `.contents` (display: contents).
+ */
+.panel-head[hidden],
+[data-panel-body][hidden] {
+  display: none !important;
+}
+
+.panel-collapsible:not([data-panel-open]) {
+  padding: 0;
+}
+
+.panel-collapsible:not([data-panel-open]) .panel-head-toggle {
+  flex-basis: 100%;
+  margin-right: 0;
+}
+
+.panel-toggle-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--duration-quick) var(--ease-smooth-out);
+}
+
+.panel-collapsible:not([data-panel-open]) .panel-toggle-btn {
+  width: 100%;
+  padding: 0.875rem 1rem;
+  border-radius: var(--radius-card);
+}
+
+.panel-collapsible[data-panel-open="true"] .panel-toggle-btn {
+  display: inline-flex;
+  padding: 0.25rem 0.5rem;
+  margin: -0.25rem -0.5rem;
+  border-radius: var(--radius-tick);
+}
+
+.panel-toggle-btn:hover {
+  background-color: var(--sunken);
+}
+
+@media (max-width: 1023px) {
+  .panel-toggle-btn {
+    min-height: 2.75rem;
+  }
+}
+
+.panel-collapsible:not([data-panel-open]) .panel-toggle-hint,
+.panel-collapsible:not([data-panel-open]) .panel-toggle-label-close,
+.panel-collapsible[data-panel-open="true"] .panel-toggle-summary,
+.panel-collapsible[data-panel-open="true"] .panel-toggle-label-open {
+  display: none;
+}
+
+.panel-toggle-affordance {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: var(--text-aux);
+  font-weight: 500;
+  color: var(--muted);
+  transition: color var(--duration-quick) var(--ease-smooth-out);
+}
+
+.panel-toggle-btn:hover .panel-toggle-affordance {
+  color: var(--ink);
+}
+
+.panel-toggle-chevron {
+  transform-origin: center;
+  transform: scaleY(1);
+  transition: transform var(--duration-fast) var(--ease-smooth-out);
+}
+
+.panel-toggle-btn[aria-expanded="true"] .panel-toggle-chevron {
+  transform: scaleY(-1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .panel-toggle-btn,
+  .panel-toggle-affordance,
+  .panel-toggle-chevron {
+    transition: none;
+  }
+}
+
+/*
+ * A Zona 1 não reserva altura: o painel promovido tem a altura dele. Reservar a do
+ * mais alto deixava um vão vazio sob a Tendência. A troca acontece quando se abre uma
+ * comanda no trilho, acima da dobra, então o que muda de lugar abaixo não está à vista.
+ */
+
+@keyframes investigation-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.investigation-fade {
+  animation: investigation-fade-in var(--duration-fast) var(--ease-smooth-out) backwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .investigation-fade {
+    animation: none;
+  }
+}
+
+main[data-recorte-empty] > :is(#investigacao, #ranking, #explorar, #fechamento) {
+  display: none;
 }
 
 /* Rede de segurança para movimento reduzido: rolagem instantânea e sem pulso. Transições de cor continuam. */
@@ -372,5 +507,85 @@ button.ticket:focus-visible {
   }
   .animate-pulse {
     animation: none !important;
+  }
+}
+
+/*
+ * O bloco Ação da comanda era bg-ink. No escuro --ink é quase branco e o
+ * retângulo fica mais claro que o botão vermelho. Estes tokens trocam só esse
+ * bloco (classe action-block). O rótulo "Ação"
+ * perde a opacidade no escuro para o texto continuar legível sobre o vinho.
+ */
+.action-block {
+  background-color: var(--action);
+  color: var(--on-action);
+}
+
+:root[data-theme="dark"] .action-block {
+  border: 1px solid var(--wine-raised);
+}
+
+/* Atalho de teclado dos gráficos: some até receber foco, aí vira um botão.
+   Fora de camada para ganhar do btn-ghost, que também define tamanho. */
+.chart-key {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+.chart-key:focus,
+.chart-key:focus-visible {
+  position: static;
+  width: auto;
+  height: auto;
+  padding: 0.375rem 0.75rem;
+  margin: 0;
+  overflow: visible;
+  clip: auto;
+  clip-path: none;
+  white-space: normal;
+  border-width: 1px;
+}
+
+/* O ranking é o destino do atalho do gráfico de lojas. O id sai do título na casca.
+   Comandas, KPIs e o corpo do ranking usam a mesma folga: a barra fixa não cobre o alvo. */
+#comandas,
+#painel-ranking-do-recorte,
+#ranking-recorte,
+.kpi-strip,
+.kpi-label,
+.kpi-strip :is(a, button) {
+  scroll-margin-top: calc(var(--sticky-bar, 6.5rem) + 0.75rem);
+}
+
+/*
+ * Área de toque sem mudar o desenho. 24px no desktop; 44px abaixo de lg.
+ * O ::after não entra no fluxo, então a linha não se desloca.
+ */
+.hit-target {
+  position: relative;
+}
+
+.hit-target::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: max(100%, 1.5rem);
+  height: max(100%, 1.5rem);
+  transform: translate(-50%, -50%);
+}
+
+@media (max-width: 1023px) {
+  .hit-target::after {
+    width: max(100%, 2.75rem);
+    height: max(100%, 2.75rem);
   }
 }

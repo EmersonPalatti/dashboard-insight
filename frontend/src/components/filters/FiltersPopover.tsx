@@ -2,7 +2,7 @@ import { SlidersHorizontal } from "lucide-react";
 import type { ReactNode } from "react";
 import { Popover } from "./Popover";
 
-/** "Mais filtros" no desktop: Segmento, Canal e Modal num popover, com a contagem do que está ativo. */
+/** "Mais filtros" no desktop: Segmento, Canal, Modal e Status num popover, com a contagem do que está ativo. */
 export function FiltersPopover({ count, children }: { count: number; children: ReactNode }) {
   return (
     <Popover

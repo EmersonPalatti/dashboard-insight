@@ -9,20 +9,86 @@ interface Props {
   /** Só texto que não depende do recorte. Dica que muda com o estado fica na ilha. */
   hint?: string;
   class?: string;
+  /** Habilita modo recolhível (Zona 2) ou promovível (Zona 1). */
+  collapsible?: boolean;
+  /** Linha curta e estática exibida quando o painel está recolhido. */
+  summary?: string;
+  /** Estado inicial no SSR para painéis recolhíveis. */
+  open?: boolean;
+  /** Quando true no SSR, nasce promovido na Zona 1 (cabeçalho estático, sem controle de acordeão). */
+  promoted?: boolean;
 }
-const { title, hint, class: className } = Astro.props;
-const headingId = `painel-${title
+const { title, hint, class: className, collapsible = false, summary, open = false, promoted = false } = Astro.props;
+const slug = title
   .normalize("NFD")
   .replace(/[̀-ͯ]/g, "")
   .toLowerCase()
   .replace(/[^a-z0-9]+/g, "-")
-  .replace(/^-|-$/g, "")}`;
+  .replace(/^-|-$/g, "");
+const headingId = `painel-${slug}`;
+const bodyId = `painel-corpo-${slug}`;
+const isPromoted = Boolean(promoted);
+const isOpen = isPromoted || Boolean(open);
 ---
 
-<section class:list={["panel-frame", className]} aria-labelledby={headingId}>
-  <div class="panel-head">
-    <h2 id={headingId} class="section-title text-balance">{title}</h2>
-    {hint && <p class="label mt-0.5 text-pretty">{hint}</p>}
-  </div>
-  <slot />
-</section>
+{
+  collapsible ? (
+    <section
+      class:list={["panel-frame", "panel-collapsible", className]}
+      aria-labelledby={headingId}
+      data-panel-open={isOpen ? "true" : undefined}
+    >
+      <div class="panel-head panel-head-static" hidden={!isPromoted}>
+        <h2 id={isPromoted ? headingId : undefined} data-panel-heading-id={headingId} class="section-title text-balance">
+          {title}
+        </h2>
+        {hint && <p class="label mt-0.5 text-pretty">{hint}</p>}
+      </div>
+      <div class="panel-head panel-head-toggle" hidden={isPromoted}>
+        <h2 id={!isPromoted ? headingId : undefined} data-panel-heading-id={headingId} class="m-0">
+          <button
+            type="button"
+            class="panel-toggle-btn"
+            aria-expanded={isOpen ? "true" : "false"}
+            aria-controls={bodyId}
+            data-panel-toggle
+          >
+            <span class="min-w-0 flex-1 text-left">
+              <span class="section-title block text-balance">{title}</span>
+              {summary && (
+                <span class="panel-toggle-summary label mt-0.5 block font-normal text-pretty">{summary}</span>
+              )}
+            </span>
+            <span class="panel-toggle-affordance no-print" aria-hidden="true">
+              <span class="panel-toggle-label-open">Abrir</span>
+              <span class="panel-toggle-label-close">Fechar</span>
+              <svg
+                class="panel-toggle-chevron size-4 shrink-0"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path d="m6 9 6 6 6-6" />
+              </svg>
+            </span>
+          </button>
+        </h2>
+        {hint && <p class="panel-toggle-hint label mt-0.5 text-pretty">{hint}</p>}
+      </div>
+      <div class="contents" data-panel-body id={bodyId} hidden={!isOpen}>
+        <slot />
+      </div>
+    </section>
+  ) : (
+    <section class:list={["panel-frame", className]} aria-labelledby={headingId}>
+      <div class="panel-head">
+        <h2 id={headingId} class="section-title text-balance">{title}</h2>
+        {hint && <p class="label mt-0.5 text-pretty">{hint}</p>}
+      </div>
+      <slot />
+    </section>
+  )
+}

@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import re
 import unicodedata
-from collections.abc import Callable
 
 from app import fmt
+from app.agent.reading import Reading, validate_drilldowns
 from app.alerts import STAGES, detect_alerts
 from app.filters import Filters
 from app.repository import MIN_MEASURED, Repository
+from app.schemas import DrillDown
 
 SEVERITY = {"high": "Crítico", "medium": "Atenção", "low": "Observar"}
 WEEKDAYS = ["segunda", "terça", "quarta", "quinta", "sexta", "sábado", "domingo"]
@@ -38,6 +39,48 @@ def _canceled_delivery_notice(m: dict, subject: str) -> str:
         f"sem entregas concluídas para medir {subject}.\n\n"
         "**Ação:** Operador deve remover o filtro de status cancelado para avaliar entregas concluídas neste período."
     )
+
+
+def _words(text: str) -> list[str]:
+    return re.findall(r"[a-z0-9]+", text)
+
+
+def _weight(words: list[str], pattern: str) -> int:
+    """Palavra inteira, prefixo explícito (`cancel*`) ou frase. Frase vale o número de palavras."""
+    if pattern.endswith("*"):
+        stem = pattern[:-1]
+        return 1 if stem and any(word.startswith(stem) for word in words) else 0
+    parts = pattern.split()
+    if len(parts) == 1:
+        return 1 if parts[0] in words else 0
+    span = len(parts)
+    for index in range(len(words) - span + 1):
+        if words[index:index + span] == parts:
+            return span
+    return 0
+
+
+def _score(words: list[str], patterns: tuple[str, ...]) -> tuple[int, int]:
+    hits = 0
+    specificity = 0
+    for pattern in patterns:
+        weight = _weight(words, pattern)
+        if not weight:
+            continue
+        hits += weight
+        specificity = max(specificity, len(pattern.rstrip("*")))
+    return hits, specificity
+
+
+def _best_handler(words: list[str], routes: list[tuple[tuple[str, ...], object]]):
+    chosen = None
+    best = (0, 0)
+    for patterns, handler in routes:
+        score = _score(words, patterns)
+        if score[0] > best[0] or (score[0] and score[0] == best[0] and score[1] > best[1]):
+            best = score
+            chosen = handler
+    return chosen
 
 
 def _rank_lines(rows: list[dict], value: str, fmt_fn, extra: str = "") -> list[str]:
@@ -78,13 +121,21 @@ def briefing(repo: Repository, f: Filters) -> str:
         for a in alerts[:4]:
             lines.append(f"- **{a.title}**: {a.detail} **Ação:** {a.action}")
     else:
-        lines += [
-            "",
-            "Nenhum alerta neste recorte.",
-            "",
-            "**Ação:** Time de operações deve acompanhar o pico do jantar e o hub de maior volume hoje.",
-        ]
+        hubs = repo.breakdown(f, "hub", sort="orders", limit=1)
+        if hubs:
+            lead = hubs[0]
+            action = (
+                f"**Ação:** Líder do hub {lead['label']} deve acompanhar o pico do jantar "
+                f"e o volume desse hub hoje."
+            )
+        else:
+            action = "**Ação:** Time de operações deve acompanhar o pico do jantar no recorte hoje."
+        lines += ["", "Nenhum alerta neste recorte.", "", action]
     return "\n".join(lines)
+
+
+def _alert_count(n: int) -> str:
+    return "1 alerta" if n == 1 else f"{n} alertas"
 
 
 def _alerts(repo: Repository, f: Filters) -> str:
@@ -96,7 +147,7 @@ def _alerts(repo: Repository, f: Filters) -> str:
             f"cancelamento {fmt.pct(m['cancel_rate'])}, ciclo mediano {fmt.minutes(m['cycle_p50'])}.\n\n"
             "**Ação:** Time de operações deve manter acompanhamento preventivo no pico de hoje."
         )
-    lines = [f"{len(alerts)} alerta(s) no recorte ({repo.describe(f)}):", ""]
+    lines = [f"{_alert_count(len(alerts))} no recorte ({repo.describe(f)}):", ""]
     for a in alerts:
         lines += [f"**{a.title}** (severidade {SEVERITY[a.severity]})", a.detail, f"**Ação:** {a.action}", ""]
     return "\n".join(lines).strip()
@@ -125,14 +176,6 @@ def _stages(repo: Repository, f: Filters) -> str:
     known_stages = {k: m[k] for k in STAGES if m.get(k) is not None}
     bottleneck_key = max(known_stages, key=known_stages.get) if known_stages else "production_p50"
     bottleneck_label = STAGES[bottleneck_key]
-
-    if m.get("low_sample"):
-        lines += [
-            "",
-            f"Atenção: amostra reduzida no recorte ({fmt.integer(m.get('measured'))} entregas medidas).",
-            f"**Ação:** Operador deve ampliar o período antes de agir sobre o gargalo de {bottleneck_label}.",
-        ]
-        return "\n".join(lines)
 
     hubs_all = hubs if hubs else repo.breakdown(f, "hub", sort="orders", limit=100, min_orders=0)
     lead_hub = max(hubs_all, key=lambda h: h.get(bottleneck_key) or 0.0) if hubs_all else None
@@ -197,14 +240,6 @@ def _sla(repo: Repository, f: Filters) -> str:
     ]
     if hubs:
         lines += ["", "Hubs com pior SLA (mín. 300 pedidos):", *_rank_lines(hubs, "sla_rate", fmt.pct)]
-
-    if m.get("low_sample"):
-        lines += [
-            "",
-            f"Atenção: amostra reduzida no recorte ({fmt.integer(m.get('measured'))} pedidos medidos; mínimo confiável é {MIN_MEASURED}).",
-            "**Ação:** Operador deve ampliar o período antes de agir para obter uma base estatística confiável de SLA.",
-        ]
-        return "\n".join(lines)
 
     alert = next((a for a in detect_alerts(repo, f) if a.id.startswith("sla-hub")), None)
     if not alert:
@@ -293,14 +328,6 @@ def _cancel(repo: Repository, f: Filters) -> str:
         lines += ["", "Hubs que mais cancelam:", *_rank_lines(hubs, "cancel_rate", fmt.pct)]
     if stores:
         lines += ["", "Lojas que mais cancelam (mín. 150 pedidos):", *_rank_lines(stores, "cancel_rate", fmt.pct)]
-
-    if (m.get("orders") or 0) < MIN_MEASURED:  # cancelamento é medido sobre todos os pedidos, não só entregas
-        lines += [
-            "",
-            f"Atenção: amostra reduzida no recorte ({fmt.integer(m.get('orders'))} pedidos).",
-            "**Ação:** Operador deve ampliar o período antes de agir para validar a estabilidade dos cancelamentos.",
-        ]
-        return "\n".join(lines)
 
     if stores and (stores[0].get("cancel_rate") or 0.0) > 0:
         lines += ["", f"**Ação:** Gerente de contas deve ligar para a loja {stores[0]['label']} hoje e checar ruptura e cardápio aberto com loja fechada."]
@@ -505,7 +532,10 @@ def _channels(repo: Repository, f: Filters) -> str:
         action = f"**Ação:** Time comercial e operação devem auditar hoje a integração do canal {worst_sla['label']} para recuperar o SLA ({fmt.pct(worst_sla['sla_rate'])})."
     else:
         lead = rows[0]
-        action = f"**Ação:** Time comercial deve monitorar o volume e a taxa de conversão do canal {lead['label']} no pico de hoje."
+        action = (
+            f"**Ação:** Time comercial deve monitorar hoje o volume, o cancelamento ({fmt.pct(lead['cancel_rate'])}) "
+            f"e o ticket ({fmt.brl(lead['ticket'])}) do canal {lead['label']}."
+        )
 
     lines += ["", action]
     return "\n".join(lines)
@@ -560,7 +590,10 @@ def _revenue(repo: Repository, f: Filters) -> str:
         action = f"**Ação:** Time comercial deve atuar hoje junto aos lojistas do segmento {worst_cancel['label']} para conter perdas de receita por cancelamento ({fmt.pct(worst_cancel['cancel_rate'])})."
     elif seg:
         lead = seg[0]
-        action = f"**Ação:** Time comercial deve direcionar campanhas de incentivo ao ticket médio no segmento {lead['label']} a partir de hoje."
+        action = (
+            f"**Ação:** Time comercial deve revisar hoje com os lojistas do segmento {lead['label']} "
+            f"o ticket ({fmt.brl(lead['ticket'])}) e o cancelamento ({fmt.pct(lead['cancel_rate'])})."
+        )
     else:
         action = "**Ação:** Time comercial deve monitorar o faturamento e ticket médio no fechamento de hoje."
 
@@ -662,41 +695,301 @@ def _volume(repo: Repository, f: Filters) -> str:
     return "\n".join(lines)
 
 
-ROUTES: list[tuple[re.Pattern[str], Callable[[Repository, Filters], str]]] = [
-    (re.compile(r"\b(?:alerta|alertas|problema|problemas|risco|riscos|prioridade|prioridades)\b"), _alerts),
-    (re.compile(r"\b(?:preso|presos)\b"), _stuck),
-    (re.compile(r"\b(?:pagamento|pagamentos|chargeback)\b"), _payments),
-    (re.compile(r"\b(?:modal|modais|moto|motos|bike|bikes|entregador|entregadores)\b"), _modal),
-    (re.compile(r"\b(?:gargalo|gargalos|etapa|etapas|preparo|coleta|expedicao|transito)\b"), _stages),
-    (re.compile(r"\bcancel\w*\b"), _cancel),
-    (re.compile(r"\b(?:frete|fretes|subsid\w*|custo|custos)\b"), _freight),
-    (re.compile(r"\b(?:pico|picos|horario|horarios|hora|horas|jantar|almoco)\b|dia da semana"), _peak),
-    (re.compile(r"\b(?:sla|prazo|prazos|atraso|atrasos|demora|demoras|tempo|tempos|ciclo|ciclos|lento|lentos)\b"), _sla),
-    (re.compile(r"\b(?:canal|canais|marketplace|proprio|proprios)\b"), _channels),
-    (re.compile(r"\b(?:loja|lojas|restaurante|restaurantes|parceiro|parceiros)\b"), _stores),
-    (re.compile(r"\b(?:hub|hubs|praca|pracas|cidade|cidades|shopping|shoppings)\b"), _hubs),
-    (re.compile(r"\b(?:gmv|ticket|receita|receitas|faturamento|venda|vendas)\b"), _revenue),
-    (re.compile(r"queda de volume|queda na semana|\bvolume\b"), _volume),
-    (re.compile(r"\b(?:acao|acoes)\b"), _alerts),
-    (re.compile(r"\b(?:resumo|briefing|panorama)\b|visao geral|\bcomo esta\b"), briefing),
+# `token*` casa o começo da palavra. Frases valem mais que um token solto, então
+# "tempo de trânsito por modal" cai em modal e não em etapa. `acao` saiu: entra
+# em situação, operação, duração, informação e avaliação. `moto` e `hora` são
+# palavra inteira, não pedaço de motorista ou melhorar.
+_INTENT_ROUTES: list[tuple[tuple[str, ...], object]] = [
+    (("alerta", "alertas", "problema", "problemas", "risco", "riscos", "prioridade"), _alerts),
+    (("preso", "presos"), _stuck),
+    (("pagamento*", "chargeback"), _payments),
+    (("gargalo", "etapa*", "preparo", "coleta", "expedicao", "transito"), _stages),
+    (("cancel*",), _cancel),
+    (("frete", "subsid*", "custo", "custos"), _freight),
+    (("pico", "horario*", "hora", "horas", "jantar", "almoco", "dia da semana", "dias da semana"), _peak),
+    (("sla", "prazo", "atras*", "demora", "tempo", "ciclo", "lent*"), _sla),
+    (("canal*", "marketplace", "proprio"), _channels),
+    (("moto", "bike", "modal*", "entregador", "por modal", "do modal", "no modal", "de modal"), _modal),
+    (("loja*", "restaurante*", "parceiro*"), _stores),
+    (("hub*", "praca*", "cidade*", "shopping*"), _hubs),
+    (("gmv", "ticket", "receita", "faturamento", "venda*"), _revenue),
+    (("queda de volume", "queda na semana"), _volume),
 ]
+_BRIEFING_PATTERNS = ("resumo", "briefing", "visao geral", "panorama", "como esta")
 
 
-def resolve_handler(question: str) -> Callable[[Repository, Filters], str] | None:
-    q = _norm(question)
-    for pattern, handler in ROUTES:
-        if pattern.search(q):
-            return handler
+def _route(question: str):
+    words = _words(_norm(question))
+    handler = _best_handler(words, _INTENT_ROUTES)
+    if handler is not None:
+        return handler
+    if _score(words, _BRIEFING_PATTERNS)[0]:
+        return briefing
     return None
 
 
-def answer(question: str, repo: Repository, f: Filters) -> str:
-    if repo.metrics(f)["orders"] == 0:
+resolve_handler = _route
+
+
+def _turn_text(turn) -> tuple[str, str]:
+    role = getattr(turn, "role", None)
+    content = getattr(turn, "content", None)
+    if role is None and isinstance(turn, dict):
+        role = turn.get("role", "")
+        content = turn.get("content", "")
+    return str(role or ""), str(content or "")
+
+
+def _previous_user_question(history: list | None) -> str | None:
+    for turn in reversed(history or []):
+        role, content = _turn_text(turn)
+        if role == "user" and content.strip():
+            return content
+    return None
+
+
+def _is_thin(metrics: dict) -> bool:
+    """SLA e ciclo usam a base medida; cancelamento usa o total. Os dois pedem período maior."""
+    return bool(metrics.get("low_sample")) or (metrics.get("orders") or 0) < MIN_MEASURED
+
+
+def _split_closing_action(text: str) -> tuple[str, str | None]:
+    """Separa a última linha que começa com **Ação:**. Ação no meio do parágrafo fica no corpo."""
+    stripped = text.rstrip()
+    marker = "**Ação:**"
+    index = stripped.rfind(marker)
+    if index == -1:
+        return stripped, None
+    line_start = stripped.rfind("\n", 0, index) + 1
+    if stripped[line_start:index].strip() or "\n" in stripped[index:]:
+        return stripped, None
+    return stripped[:line_start].rstrip(), stripped[index:]
+
+
+def _unrouted(repo: Repository, f: Filters) -> str:
+    body, action = _split_closing_action(briefing(repo, f))
+    if action is None:
+        action = (
+            "**Ação:** Operador deve usar uma das perguntas acima para apontar o problema deste recorte ainda hoje."
+        )
+    return f"{body}\n\n{SUGGESTIONS}\n\n{action}"
+
+
+def _apply_thin(text: str, metrics: dict) -> str:
+    note = (
+        f"Atenção: amostra reduzida no recorte ({fmt.integer(metrics.get('measured'))} entregas medidas, "
+        f"{fmt.integer(metrics.get('orders'))} pedidos; mínimo confiável {MIN_MEASURED})."
+    )
+    body, _action = _split_closing_action(text)
+    if _action is None:
+        marker = "**Ação:**"
+        index = text.rfind(marker)
+        body = text[:index].rstrip() if index != -1 else text.rstrip()
+    action = "**Ação:** Operador deve ampliar o período neste recorte antes de acionar alguém hoje."
+    return f"{note}\n\n{body}\n\n{action}"
+
+
+def _top(repo: Repository, f: Filters, dimension: str, sort: str, desc: bool = True) -> dict | None:
+    rows = repo.breakdown(f, dimension, sort=sort, desc=desc, limit=1, min_orders=1)
+    if not rows:
+        rows = repo.breakdown(f, dimension, sort=sort, desc=desc, limit=1, min_orders=0)
+    return rows[0] if rows else None
+
+
+def _hub_drill(row: dict) -> DrillDown:
+    return DrillDown(label=f"Ver só {row['label']}", filters={"hub": [int(row["key"])]})
+
+
+def _store_drill(row: dict) -> DrillDown:
+    return DrillDown(label=f"Ver só {row['label']}", filters={"store": [int(row["key"])]})
+
+
+def _drills_for(handler, repo: Repository, f: Filters) -> list[DrillDown]:
+    """Atalhos montados com linhas do recorte. A validação descarta o que não existir."""
+    if handler in (_peak, _payments):
+        return []
+    if handler is _stuck:
+        if _only_canceled(f):
+            return []
+        hub = _top(repo, f, "hub", "stuck_rate")
+        return [_hub_drill(hub)] if hub and hub.get("key") is not None else []
+    if handler is _volume:
+        hub = _top(repo, f, "hub", "orders")
+        return [_hub_drill(hub)] if hub and hub.get("key") is not None else []
+    if handler is _cancel:
+        out = []
+        store = _top(repo, f, "store", "cancel_rate")
+        hub = _top(repo, f, "hub", "cancel_rate")
+        if store and store.get("key") is not None:
+            out.append(_store_drill(store))
+        if hub and hub.get("key") is not None:
+            out.append(_hub_drill(hub))
+        return out
+    if handler is _stores:
+        store = _top(repo, f, "store", "cycle_p50")
+        return [_store_drill(store)] if store and store.get("key") is not None else []
+    if handler is _stages:
+        out = []
+        store = _top(repo, f, "store", "cycle_p50")
+        hub = _top(repo, f, "hub", "cycle_p50")
+        if store and store.get("key") is not None:
+            out.append(_store_drill(store))
+        if hub and hub.get("key") is not None:
+            out.append(_hub_drill(hub))
+        return out
+    if handler is _sla:
+        hub = _top(repo, f, "hub", "sla_rate", desc=False)
+        return [_hub_drill(hub)] if hub and hub.get("key") is not None else []
+    if handler is _hubs:
+        hub = _top(repo, f, "hub", "orders")
+        return [_hub_drill(hub)] if hub and hub.get("key") is not None else []
+    if handler is _freight:
+        hub = _top(repo, f, "hub", "subsidy")
+        return [_hub_drill(hub)] if hub and hub.get("key") is not None else []
+    if handler is _modal:
+        rows = [row for row in repo.breakdown(f, "modal", sort="orders", limit=4) if row.get("key") in ("moto", "bike")]
+        if not rows:
+            return []
+        worst = min(rows, key=lambda row: row["sla_rate"] if row["sla_rate"] is not None else 1)
+        return [DrillDown(label=f"Ver só {worst['label']}", filters={"modal": [str(worst["key"])]})]
+    if handler is _channels:
+        rows = repo.breakdown(f, "channel_type", sort="cancel_rate", limit=1)
+        if not rows or rows[0].get("key") is None:
+            return []
+        key = str(rows[0]["key"])
+        shown = "canal próprio" if key == "own" else key
+        return [DrillDown(label=f"Ver só {shown}", filters={"channel_type": [key]})]
+    if handler is _revenue:
+        rows = repo.breakdown(f, "segment", sort="gmv", limit=1)
+        if not rows or rows[0].get("key") is None:
+            return []
+        key = str(rows[0]["key"])
+        return [DrillDown(label=f"Ver só {key}", filters={"segment": [key]})]
+    out = []
+    for alert in detect_alerts(repo, f):
+        if alert.drilldown:
+            out.append(alert.drilldown)
+        if len(out) == 2:
+            break
+    return out
+
+
+def _headline(handler, metrics: dict) -> str:
+    if handler is briefing:
+        return "Briefing do recorte"
+    if handler is _stages:
+        return "Gargalo do ciclo"
+    if handler is _cancel:
+        return f"Cancelamento em {fmt.pct(metrics.get('cancel_rate'))}"
+    if handler is _freight:
+        return f"Subsídio de {fmt.brl(metrics.get('subsidy'))}"
+    if handler is _peak:
+        return "Pico do recorte"
+    if handler is _sla:
+        return f"SLA em {fmt.pct(metrics.get('sla_rate'))}"
+    if handler is _channels:
+        return "Canais do recorte"
+    if handler is _modal:
+        return "Modais do recorte"
+    if handler is _stores:
+        return "Lojas do recorte"
+    if handler is _hubs:
+        return "Hubs do recorte"
+    if handler is _revenue:
+        return f"GMV de {fmt.brl(metrics.get('gmv'))}"
+    if handler is _payments:
+        return "Formas de pagamento"
+    if handler is _stuck:
+        return "Pedidos presos no fluxo"
+    if handler is _volume:
+        return "Volume do recorte"
+    return "Leitura do recorte"
+
+
+_ROUTE_TOOLS = {
+    _alerts: ["get_alerts", "get_kpis"],
+    _payments: ["get_breakdown(payment_method)"],
+    _stuck: ["get_kpis", "get_breakdown(hub)"],
+    _volume: ["get_kpis", "get_alerts", "get_breakdown(hub)"],
+    _stages: ["get_kpis", "get_breakdown(hub)", "get_breakdown(store)"],
+    _cancel: ["get_kpis", "get_breakdown(store)", "get_breakdown(hub)"],
+    _freight: ["get_kpis", "get_breakdown(hub)"],
+    _peak: ["get_breakdown(hour)", "get_breakdown(weekday)"],
+    _sla: ["get_kpis", "get_breakdown(hub)", "get_alerts"],
+    _channels: ["get_breakdown(channel_type)"],
+    _modal: ["get_breakdown(modal)"],
+    _stores: ["get_breakdown(store)"],
+    _hubs: ["get_breakdown(hub)"],
+    _revenue: ["get_kpis", "get_breakdown(segment)"],
+    briefing: ["get_kpis", "get_alerts"],
+}
+
+
+_ACTION_LINE = re.compile(r"(?m)^[ \t]*\*\*Ação:\*\*[ \t]*(.*)$")
+
+
+def _plain_parts(text: str) -> tuple[str, str]:
+    """A primeira ação em linha própria vira o bloco impresso. As outras saem do diagnóstico."""
+    found = list(_ACTION_LINE.finditer(text))
+    if found:
+        action = found[0].group(1).strip() or "Operador deve revisar este recorte hoje."
+        body = _ACTION_LINE.sub("", text)
+        body = re.sub(r"\n{3,}", "\n\n", body).strip()
+        return body, action
+    marker = "**Ação:**"
+    index = text.rfind(marker)
+    if index == -1:
+        return text.strip(), "Operador deve revisar este recorte hoje."
+    return text[:index].rstrip(), text[index + len(marker):].strip()
+
+
+def build_reading(question: str, repo: Repository, f: Filters, history: list | None = None) -> Reading:
+    """A mesma leitura de `answer`, já separada em comanda. Não chama o modelo."""
+    metrics = repo.metrics(f)
+    text = answer(question, repo, f, history=history)
+    handler = None
+    if metrics["orders"] > 0:
+        handler = _route(question)
+        if handler is None:
+            previous = _previous_user_question(history)
+            if previous:
+                handler = _route(previous)
+    diagnosis, action = _plain_parts(text)
+    if metrics["orders"] == 0:
+        title = "Recorte sem pedidos"
+    elif handler is _alerts:
+        alerts = detect_alerts(repo, f)
+        # Título próprio: a comanda do agente fica no trilho ao lado da Nº 01 e não pode repetir o título dela.
+        title = f"{_alert_count(len(alerts))} no recorte" if alerts else "Nenhum alerta no recorte"
+    else:
+        title = _headline(handler, metrics)
+    raw = [] if metrics["orders"] == 0 else _drills_for(handler, repo, f)
+    return Reading(
+        answer=text,
+        title=title,
+        diagnosis=diagnosis,
+        action=action or "Operador deve revisar este recorte hoje.",
+        drilldowns=validate_drilldowns(repo, f, raw),
+        n=int(metrics.get("orders") or 0),
+        measured=int(metrics.get("measured") or 0),
+        low_sample=bool(metrics.get("low_sample")),
+        tools=_ROUTE_TOOLS.get(handler, ["get_kpis", "get_alerts"]),
+    )
+
+
+def answer(question: str, repo: Repository, f: Filters, history: list | None = None) -> str:
+    metrics = repo.metrics(f)
+    if metrics["orders"] == 0:
         return (
             "Nenhum pedido no recorte atual. Afrouxe os filtros para o agente ter o que analisar.\n\n"
             "**Ação:** Operador deve afrouxar os filtros de período, hub ou cidade para carregar dados da operação."
         )
-    handler = resolve_handler(question)
-    if handler is not None:
-        return handler(repo, f)
-    return briefing(repo, f) + "\n\n" + SUGGESTIONS
+    handler = _route(question)
+    if handler is None:
+        previous = _previous_user_question(history)
+        if previous:
+            handler = _route(previous)
+    text = handler(repo, f) if handler is not None else _unrouted(repo, f)
+    if _is_thin(metrics) and not (_only_canceled(f) and (metrics.get("orders") or 0) >= MIN_MEASURED):
+        text = _apply_thin(text, metrics)
+    return text

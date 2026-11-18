@@ -29,14 +29,13 @@ Thumbs.db
 .idea/
 .vscode/
 
-# Impeccable (ephemeral). Keep design.json and critique/*.md tracked.
-.impeccable/config.local.json
-.impeccable/hook.cache.json
-.impeccable/hook.pending.json
-.impeccable/*.png
-.impeccable/review/
-.impeccable/questions/
-.impeccable/live/
+# Impeccable
+.impeccable/
 
 # Spill do DuckDB (nunca versionar)
 .tmp/
+
+# Vídeo do LinkedIn: MP4 e capa são versionados; quadros de conferência não
+video/out/*
+!video/out/linkedin.mp4
+!video/out/capa.png

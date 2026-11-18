@@ -6,7 +6,7 @@
  *    campo sem enviar; o operador revisa e aperta Enviar.
  *  - $agentActivity: o que o botão de abrir mostra com o painel fechado.
  */
-import { atom } from "nanostores";
+import { atom, computed } from "nanostores";
 
 /** Pergunta pendente para o campo do agente; `null` quando já foi consumida. */
 export const $agentDraft = atom<string | null>(null);
@@ -16,6 +16,116 @@ export const $agentOpen = atom(false);
 /** `pending`: consultando o recorte. `unread`: chegou resposta com o painel fechado. */
 export type AgentActivity = "idle" | "pending" | "unread";
 export const $agentActivity = atom<AgentActivity>("idle");
+
+/** Comanda do agente. Série própria (`Nº A01`), só nesta aba, fora da fila de alertas do servidor. */
+export interface AgentDrill {
+  label: string;
+  filters: Record<string, (string | number)[]>;
+}
+
+export type AgentReadingStatus = "rules" | "upgraded" | "cancelled" | "failed";
+
+export interface AgentTicket {
+  id: string;
+  series: number;
+  title: string;
+  detail: string;
+  action: string;
+  drilldowns: AgentDrill[];
+  n: number;
+  measured: number;
+  lowSample: boolean;
+  source: "local" | "llm";
+  status: AgentReadingStatus;
+  toolLabels: string[];
+  /** `JSON.stringify` do recorte no momento da pergunta. */
+  scope: string;
+  onRail: boolean;
+}
+
+export interface AgentMessage {
+  id: number;
+  role: "user" | "assistant";
+  content: string;
+  scope: string;
+  comanda?: AgentTicket;
+  error?: boolean;
+}
+
+const STORAGE_KEY = "central-ops:agent-messages";
+
+function restoreMessages(): AgentMessage[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.sessionStorage.getItem(STORAGE_KEY);
+    const parsed: unknown = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? (parsed as AgentMessage[]).slice(-40) : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Conversa da aba. A fila de comandas do agente sai daqui: some com a sessão, não com o servidor. */
+export const $agentMessages = atom<AgentMessage[]>(restoreMessages());
+
+export const $agentComandas = atom<AgentTicket[]>([]);
+
+function projectComandas(list: readonly AgentMessage[]): AgentTicket[] {
+  return list.flatMap((message) => (message.comanda?.onRail ? [message.comanda] : []));
+}
+
+$agentMessages.listen((list) => {
+  try {
+    if (list.length) window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(list.slice(-40)));
+    else window.sessionStorage.removeItem(STORAGE_KEY);
+  } catch {
+    // storage cheio ou bloqueado: a conversa continua em memória
+  }
+  const tickets = projectComandas(list);
+  // Fora do render de quem gravou a mensagem: a fila é outra ilha.
+  queueMicrotask(() => $agentComandas.set(tickets));
+});
+
+$agentComandas.set(projectComandas($agentMessages.get()));
+
+export function scopeKey(filters: object): string {
+  return JSON.stringify(filters);
+}
+
+/** Comandas do agente deste recorte. As de outro recorte ficam só no log da conversa. */
+export function comandasForRecorte(tickets: readonly AgentTicket[], scope: string): AgentTicket[] {
+  return tickets.filter((ticket) => ticket.scope === scope);
+}
+
+/** Comandas do agente fixadas na fila. As de outro recorte aparecem marcadas como desatualizadas. */
+export const $railAgentComandas = computed($agentComandas, (tickets) => tickets);
+
+/** Alertas da API mais comandas do agente fixadas na fila. */
+export function openComandaCount(alertCount: number, agentOnRail: number): number {
+  return alertCount + agentOnRail;
+}
+
+function setAgentComandaOnRail(id: string, onRail: boolean) {
+  $agentMessages.set(
+    $agentMessages.get().map((message) =>
+      message.comanda?.id === id ? { ...message, comanda: { ...message.comanda, onRail } } : message,
+    ),
+  );
+}
+
+/** Tira a comanda da fila. A mensagem continua na conversa. */
+export function dismissAgentComanda(id: string) {
+  setAgentComandaOnRail(id, false);
+}
+
+/** Fixa a comanda na fila de alertas desta sessão. */
+export function pinAgentComanda(id: string) {
+  setAgentComandaOnRail(id, true);
+}
+
+export function agentStamp(series: number) {
+  return `Nº A${String(series).padStart(2, "0")}`;
+}
 
 type ChatModule = typeof import("@/components/AgentChat");
 let chatModule: Promise<ChatModule> | null = null;

@@ -24,10 +24,10 @@ from app.schemas import Dimension, Grain, SortKey
 # Colunas de ciclo/etapa só valem para entregues e sem pedido "preso" (> 4h).
 _VALID = "status = 'delivered' and not cycle_outlier"
 _SALE = "status = 'delivered' and not amount_outlier"
+# Frete, custo e subsídio na mesma base, senão a frase "custa X e cobra Y" não fecha.
+_PRICED = "status = 'delivered' and delivery_fee is not null and delivery_cost is not null"
 # Base da medição: entregues com ciclo e sem presos. É o denominador do SLA e o universo da mediana.
 _MEASURED = f"{_VALID} and cycle_min is not null"
-# Base do subsídio de frete: apenas entregas com custo e frete preenchidos, garantindo cost_avg - fee_avg == subsidy.
-_FREIGHT = "status = 'delivered' and delivery_cost is not null and delivery_fee is not null"
 # Abaixo disso, SLA e ciclo mediano saem com aviso de amostra pequena. Com n = 100, a margem de erro
 # de 95% de uma taxa perto de 80% é ±8 p.p. (1,96 · √(0,8 · 0,2 / 100)), mais que o desvio de 5 p.p.
 # (SLA_BELOW_GAP) que o painel usa para marcar uma linha. Abaixo de 100, a figura oscila mais que a
@@ -48,6 +48,7 @@ METRICS_SQL = f"""
     avg((status = 'canceled')::int) as cancel_rate,
     count(*) filter (where {_MEASURED})::int as measured,
     count(*) filter (where {_MEASURED}) < {MIN_MEASURED} as low_sample,
+    count(*) < {MIN_MEASURED} as volume_low_sample,
     median(cycle_min) filter (where {_VALID}) as cycle_p50,
     quantile_cont(cycle_min, 0.9) filter (where {_VALID}) as cycle_p90,
     avg(on_time(segment, cycle_min)::int) filter (where {_MEASURED}) as sla_rate,
@@ -57,9 +58,9 @@ METRICS_SQL = f"""
     median(expedition_min) filter (where {_VALID}) as expedition_p50,
     median(transit_min) filter (where {_VALID}) as transit_p50,
     median(distance_m) filter (where {_VALID}) / 1000.0 as distance_p50_km,
-    avg(delivery_fee) filter (where {_FREIGHT}) as fee_avg,
-    avg(delivery_cost) filter (where {_FREIGHT}) as cost_avg,
-    avg(delivery_cost - delivery_fee) filter (where {_FREIGHT}) as subsidy
+    avg(delivery_fee) filter (where {_PRICED}) as fee_avg,
+    avg(delivery_cost) filter (where {_PRICED}) as cost_avg,
+    avg(delivery_cost - delivery_fee) filter (where {_PRICED}) as subsidy
 """
 
 # dimensão -> (chave, rótulo, pai)
@@ -91,6 +92,13 @@ ORDER_SORTS = {
 }
 GRAINS = {"hour": "hour", "day": "day", "week": "week"}
 
+# Rótulo da linha quando a dimensão vem nula. Sem isso a soma da quebra perde pedidos.
+NULL_LABELS = {
+    "modal": "Sem entregador",
+    "payment_method": "Sem pagamento",
+}
+_NULL_LABEL = "Não informado"
+
 
 def _flag_outliers(rows: list[dict], base: dict) -> list[dict]:
     """Marca linhas do ranking que desviam do recorte (`base` = metrics do recorte inteiro).
@@ -101,14 +109,22 @@ def _flag_outliers(rows: list[dict], base: dict) -> list[dict]:
     Chave ausente (linha montada à mão, sem METRICS_SQL) cai na regra antiga: não bloqueia a marca.
     """
     sla_floor = base["sla_rate"] - SLA_BELOW_GAP if base["sla_rate"] is not None else None
-    cancel_ceiling = max((base["cancel_rate"] or 0.0) * CANCEL_ABOVE_RATIO, CANCEL_ABOVE_FLOOR)
+    base_cancel = base["cancel_rate"] or 0.0
     for row in rows:
         sla_ok = not row.get("low_sample", False)
+        # "mais de 5 pontos": exatamente 5 pontos não marca.
         row["sla_below"] = (
             sla_ok and sla_floor is not None and row["sla_rate"] is not None and row["sla_rate"] < sla_floor
         )
         cancel_ok = row.get("orders", MIN_MEASURED) >= MIN_MEASURED
-        row["cancel_above"] = cancel_ok and row["cancel_rate"] is not None and row["cancel_rate"] > cancel_ceiling
+        rate = row["cancel_rate"]
+        # "acima de 1,6×" é estrito; "pelo menos 6%" inclui o piso.
+        row["cancel_above"] = (
+            cancel_ok
+            and rate is not None
+            and rate >= CANCEL_ABOVE_FLOOR
+            and rate > base_cancel * CANCEL_ABOVE_RATIO
+        )
     return rows
 
 
@@ -276,9 +292,7 @@ class Repository:
         end = f.end or self.max_date
         parts = [f"{start:%d/%m/%Y} a {end:%d/%m/%Y}"]
         if f.city:
-            valid_cities = {c["value"] for c in self.meta()["cities"]}
-            known = [c for c in f.city if c in valid_cities]
-            parts.append("cidade " + (", ".join(known) if known else "sem correspondência"))
+            parts.append("cidade " + ", ".join(f.city))
         if f.hub:
             parts.append("hub " + ", ".join(self.names("hub", f.hub)))
         if f.store:
@@ -339,15 +353,16 @@ class Repository:
 
         def build() -> list[dict]:
             where, params = f.where()
+            # Semana truncada cai na segunda anterior ao início do período. O rótulo não pode sair do recorte.
+            bucket_params: list = []
             if grain == "week":
                 floor_date = max(f.start, self.min_date) if f.start else self.min_date
-                bucket_expr = "greatest(date_trunc('week', created_at), ?::timestamp)"
-                query_params: list[Any] = [floor_date, *params]
+                bucket = "greatest(date_trunc('week', created_at), ?)"
+                bucket_params = [datetime(floor_date.year, floor_date.month, floor_date.day)]
             else:
-                bucket_expr = f"date_trunc('{trunc}', created_at)"
-                query_params = params
+                bucket = f"date_trunc('{trunc}', created_at)"
             return self._rows(
-                f"""select {bucket_expr} as t,
+                f"""select {bucket} as t,
                        count(*)::int as orders,
                        count(*) filter (where status = 'delivered')::int as delivered,
                        coalesce(sum(amount) filter (where {_SALE}), 0)::double as gmv,
@@ -356,7 +371,7 @@ class Repository:
                        avg(on_time(segment, cycle_min)::int)
                            filter (where {_VALID} and cycle_min is not null) as sla_rate
                     from orders where {where} group by 1 order by 1""",
-                query_params,
+                [*bucket_params, *params],
             )
 
         return self.cached(f"ts:{grain}:" + f.cache_key(), build)
@@ -391,9 +406,11 @@ class Repository:
 
         def build() -> list[dict]:
             where, params = f.where()
+            null_label = NULL_LABELS.get(by, _NULL_LABEL).replace("'", "''")
+            shown = f"case when {key} is null then '{null_label}' else {label} end"
             rows = self._rows(
-                f"""select {key} as key, {label} as label, {parent}::varchar as parent, {METRICS_SQL}
-                    from orders where {where} and {key} is not null
+                f"""select {key} as key, {shown} as label, {parent}::varchar as parent, {METRICS_SQL}
+                    from orders where {where}
                     group by all having count(*) >= ?
                     order by {order} {direction} nulls last, orders desc limit ?""",
                 [*params, int(min_orders), int(limit)],

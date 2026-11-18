@@ -131,20 +131,20 @@
   }
   to {
     opacity: 1;
-    transform: translateY(0);
-    filter: blur(0);
+    transform: none;
+    filter: none;
   }
 }
 
 @utility header-reveal-title {
-  animation: header-reveal-in var(--duration-fast) var(--ease-smooth-out) both;
+  animation: header-reveal-in var(--duration-fast) var(--ease-smooth-out) backwards;
   @media (prefers-reduced-motion: reduce) {
     animation: none;
   }
 }
 
 @utility header-reveal-sub {
-  animation: header-reveal-in var(--duration-fast) var(--ease-smooth-out) both;
+  animation: header-reveal-in var(--duration-fast) var(--ease-smooth-out) backwards;
   animation-delay: var(--duration-stagger);
   @media (prefers-reduced-motion: reduce) {
     animation: none;

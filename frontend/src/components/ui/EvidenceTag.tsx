@@ -27,6 +27,7 @@ export function EvidenceTag(props: TagProps) {
 
 function Tag({ focus, note, className = "", compact = false }: TagProps) {
   const s = SEVERITY[focus.severity];
+  const caption = note ?? focus.title;
   if (compact) {
     // Só marca + Nº: cabe na linha do número sem mudar a altura do cartão.
     return (
@@ -40,13 +41,21 @@ function Tag({ focus, note, className = "", compact = false }: TagProps) {
       </span>
     );
   }
+  const showAction = note === undefined && Boolean(focus.action);
   return (
-    <span
-      className={`inline-flex max-w-full min-w-0 items-center gap-1.5 rounded-tick bg-sunken px-2 py-0.5 text-meta leading-snug transition-[opacity,translate] duration-(--duration-fast) ease-(--ease-smooth-out) starting:translate-y-(--distance-micro) starting:opacity-0 motion-reduce:transition-none ${className}`}
+    <div
+      className={`inline-flex max-w-full flex-col gap-0.5 rounded-tick bg-sunken px-2 py-1 text-meta leading-snug transition-[opacity,translate] duration-(--duration-fast) ease-(--ease-smooth-out) starting:translate-y-(--distance-micro) starting:opacity-0 motion-reduce:transition-none ${caption ? "min-w-0" : "shrink-0"} ${className}`}
     >
-      <span className={`inline-block shrink-0 ${s.mark}`} aria-hidden />
-      <span className="cond shrink-0 font-bold whitespace-nowrap">Comanda {focus.number}</span>
-      {(note ?? focus.title) && <span className="min-w-0 truncate text-muted">{note ?? focus.title}</span>}
-    </span>
+      <span className="flex min-w-0 items-center gap-1.5">
+        <span className={`inline-block shrink-0 ${s.mark}`} aria-hidden />
+        <span className="cond shrink-0 font-bold whitespace-nowrap">Comanda {focus.number}</span>
+        {caption && <span className="min-w-0 truncate text-muted max-sm:line-clamp-2 max-sm:whitespace-normal">{caption}</span>}
+      </span>
+      {showAction && (
+        <span className="min-w-0 truncate text-meta text-ink/85 max-sm:whitespace-normal">
+          <span className="font-semibold text-ink">Ação:</span> {focus.action}
+        </span>
+      )}
+    </div>
   );
 }

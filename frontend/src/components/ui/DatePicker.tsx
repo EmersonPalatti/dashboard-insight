@@ -227,7 +227,7 @@ export function DatePicker({ label, value, min, max, rangeOther = null, onChange
     const other = iso === rangeOther && iso !== value;
     const between = lo !== null && hi !== null && iso > lo && iso < hi;
     return [
-      "flex size-10 lg:size-9 items-center justify-center rounded-tick text-body tabular-nums transition-colors duration-(--duration-quick) disabled:cursor-default disabled:text-muted disabled:opacity-40 disabled:hover:bg-transparent",
+      "flex h-11 w-full items-center justify-center rounded-tick text-body tabular-nums transition-colors duration-(--duration-quick) disabled:cursor-default disabled:text-muted disabled:opacity-40 disabled:hover:bg-transparent lg:size-9",
       selected
         ? "bg-ink font-semibold text-surface"
         : other
@@ -273,7 +273,7 @@ export function DatePicker({ label, value, min, max, rangeOther = null, onChange
           }}
           onKeyDown={onPanelKeyDown}
           onMouseDown={onPanelMouseDown}
-          className={`z-30 mt-1 w-full max-w-[calc(100vw-2rem)] rounded-card border border-rule bg-surface p-1.5 transition-[opacity,scale] duration-(--duration-fast) ease-(--ease-smooth-out) max-lg:static max-lg:mt-2 max-lg:basis-full lg:absolute lg:top-full lg:left-0 lg:w-[16.5rem] lg:origin-top-left ${
+          className={`z-30 mt-1 w-full max-w-[calc(100vw-2rem)] rounded-card border border-ink bg-surface p-1.5 transition-[opacity,scale] duration-(--duration-fast) ease-(--ease-smooth-out) max-lg:static max-lg:mt-2 max-lg:basis-full lg:absolute lg:top-full lg:left-0 lg:w-[16.5rem] lg:origin-top-left ${
             open
               ? "starting:opacity-0 motion-safe:starting:scale-(--scale-medium) motion-reduce:duration-(--duration-quick)"
               : "pointer-events-none opacity-0 duration-(--duration-quick) motion-safe:scale-(--scale-tiny)"
@@ -285,7 +285,7 @@ export function DatePicker({ label, value, min, max, rangeOther = null, onChange
               aria-label="Mês anterior"
               disabled={prevDisabled}
               onClick={() => shiftMonth(-1)}
-              className="inline-flex size-10 lg:size-8 shrink-0 items-center justify-center rounded-tick text-ink transition-colors duration-(--duration-quick) hover:bg-sunken disabled:text-muted disabled:opacity-40 disabled:hover:bg-transparent"
+              className="inline-flex size-11 shrink-0 items-center justify-center rounded-tick text-ink transition-colors duration-(--duration-quick) hover:bg-sunken disabled:text-muted disabled:opacity-40 disabled:hover:bg-transparent lg:size-8"
             >
               <ChevronLeft className="size-4" aria-hidden />
             </button>
@@ -297,7 +297,7 @@ export function DatePicker({ label, value, min, max, rangeOther = null, onChange
               aria-label="Próximo mês"
               disabled={nextDisabled}
               onClick={() => shiftMonth(1)}
-              className="inline-flex size-10 lg:size-8 shrink-0 items-center justify-center rounded-tick text-ink transition-colors duration-(--duration-quick) hover:bg-sunken disabled:text-muted disabled:opacity-40 disabled:hover:bg-transparent"
+              className="inline-flex size-11 shrink-0 items-center justify-center rounded-tick text-ink transition-colors duration-(--duration-quick) hover:bg-sunken disabled:text-muted disabled:opacity-40 disabled:hover:bg-transparent lg:size-8"
             >
               <ChevronRight className="size-4" aria-hidden />
             </button>
@@ -308,7 +308,7 @@ export function DatePicker({ label, value, min, max, rangeOther = null, onChange
             role="grid"
             aria-labelledby={titleId}
             onKeyDown={onGridKeyDown}
-            className="w-full border-separate border-spacing-0 text-center"
+            className="w-full table-fixed border-separate border-spacing-0 text-center"
           >
             <thead>
               <tr>
@@ -352,7 +352,7 @@ export function DatePicker({ label, value, min, max, rangeOther = null, onChange
               type="button"
               disabled={value === null}
               onClick={() => choose(null)}
-              className="rounded-tick px-2 py-1 text-body font-medium text-muted transition-colors duration-(--duration-quick) hover:bg-sunken hover:text-ink disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted"
+              className="rounded-tick px-2 py-1 text-body font-medium text-muted transition-colors duration-(--duration-quick) hover:bg-sunken hover:text-ink max-lg:min-h-11 max-lg:px-3 disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted"
             >
               Limpar
             </button>

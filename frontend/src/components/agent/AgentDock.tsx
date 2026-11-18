@@ -26,8 +26,8 @@ function AgentLoadingState({ onClose }: { onClose: () => void }) {
     <div className="flex h-full min-h-0 flex-col" aria-busy="true">
       <header className="grid gap-2 border-b border-rule px-4 pt-3 pb-3">
         <div className="flex items-center justify-between gap-2">
-          <h2 id="agent-title" className="section-title flex items-center gap-2">
-            <Bot className="size-4 text-series" aria-hidden /> Agente do recorte
+          <h2 id="agent-title" className="section-title flex min-w-0 items-center gap-1.5 whitespace-nowrap">
+            <Bot className="size-4 shrink-0 text-series" aria-hidden /> <span className="truncate">Agente do recorte</span>
           </h2>
           <button
             type="button"
@@ -106,10 +106,25 @@ function AgentDockInner() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  // Modo lateral: a página abre espaço (padding no body) no mesmo quadro em que o painel começa a entrar.
+  // Esc com o foco fora do painel e fora de qualquer controle (cai no body quando o botão focado some,
+  // como a pergunta sugerida depois de enviada): fecha do mesmo jeito. Com foco em outro controle da
+  // página, Esc é dele (menus, popovers), e o painel lateral fica.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      if (document.activeElement !== document.body || document.querySelector("dialog[open]")) return;
+      e.preventDefault();
+      closeAgent();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open]);
+
+  // Modo lateral ou flutuante: a página abre espaço no mesmo quadro em que o painel entra.
   useLayoutEffect(() => {
     const root = document.documentElement;
-    if (open && mode === "dock") root.dataset.agentDock = "";
+    if (open && (mode === "dock" || mode === "float")) root.dataset.agentDock = mode;
     else delete root.dataset.agentDock;
     return () => {
       delete root.dataset.agentDock;

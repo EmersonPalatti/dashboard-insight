@@ -16,6 +16,7 @@ import BreakdownTable from "@/components/BreakdownTable";
 import FilterBar from "@/components/FilterBar";
 import HeatmapChart from "@/components/HeatmapChart";
 import KpiStrip from "@/components/KpiStrip";
+import OperationalClose from "@/components/OperationalClose";
 import OrdersTable from "@/components/OrdersTable";
 import StagesChart from "@/components/StagesChart";
 import StoreScatter from "@/components/StoreScatter";
@@ -34,80 +35,143 @@ const repoUrl = "https://github.com/EmersonPalatti/dashboard-insight";
 >
   <!-- #page: o painel do agente no mobile deixa tudo isto inerte (folha modal) -->
   <div id="page">
+    <a class="skip-link" href="#comandas">Pular para as comandas</a>
+    <a class="skip-link" href="#filtros">Pular para os filtros</a>
     <!-- no escuro o vinho (#26060F) quase some no campo (#111): um fio de wine-raised marca a borda da faixa -->
-    <header class="bg-wine text-white dark:border-b dark:border-wine-raised">
-      <!-- abaixo de sm a barra vira uma linha só (~56px): subtítulo e links somem; o agente abre pelo botão flutuante -->
-      <div class="mx-auto flex max-w-[1440px] flex-wrap items-center justify-between gap-x-6 gap-y-2 px-4 py-3 sm:px-6 sm:py-3.5 lg:py-4.5 lg:flex-nowrap">
-        <div class="flex min-w-0 flex-col justify-center gap-1 sm:gap-1.5 lg:flex-1">
-          <div class="flex items-center gap-2.5">
-            <OpsLogo size={28} class="text-on-wine" />
-            <h1 class="header-reveal-title shrink-0 font-slab text-figure leading-none font-bold text-white">
+    <!-- sm+: 64px com a promessa do recorte. Abaixo de sm: 56px; o nome desce um degrau da escala para caber inteiro. -->
+    <header class="h-14 bg-wine text-white sm:h-16 dark:border-b dark:border-wine-raised">
+      <div class="mx-auto flex h-full max-w-[1440px] min-w-0 items-center gap-1.5 px-4 sm:gap-3 sm:px-6">
+        <div class="flex min-w-0 flex-1 items-center gap-1.5 sm:gap-2.5">
+          <OpsLogo size={28} class="text-on-wine" />
+          <div class="min-w-0 flex-1">
+            <h1 class="header-reveal-title font-slab text-lead leading-tight font-bold text-white sm:truncate sm:text-figure">
               Central de Operações
             </h1>
-          </div>
-          <!-- Subtítulo e telemetria do recorte com stagger reveal suave -->
-          <div class="header-reveal-sub max-sm:hidden flex flex-wrap items-center gap-x-3 gap-y-1.5 text-aux text-on-wine/90">
-            <span class="truncate">Alertas e agente sobre o recorte filtrado</span>
-            <span class="inline-flex items-center gap-1.5 rounded-full border border-on-wine/15 bg-wine-raised/60 px-2.5 py-0.5 text-meta font-medium text-on-wine dark:bg-white/10">
-              <span>Delivery Center</span>
-              <span class="opacity-50">·</span>
-              <span class="tabular-nums">jan–abr 2021</span>
-              <span class="opacity-50">·</span>
-              <span class="tabular-nums font-semibold text-white">368.990 pedidos</span>
-            </span>
+            <div class="header-reveal-sub mt-0.5 hidden min-w-0 items-center gap-2 sm:flex">
+              <p class="min-w-0 truncate text-meta leading-none text-on-wine/90">
+                KPIs, comandas e o agente respondem sobre o mesmo recorte.
+              </p>
+              <span class="hidden shrink-0 items-center gap-1.5 rounded-tick border border-on-wine/20 bg-wine-raised/60 px-2.5 py-1 text-meta leading-none font-medium text-on-wine sm:inline-flex xl:px-3 dark:bg-white/10">
+                <span class="xl:hidden">Kaggle · <span class="tabular-nums">2021</span></span>
+                <span class="hidden items-center gap-1.5 xl:inline-flex">
+                  <span>Delivery Center</span>
+                  <span class="opacity-50">·</span>
+                  <span class="tabular-nums">jan–abr 2021</span>
+                  <span class="opacity-50">·</span>
+                  <span class="tabular-nums font-semibold text-white">368.990 pedidos</span>
+                </span>
+              </span>
+            </div>
           </div>
         </div>
-        <div class="no-print flex shrink-0 flex-wrap items-center gap-1.5">
-          <a class="max-sm:hidden rounded-card px-3 py-1.5 text-aux text-on-wine transition-colors duration-(--duration-quick) ease-(--ease-smooth-out) hover:bg-wine-raised hover:text-white" href={`${apiUrl}/docs`} target="_blank" rel="noopener">API (Swagger)</a>
-          <span class="ml-1"><TopBarStatus client:load /></span>
+        <div class="no-print flex shrink-0 items-center gap-1">
+          <a class="hit-target relative hidden shrink-0 items-center rounded-card px-2 py-1.5 text-aux text-on-wine transition-colors duration-(--duration-quick) ease-(--ease-smooth-out) hover:bg-wine-raised hover:text-white sm:inline-flex" href={`${apiUrl}/docs`} target="_blank" rel="noopener">API (Swagger)</a>
+          <TopBarStatus client:load />
         </div>
       </div>
     </header>
 
-    <div data-filter-bar class="no-print sticky top-0 z-20 border-b border-rule bg-surface">
-      <div class="mx-auto max-w-[1440px] px-4 py-2 sm:px-6">
+    <p class="mx-auto max-w-[1440px] px-4 pt-3 text-pretty text-aux leading-snug text-ink sm:hidden">
+      KPIs, comandas e o agente respondem sobre o mesmo recorte.
+    </p>
+
+    <search id="filtros" data-filter-bar aria-label="Filtros do recorte" tabindex="-1" class="no-print sticky top-0 z-20 block border-b border-rule bg-surface">
+      <!-- DESIGN: a barra desktop é 104px (12 + 40 + 8 + 32 + 12): respiro igual em cima e embaixo. -->
+      <div class="mx-auto max-w-[1440px] px-4 py-2 sm:px-6 lg:py-3">
         <FilterBar client:load />
       </div>
-    </div>
+    </search>
 
-    <main class="mx-auto grid max-w-[1440px] grid-cols-[minmax(0,1fr)] gap-5 px-4 pt-5 pb-16 max-lg:pb-24 sm:px-6">
+    <main class="@container mx-auto grid max-w-[1440px] grid-cols-[minmax(0,1fr)] gap-5 px-4 pt-5 pb-16 max-lg:pb-24 sm:px-6">
       <!--
         Trilho de comandas no topo: as comandas penduradas lado a lado e a aberta numa faixa larga.
-        KPIs e tendência ganham a largura toda logo abaixo. O agente fica fora da grade (AgentDock).
+        KPIs e investigação ganham a largura toda logo abaixo. O agente fica fora da grade (AgentDock).
       -->
-      <div id="comandas" class="min-w-0 scroll-mt-16 lg:scroll-mt-28">
+      <div id="comandas" tabindex="-1" aria-labelledby="comandas-title" class="min-w-0">
         <AlertsPanel client:load />
       </div>
 
       <KpiStrip client:load />
 
-      <Panel title="Tendência"><TrendChart client:visible /></Panel>
-
       <!--
-        Âncoras dos gráficos que provam uma comanda ("Ver no gráfico"). Ficam na casca porque as
-        ilhas só hidratam ao aparecer: o alvo da rolagem precisa existir antes delas.
+        Zona 1 ("Investigação"): exatamente um painel por vez — o que prova a comanda aberta,
+        ou Tendência quando não há comanda aberta, há comanda do agente ou evidência em KPI.
       -->
-      <div class="grid gap-5 lg:grid-cols-2">
-        <div id="grafico-etapas" tabindex="-1" class="evidence-anchor grid min-w-0">
-          <Panel title="Onde o tempo vai, por hub" hint="Mediana de cada etapa, sem pedidos presos. Clique numa barra para filtrar o hub.">
-            <StagesChart client:visible />
-          </Panel>
+      <section id="investigacao" aria-labelledby="investigacao-title" class="grid min-w-0 gap-2.5">
+        <h2 id="investigacao-title" data-investigation-heading class="text-aux font-semibold text-muted">
+          Pulso do recorte
+        </h2>
+        <div data-investigation-stage class="zone-stage grid min-w-0">
+          <div data-investigation-slot="trend" data-promoted id="grafico-tendencia" tabindex="-1" class="evidence-anchor grid min-w-0">
+            <Panel
+              collapsible
+              promoted
+              open
+              title="Tendência"
+              summary="Evolução de volume, SLA ou cancelamento por hora, dia ou semana, com zoom de período."
+            >
+              <TrendChart client:visible />
+            </Panel>
+          </div>
         </div>
-        <div id="grafico-dia-hora" tabindex="-1" class="evidence-anchor grid min-w-0">
-          <Panel title="Dia × hora"><HeatmapChart client:visible /></Panel>
-        </div>
-      </div>
+      </section>
 
-      <div class="grid gap-5 xl:grid-cols-2">
-        <div id="grafico-lojas" tabindex="-1" class="evidence-anchor grid min-w-0">
-          <Panel title="Lojas: volume × problema" hint="Cada ponto é uma loja com 30+ pedidos; tamanho = GMV. Use a seleção retangular para filtrar um grupo.">
-            <StoreScatter client:visible />
-          </Panel>
-        </div>
+      <div id="ranking" class="grid min-w-0">
         <Panel title="Ranking do recorte"><BreakdownTable client:visible /></Panel>
       </div>
 
-      <Panel title="Pedidos do recorte"><OrdersTable client:visible /></Panel>
+      <!--
+        Zona 2 ("Explorar o recorte"): painéis não promovidos + Pedidos do recorte, recolhidos
+        por padrão. As ilhas dentro de [data-panel-body][hidden] só hidratam quando abertas.
+      -->
+      <section id="explorar" aria-labelledby="explorar-title" class="grid min-w-0 gap-2.5">
+        <h2 id="explorar-title" class="text-aux font-semibold text-muted">Explorar o recorte</h2>
+        <div data-explorar-list class="grid min-w-0 gap-3">
+          <template data-slot-anchor="trend"></template>
+          <div data-investigation-slot="stages" id="grafico-etapas" tabindex="-1" class="evidence-anchor grid min-w-0">
+            <Panel
+              collapsible
+              title="Onde o tempo vai, por hub"
+              hint="Mediana de cada etapa, sem pedidos presos. Clique numa barra para filtrar o hub."
+              summary="Mediana de preparo, coleta, expedição e trânsito nos hubs com 200+ pedidos."
+            >
+              <StagesChart client:visible />
+            </Panel>
+          </div>
+          <div data-investigation-slot="heatmap" id="grafico-dia-hora" tabindex="-1" class="evidence-anchor grid min-w-0">
+            <Panel
+              collapsible
+              title="Dia × hora"
+              summary="Mapa semanal por hora para pedidos, no prazo, cancelamento e ciclo."
+            >
+              <HeatmapChart client:visible />
+            </Panel>
+          </div>
+          <div data-investigation-slot="scatter" id="grafico-lojas" tabindex="-1" class="evidence-anchor grid min-w-0">
+            <Panel
+              collapsible
+              title="Lojas: volume × problema"
+              hint="Cada ponto é uma loja com 30+ pedidos; tamanho = GMV. Use a seleção retangular para filtrar um grupo."
+              summary="Cada loja com 30+ pedidos: volume contra cancelamento, ciclo ou SLA."
+            >
+              <StoreScatter client:visible />
+            </Panel>
+          </div>
+          <div data-explorar-panel="orders" class="grid min-w-0">
+            <Panel
+              collapsible
+              title="Pedidos do recorte"
+              summary="Todos os pedidos do recorte numa tabela virtualizada: ordene e inspecione."
+            >
+              <OrdersTable client:visible />
+            </Panel>
+          </div>
+        </div>
+      </section>
+
+      <div id="fechamento" class="min-w-0">
+        <OperationalClose client:visible />
+      </div>
     </main>
 
     <footer class="border-t border-rule bg-surface">
@@ -115,24 +179,78 @@ const repoUrl = "https://github.com/EmersonPalatti/dashboard-insight";
         <div>
           <p class="text-pretty font-semibold text-ink">Dados</p>
           <p class="text-pretty">
-            <a class="underline decoration-rule underline-offset-4" href="https://www.kaggle.com/datasets/nosbielcs/brazilian-delivery-center" target="_blank" rel="noopener">Delivery Center: Food &amp; Goods orders in Brazil</a> (Kaggle). Nomes de lojas vêm anonimizados no dataset.
+            <a class="hit-target underline decoration-rule underline-offset-4" href="https://www.kaggle.com/datasets/nosbielcs/brazilian-delivery-center" target="_blank" rel="noopener">Delivery Center: Food &amp; Goods orders in Brazil</a> (Kaggle). Nomes de lojas vêm anonimizados no dataset.
           </p>
         </div>
         <div>
           <p class="text-pretty font-semibold text-ink">Como os números são calculados</p>
           <p class="text-pretty">
             Horários convertidos de UTC para Brasília. SLA: food ≤ 60 min, goods ≤ 120 min. Pedidos com ciclo &gt; 4h contam como
-            "presos" e ficam fora de medianas e SLA. Valores &gt; R$ 5 mil ficam fora do GMV.
+            "presos" e ficam fora de medianas e SLA. Valores &gt; R$ 5 mil ficam fora do GMV. A faixa de KPI usa a mesma régua das
+            comandas: atenção abaixo de 85% no prazo (crítico abaixo de 80%) e cancelamento a partir de 6% (crítico a partir de 9%).
+            Recorte menor que a rede compara com a rede no mesmo período; a rede inteira mostra a faixa entre os hubs. Não há meta de SLA em percentual.
+            Pedidos, GMV e ticket só comparam período com 100 pedidos ou mais em cada lado.
           </p>
         </div>
         <div>
           <p class="text-pretty font-semibold text-ink">Stack</p>
           <p class="text-pretty">Astro + ilhas React, ECharts, Nanostores, TanStack Query/Table/Virtual · FastAPI, Pydantic, DuckDB sobre Parquet.</p>
-          <p class="text-pretty mt-1"><a class="underline decoration-rule underline-offset-4" href={repoUrl} target="_blank" rel="noopener">Código</a></p>
+          <p class="text-pretty mt-1">
+            <a class="hit-target underline decoration-rule underline-offset-4" href={repoUrl} target="_blank" rel="noopener">Código</a> ·{" "}
+            <a class="hit-target underline decoration-rule underline-offset-4" href={`${apiUrl}/docs`} target="_blank" rel="noopener">API (Swagger)</a>
+          </p>
         </div>
       </div>
     </footer>
   </div>
 
   <AgentDock client:load />
+  <script>
+    import { initInvestigationLayout } from "@/lib/investigationLayout";
+    initInvestigationLayout();
+  </script>
+  <!--
+    Painéis client:visible não têm botão até hidratar (exceto quando exibem o toggle recolhível).
+    Enquanto isso, a moldura entra no Tab (o foco rola a seção para a vista e a ilha monta).
+    Com controles visíveis dentro (inclusive o botão de abrir/fechar), sai da ordem.
+  -->
+  <script is:inline>
+    (function () {
+      var bar = document.querySelector("[data-filter-bar]");
+      if (!bar || !window.ResizeObserver) return;
+      var apply = function () {
+        document.documentElement.style.setProperty("--sticky-bar", bar.offsetHeight + "px");
+      };
+      apply();
+      new ResizeObserver(apply).observe(bar);
+    })();
+  </script>
+  <script is:inline>
+    (function () {
+      var focusable = "a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled])";
+      function sync() {
+        var sections = document.querySelectorAll("section.panel-frame");
+        for (var i = 0; i < sections.length; i++) {
+          var section = sections[i];
+          var nodes = section.querySelectorAll(focusable);
+          var found = false;
+          for (var j = 0; j < nodes.length; j++) {
+            var el = nodes[j];
+            if (el.closest("[hidden]") || el.closest("[aria-hidden='true']") || el.closest("[inert]")) continue;
+            found = true;
+            break;
+          }
+          var next = found ? -1 : 0;
+          if (section.tabIndex !== next) section.tabIndex = next;
+        }
+      }
+      sync();
+      new MutationObserver(sync).observe(document.body, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ["hidden", "aria-hidden", "inert"],
+      });
+    })();
+  </script>
 </Base>

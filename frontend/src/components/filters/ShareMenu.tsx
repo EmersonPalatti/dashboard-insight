@@ -1,13 +1,11 @@
-import { useStore } from "@nanostores/react";
 import { Check, ChevronDown, ClipboardCopy, FileSpreadsheet, Link2, Printer, Share2 } from "lucide-react";
 import { useEffect, useId, useRef, type KeyboardEvent } from "react";
-import { EXPORT_ACTIONS, csvHref, printAfterClose, useBriefingCopy, useCopyLink } from "@/lib/exportActions";
-import { $filters } from "@/lib/filters";
+import { EXPORT_ACTIONS, printAfterClose, useBriefingCopy, useCopyLink, useCsvDownload } from "@/lib/exportActions";
 import { iconSwap } from "../ui/swap";
 import { useDisclosure } from "./useDisclosure";
 
 const itemClass =
-  "flex w-full items-start gap-2.5 rounded-tick px-2.5 py-2 text-left transition-colors duration-(--duration-quick) hover:bg-sunken focus-visible:bg-sunken";
+  "flex w-full items-start gap-2.5 rounded-tick px-2.5 py-2 text-left transition-colors duration-(--duration-quick) hover:bg-sunken focus-visible:bg-sunken disabled:pointer-events-none disabled:opacity-50";
 
 /** Itens navegáveis do menu, na ordem do DOM (botões habilitados e links). */
 function menuItems(panel: HTMLElement | null): HTMLElement[] {
@@ -33,7 +31,7 @@ export function ShareMenu() {
   const d = useDisclosure();
   const link = useCopyLink();
   const briefing = useBriefingCopy();
-  const filters = useStore($filters);
+  const csv = useCsvDownload();
   const panelRef = useRef<HTMLDivElement>(null);
   const uid = useId();
   const panelId = `${uid}-menu`;
@@ -70,7 +68,13 @@ export function ShareMenu() {
   };
 
   // o aviso para leitores de tela segue o feedback visível
-  const announce = briefing.state === "done" ? EXPORT_ACTIONS.briefing.doneTitle : link.copied ? EXPORT_ACTIONS.link.copiedTitle : "";
+  const announce = csv.error
+    ? csv.detail
+    : briefing.state === "done"
+      ? EXPORT_ACTIONS.briefing.doneTitle
+      : link.copied
+        ? EXPORT_ACTIONS.link.copiedTitle
+        : "";
 
   return (
     <div ref={d.rootRef} className="relative flex min-w-0" onKeyDown={onKeyDown} onBlur={d.onBlur}>
@@ -80,11 +84,13 @@ export function ShareMenu() {
         aria-haspopup="menu"
         aria-expanded={d.isOpen}
         aria-controls={panelId}
+        aria-label="Compartilhar recorte"
+        title="Compartilhar"
         onClick={d.toggle}
-        className="btn-ghost h-8 whitespace-nowrap"
+        className="btn-ghost h-8 px-2.5 text-aux whitespace-nowrap"
       >
-        <Share2 className="size-3.5" aria-hidden />
-        Compartilhar
+        <Share2 className="size-3.5 shrink-0" aria-hidden />
+        <span>Compartilhar</span>
         <ChevronDown
           className={`size-3.5 text-muted transition-[rotate] duration-(--duration-fast) ease-(--ease-smooth-out) motion-reduce:transition-none ${
             d.isOpen ? "rotate-180" : ""
@@ -101,7 +107,7 @@ export function ShareMenu() {
         role="menu"
         aria-label="Compartilhar recorte"
         {...d.panelProps}
-        className={`recorte-popover absolute top-full right-0 z-30 mt-1.5 w-80 max-w-[calc(100vw-2rem)] rounded-card border border-rule bg-surface p-1.5 ${
+        className={`recorte-popover absolute top-full right-0 z-30 mt-1.5 w-80 max-w-[calc(100vw-2rem)] rounded-card border border-ink bg-surface p-1.5 ${
           d.phase === "closed" ? "hidden" : ""
         }`}
       >
@@ -117,10 +123,19 @@ export function ShareMenu() {
             />
           </button>
 
-          <a role="menuitem" className={itemClass} href={csvHref(filters)} download onClick={() => d.dismiss(true)}>
+          <button
+            type="button"
+            role="menuitem"
+            className={itemClass}
+            disabled={csv.busy || csv.blocked}
+            onClick={async () => {
+              const ok = await csv.download();
+              if (ok) d.dismiss(true);
+            }}
+          >
             <FileSpreadsheet className="mt-0.5 size-4 shrink-0 text-series" aria-hidden />
-            <ItemText title={EXPORT_ACTIONS.csv.title} detail={EXPORT_ACTIONS.csv.detail} />
-          </a>
+            <ItemText title={csv.title} detail={csv.detail} />
+          </button>
 
           <button type="button" role="menuitem" className={itemClass} onClick={briefing.copy} disabled={briefing.state === "busy"}>
             <span className="mt-0.5 grid size-4 shrink-0 place-items-center" aria-hidden>

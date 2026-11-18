@@ -1,5 +1,5 @@
 import { X } from "lucide-react";
-import { useEffect, useRef, type ReactNode, type RefObject } from "react";
+import { useLayoutEffect, useRef, type ReactNode, type RefObject } from "react";
 
 interface Props {
   open: boolean;
@@ -19,7 +19,8 @@ interface Props {
 export function FilterSheet({ open, onClose, returnFocusRef, children, footer }: Props) {
   const ref = useRef<HTMLDialogElement>(null);
 
-  useEffect(() => {
+  // Layout effect: fecha antes do diálogo de exportação abrir no mesmo quadro, senão o foco volta para a folha.
+  useLayoutEffect(() => {
     const dialog = ref.current;
     if (!dialog) return;
     if (open && !dialog.open) dialog.showModal();
@@ -40,8 +41,8 @@ export function FilterSheet({ open, onClose, returnFocusRef, children, footer }:
       onClick={(e) => e.target === ref.current && onClose()}
       className="recorte-sheet fixed inset-x-0 top-auto bottom-0 m-0 w-full max-w-full rounded-t-card border-t border-rule bg-surface p-0 text-ink"
     >
-      <div className="flex max-h-[85dvh] flex-col">
-        <header className="flex items-center justify-between gap-3 border-b border-rule px-4 py-3">
+      <div className="flex max-h-[85dvh] min-h-0 flex-col overflow-hidden">
+        <header className="flex shrink-0 items-center justify-between gap-3 border-b border-rule px-4 py-3">
           <h2 id="recorte-sheet-title" className="section-title">
             Recorte
           </h2>
@@ -49,9 +50,9 @@ export function FilterSheet({ open, onClose, returnFocusRef, children, footer }:
             <X className="size-4" aria-hidden />
           </button>
         </header>
-        {/* o corpo rola; o rodapé fica fora da rolagem, então sempre visível */}
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4">{children}</div>
-        <footer className="grid grid-cols-2 gap-2 border-t border-rule bg-surface px-4 py-3">{footer}</footer>
+        {/* o corpo rola; o rodapé é irmão, fora da rolagem, então não cobre Segmento nem os chips */}
+        <div className="min-h-0 min-w-0 flex-1 overflow-x-clip overflow-y-auto overscroll-contain px-4 pt-4 pb-4">{children}</div>
+        <footer className="grid shrink-0 grid-cols-2 gap-2 border-t border-rule bg-surface px-4 py-3">{footer}</footer>
       </div>
     </dialog>
   );

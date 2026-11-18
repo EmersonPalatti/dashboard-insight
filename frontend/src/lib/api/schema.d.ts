@@ -228,6 +228,10 @@ export interface components {
             category: "sla" | "cancelamento" | "loja" | "frota" | "dados" | "volume" | "custo";
             /** Title */
             title: string;
+            /** Figure */
+            figure?: string | null;
+            /** Figure Ref */
+            figure_ref?: string | null;
             /** Detail */
             detail: string;
             /** Action */
@@ -294,6 +298,11 @@ export interface components {
              */
             low_sample: boolean;
             /**
+             * Volume Low Sample
+             * @description Menos de MIN_MEASURED pedidos no total: a variação de pedidos, GMV e ticket não é firme
+             */
+            volume_low_sample: boolean;
+            /**
              * Cycle P50
              * @description Mediana do ciclo (min), sem pedidos presos
              */
@@ -326,11 +335,11 @@ export interface components {
             cost_avg: number | null;
             /**
              * Subsidy
-             * @description Custo logístico menos frete cobrado, por pedido entregue
+             * @description Custo logístico menos frete cobrado, por entrega com os dois valores preenchidos
              */
             subsidy: number | null;
             /** Key */
-            key: string | number;
+            key: string | number | null;
             /** Label */
             label: string;
             /** Parent */
@@ -372,6 +381,13 @@ export interface components {
             filters?: components["schemas"]["Filters"];
             /** History */
             history?: components["schemas"]["ChatTurn"][];
+            /**
+             * Engine
+             * @description local devolve a leitura pelas regras na hora e não consome a cota do LLM. auto segue a cadeia LLM e cai nas regras.
+             * @default auto
+             * @enum {string}
+             */
+            engine: "auto" | "local";
         };
         /** ChatResponse */
         ChatResponse: {
@@ -384,8 +400,43 @@ export interface components {
             mode: "llm-tools" | "llm-context" | "local";
             /** Model */
             model: string | null;
-            /** Tools Used */
+            /**
+             * Tools Used
+             * @description Nomes internos das consultas. A tela usa tool_labels.
+             */
             tools_used: string[];
+            /**
+             * Title
+             * @description Manchete curta da comanda.
+             */
+            title: string;
+            /**
+             * Diagnosis
+             * @description O que os números do recorte mostram, sem a ação.
+             */
+            diagnosis: string;
+            /**
+             * Action
+             * @description Quem faz o quê, onde e quando.
+             */
+            action: string;
+            /**
+             * Drilldowns
+             * @description Atalhos de filtro. Só entram entidades que existem neste recorte.
+             */
+            drilldowns?: components["schemas"]["DrillDown"][];
+            base: components["schemas"]["ReadingBase"];
+            /**
+             * Source
+             * @description Quem fechou a leitura: regras locais ou o modelo.
+             * @enum {string}
+             */
+            source: "local" | "llm";
+            /**
+             * Tool Labels
+             * @description Consultas usadas, em português, sem o nome da função.
+             */
+            tool_labels?: string[];
         };
         /** ChatTurn */
         ChatTurn: {
@@ -513,12 +564,40 @@ export interface components {
             /** Sla Rate */
             sla_rate: number | null;
         };
+        /**
+         * HeroReading
+         * @description Veredito e referência de um KPI de operação. A régua é a das comandas do recorte.
+         */
+        HeroReading: {
+            /**
+             * Key
+             * @enum {string}
+             */
+            key: "sla_rate" | "cycle_p50" | "cancel_rate";
+            /**
+             * Verdict
+             * @description within, attention ou critical. Null sem base firme, sem a métrica, ou quando pedido preso impede ler o SLA. Ciclo mediano não tem veredito: não há meta da mediana.
+             */
+            verdict: ("within" | "attention" | "critical") | null;
+            /**
+             * Reference
+             * @description Frase pt-BR, sem o veredito. Rede no período ('2,4 p.p. abaixo da rede', '3,1 min acima da rede') ou faixa dos hubs ('hubs de 80,0% a 93,4%'). Null em amostra pequena.
+             */
+            reference?: string | null;
+            /**
+             * Network Value
+             * @description Valor da rede no mesmo período, na unidade da métrica. Ausente quando o recorte já é a rede ou a base não sustenta o vão. O minigráfico só desenha o traço se o valor cabe na escala da série.
+             */
+            network_value?: number | null;
+        };
         /** KpiResponse */
         KpiResponse: {
             period: components["schemas"]["Period"];
             current: components["schemas"]["Metrics"];
             previous_period: components["schemas"]["Period"] | null;
             previous: components["schemas"]["Metrics"] | null;
+            /** Heroes */
+            heroes: components["schemas"]["HeroReading"][];
         };
         /** Meta */
         Meta: {
@@ -554,6 +633,11 @@ export interface components {
             llm_enabled: boolean;
             /** Llm Model */
             llm_model: string | null;
+            /**
+             * Csv Max Rows
+             * @description Teto de pedidos no CSV deste servidor. Acima disso a exportação recusa.
+             */
+            csv_max_rows: number;
         };
         /**
          * Metrics
@@ -582,6 +666,11 @@ export interface components {
              * @description Base medida abaixo do mínimo do painel (MIN_MEASURED): SLA e ciclo mediano não são firmes
              */
             low_sample: boolean;
+            /**
+             * Volume Low Sample
+             * @description Menos de MIN_MEASURED pedidos no total: a variação de pedidos, GMV e ticket não é firme
+             */
+            volume_low_sample: boolean;
             /**
              * Cycle P50
              * @description Mediana do ciclo (min), sem pedidos presos
@@ -615,7 +704,7 @@ export interface components {
             cost_avg: number | null;
             /**
              * Subsidy
-             * @description Custo logístico menos frete cobrado, por pedido entregue
+             * @description Custo logístico menos frete cobrado, por entrega com os dois valores preenchidos
              */
             subsidy: number | null;
         };
@@ -696,6 +785,18 @@ export interface components {
              * Format: date
              */
             end: string;
+        };
+        /**
+         * ReadingBase
+         * @description Base que sustenta a leitura do agente. `n` é o total de pedidos; `measured` entra no SLA e no ciclo.
+         */
+        ReadingBase: {
+            /** N */
+            n: number;
+            /** Measured */
+            measured: number;
+            /** Low Sample */
+            low_sample: boolean;
         };
         /** TimePoint */
         TimePoint: {
@@ -1017,7 +1118,10 @@ export interface operations {
                 /** @description Status do pedido: delivered ou canceled */
                 status?: ("delivered" | "canceled")[];
             };
-            header?: never;
+            header?: {
+                /** @description Obrigatório só se AUTOMATION_TOKEN estiver definido no servidor. */
+                "x-automation-token"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -1060,7 +1164,10 @@ export interface operations {
                 /** @description Status do pedido: delivered ou canceled */
                 status?: ("delivered" | "canceled")[];
             };
-            header?: never;
+            header?: {
+                /** @description Obrigatório só se AUTOMATION_TOKEN estiver definido no servidor. */
+                "x-automation-token"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };

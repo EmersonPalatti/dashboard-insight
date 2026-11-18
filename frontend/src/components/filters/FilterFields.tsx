@@ -25,14 +25,22 @@ function DateRange({ m }: { m: FilterModel }) {
  * Na barra (desktop), Datas abre um popover com Início e Fim; na folha (mobile),
  * abre os dois campos logo abaixo, em fluxo, para o calendário não ser cortado.
  */
-export function PeriodFields({ m, variant = "bar" }: { m: FilterModel; variant?: "bar" | "sheet" }) {
+export function PeriodFields({ m, variant = "bar", labelId }: { m: FilterModel; variant?: "bar" | "sheet"; labelId?: string }) {
   const { presets, activePreset, customDates, datesLabel, datesReady, set } = m;
   const [sheetDates, setSheetDates] = useState(false);
   const activeId = activePreset ?? (customDates ? "dates" : undefined);
+  const rangeParts = datesLabel.split(" – ");
   const datesInner = (
     <>
       <Calendar className="size-3.5 shrink-0" aria-hidden />
-      <span className="tabular-nums">{datesLabel}</span>
+      {variant === "sheet" && rangeParts.length === 2 ? (
+        <span className="flex flex-col items-center leading-tight tabular-nums">
+          <span>{rangeParts[0]}</span>
+          <span>{rangeParts[1]}</span>
+        </span>
+      ) : (
+        <span className={`min-w-0 tabular-nums ${variant === "sheet" ? "text-balance" : "truncate"}`}>{datesLabel}</span>
+      )}
     </>
   );
   const pick = (p: PresetOption) => {
@@ -43,26 +51,29 @@ export function PeriodFields({ m, variant = "bar" }: { m: FilterModel; variant?:
   if (variant === "sheet") {
     const showDates = datesReady && (sheetDates || customDates);
     return (
-      <fieldset className="grid">
-        <legend className="sr-only">Período</legend>
+      <div className="grid min-w-0">
         <PeriodPresets
           presets={presets}
           activeId={activeId}
+          labelId={labelId}
           onSelect={pick}
-          extra={
+          extra={({ tabIndex, checked }) => (
             <button
               type="button"
+              role="radio"
               data-preset="dates"
-              aria-pressed={customDates}
+              aria-checked={checked}
               aria-expanded={showDates}
               aria-controls="periodo-datas"
+              aria-label={`Datas: ${customDates ? datesLabel : "escolher início e fim"}`}
+              tabIndex={tabIndex}
               disabled={!datesReady}
               onClick={() => setSheetDates((v) => !v)}
-              className={presetClass(customDates)}
+              className={`${presetClass(checked)} whitespace-normal!`}
             >
               {datesInner}
             </button>
-          }
+          )}
         />
         {/* accordion: a linha da grade vai de 0fr a 1fr (sem animar altura), mesma duração nos dois sentidos */}
         <div
@@ -81,36 +92,36 @@ export function PeriodFields({ m, variant = "bar" }: { m: FilterModel; variant?:
             <DateRange m={m} />
           </div>
         </div>
-      </fieldset>
+      </div>
     );
   }
 
   return (
-    <fieldset className="flex">
-      <legend className="sr-only">Período</legend>
-      <PeriodPresets
-        presets={presets}
-        activeId={activeId}
-        onSelect={pick}
-        extra={
-          <Popover
-            id="periodo-datas"
-            align="left"
-            panelClassName="w-[18rem] p-2"
-            triggerClassName={`${presetClass(customDates)} h-full`}
-            triggerProps={{
-              "data-preset": "dates",
-              "aria-pressed": customDates,
-              "aria-label": `Datas: ${customDates ? datesLabel : "escolher início e fim"}`,
-              disabled: !datesReady,
-            }}
-            trigger={datesInner}
-          >
-            <DateRange m={m} />
-          </Popover>
-        }
-      />
-    </fieldset>
+    <PeriodPresets
+      presets={presets}
+      activeId={activeId}
+      onSelect={pick}
+      extra={({ tabIndex, checked }) => (
+        <Popover
+          id="periodo-datas"
+          align="left"
+          panelClassName="w-[18rem] p-2"
+          rootClassName="max-lg:min-w-0 max-lg:flex-1"
+          triggerClassName={`${presetClass(checked)} h-full w-full`}
+          triggerProps={{
+            "data-preset": "dates",
+            role: "radio",
+            "aria-checked": checked,
+            tabIndex,
+            "aria-label": `Datas: ${customDates ? datesLabel : "escolher início e fim"}`,
+            disabled: !datesReady,
+          }}
+          trigger={datesInner}
+        >
+          <DateRange m={m} />
+        </Popover>
+      )}
+    />
   );
 }
 
@@ -126,7 +137,7 @@ export function PlaceFields({ m }: { m: FilterModel }) {
   );
 }
 
-/** Segmento, Canal e Modal: ficam no "Mais filtros" do desktop e nos campos da folha no mobile. */
+/** Segmento, Canal, Modal e Status: ficam no "Mais filtros" do desktop e nos campos da folha no mobile. */
 export function ExtraFields({ m }: { m: FilterModel }) {
   const { f, opts, set } = m;
   return (
@@ -139,6 +150,7 @@ export function ExtraFields({ m }: { m: FilterModel }) {
         onChange={(channel_type) => set({ channel_type: channel_type as Recorte["channel_type"] })}
       />
       <MultiSelect label="Modal" options={opts.modals} value={f.modal} onChange={(modal) => set({ modal: modal as Recorte["modal"] })} />
+      <MultiSelect label="Status" options={opts.statuses} value={f.status} onChange={(status) => set({ status: status as Recorte["status"] })} />
     </>
   );
 }
