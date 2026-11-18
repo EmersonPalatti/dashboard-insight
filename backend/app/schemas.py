@@ -13,7 +13,12 @@ Dimension = Literal[
     "city", "hub", "store", "channel", "channel_type", "segment",
     "modal", "driver_type", "payment_method", "hour", "weekday",
 ]
-SortKey = Literal["orders", "gmv", "ticket", "cancel_rate", "cycle_p50", "sla_rate", "stuck_rate", "subsidy"]
+SortKey = Literal[
+    "orders", "gmv", "ticket", "cancel_rate", "cycle_p50", "cycle_p90",
+    "sla_rate", "stuck_rate", "production_p50", "collected_p50",
+    "expedition_p50", "transit_p50", "distance_p50_km",
+    "fee_avg", "cost_avg", "subsidy",
+]
 Grain = Literal["hour", "day", "week"]
 
 

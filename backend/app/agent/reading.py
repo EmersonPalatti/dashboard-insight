@@ -36,6 +36,8 @@ _TOOL_LABEL = {
     "get_kpis": "KPIs do recorte",
     "get_alerts": "Alertas do recorte",
     "get_timeseries": "Série do recorte",
+    "get_heatmap": "Mapa de calor (dia × hora)",
+    "compare_slices": "Comparação de subfatias",
 }
 _FENCE = re.compile(r"```(?:leitura|json)?[^\n]*\n(\{.*?\})\s*```", re.DOTALL)
 _MARKS = re.compile(r"[*_#`]")

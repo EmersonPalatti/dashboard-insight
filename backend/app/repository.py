@@ -79,7 +79,11 @@ DIMENSIONS: dict[str, tuple[str, str, str]] = {
 }
 SORTS: dict[str, str] = {
     "orders": "orders", "gmv": "gmv", "ticket": "ticket", "cancel_rate": "cancel_rate",
-    "cycle_p50": "cycle_p50", "sla_rate": "sla_rate", "stuck_rate": "stuck_rate", "subsidy": "subsidy",
+    "cycle_p50": "cycle_p50", "cycle_p90": "cycle_p90", "sla_rate": "sla_rate",
+    "stuck_rate": "stuck_rate", "production_p50": "production_p50",
+    "collected_p50": "collected_p50", "expedition_p50": "expedition_p50",
+    "transit_p50": "transit_p50", "distance_p50_km": "distance_p50_km",
+    "fee_avg": "fee_avg", "cost_avg": "cost_avg", "subsidy": "subsidy",
 }
 ORDER_COLUMNS = (
     "order_id, created_at, status, city, hub_name, store_name, segment, channel, modal, payment_method, "
@@ -381,6 +385,7 @@ class Repository:
             where, params = f.where()
             return self._rows(
                 f"""select weekday::int as weekday, hour::int as hour, count(*)::int as orders,
+                       count(*) filter (where {_MEASURED})::int as measured,
                        avg((status = 'canceled')::int) as cancel_rate,
                        median(cycle_min) filter (where {_VALID}) as cycle_p50,
                        avg(on_time(segment, cycle_min)::int)
@@ -399,6 +404,7 @@ class Repository:
         desc: bool = True,
         limit: int = 50,
         min_orders: int = 0,
+        min_measured: int = 0,
     ) -> list[dict]:
         key, label, parent = DIMENSIONS[by]
         order = SORTS[sort]
@@ -411,13 +417,66 @@ class Repository:
             rows = self._rows(
                 f"""select {key} as key, {shown} as label, {parent}::varchar as parent, {METRICS_SQL}
                     from orders where {where}
-                    group by all having count(*) >= ?
+                    group by all having count(*) >= ? and count(*) filter (where {_MEASURED}) >= ?
                     order by {order} {direction} nulls last, orders desc limit ?""",
-                [*params, int(min_orders), int(limit)],
+                [*params, int(min_orders), int(min_measured), int(limit)],
             )
             return _flag_outliers(rows, self.metrics(f))
 
-        return self.cached(f"bd:{by}:{sort}:{desc}:{limit}:{min_orders}:" + f.cache_key(), build)
+        return self.cached(
+            f"bd:{by}:{sort}:{desc}:{limit}:{min_orders}:{min_measured}:" + f.cache_key(),
+            build,
+        )
+
+    def subslice_metrics(
+        self,
+        f: Filters,
+        *,
+        hours: list[int] | None = None,
+        weekdays: list[int] | None = None,
+        dimension: Dimension | None = None,
+        values: list[str] | None = None,
+        complement: bool = False,
+    ) -> dict:
+        """Métricas agregadas de uma subfatia dentro do recorte `f` (ou de seu complemento)."""
+        norm_hours = sorted({int(h) for h in hours}) if hours else []
+        norm_weekdays = sorted({int(w) for w in weekdays}) if weekdays else []
+        norm_vals = [str(v).strip().lower() for v in (values or []) if str(v).strip()]
+        dim = dimension if (dimension and norm_vals) else None
+
+        if not norm_hours and not norm_weekdays and not dim:
+            return self.metrics(f)
+
+        def build() -> dict:
+            base_where, base_params = f.where()
+            sub_clauses: list[str] = []
+            sub_params: list = []
+            if norm_hours:
+                sub_clauses.append("list_contains(?, hour)")
+                sub_params.append(norm_hours)
+            if norm_weekdays:
+                sub_clauses.append("list_contains(?, weekday)")
+                sub_params.append(norm_weekdays)
+            if dim:
+                key, label, _ = DIMENSIONS[dim]
+                sub_clauses.append(
+                    f"(list_contains(?, lower(cast({label} as varchar))) "
+                    f"or list_contains(?, lower(cast({key} as varchar))))"
+                )
+                sub_params.extend([norm_vals, norm_vals])
+
+            sub_sql = " and ".join(sub_clauses)
+            if complement:
+                where = f"({base_where}) and not coalesce(({sub_sql}), false)"
+            else:
+                where = f"({base_where}) and ({sub_sql})"
+            return self._rows(f"select {METRICS_SQL} from orders where {where}", [*base_params, *sub_params])[0]
+
+        cache_id = (
+            f"sub:{norm_hours}:{norm_weekdays}:{dim}:{sorted(set(norm_vals))}:{complement}:"
+            + f.cache_key()
+        )
+        return self.cached(cache_id, build)
 
     def orders_page(self, f: Filters, offset: int, limit: int, sort: str, desc: bool) -> dict:
         if sort not in ORDER_SORTS:

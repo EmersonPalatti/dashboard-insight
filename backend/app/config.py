@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     openrouter_model: str = DEFAULT_MODEL
     llm_timeout_s: float = 45.0
     llm_max_tokens: int = 900
+    llm_reasoning_effort: str | None = "low"
     chat_budget_s: float = 20.0
     chat_rate_limit_per_minute: int = 8
     # Teto de chamadas ao LLM por minuto, somando todos os IPs. 0 desliga.
