@@ -19,6 +19,6 @@ services:
       - key: OPENROUTER_API_KEY
         sync: false
       - key: OPENROUTER_MODEL
-        value: nvidia/nemotron-3-ultra-550b-a55b:free
+        value: baidu/ernie-5.5-flash-preview:free
       - key: CLIENT_IP_HEADER
         value: cf-connecting-ip

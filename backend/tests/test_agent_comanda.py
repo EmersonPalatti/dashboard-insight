@@ -310,3 +310,50 @@ def test_copied_tool_arguments_are_removed_from_llm_text():
     assert out == "Acionar as 10 lojas com maior preparo no jantar hoje."
     # Parêntese comum continua.
     assert _pt_severity("SLA de 80,0% (sobre 1.200 entregas).") == "SLA de 80,0% (sobre 1.200 entregas)."
+
+
+@pytest.mark.parametrize(
+    "line",
+    ["Ação: líder do hub revisa hoje.", "**Ação**: líder do hub revisa hoje.", "__Ação:__ líder do hub revisa hoje.",
+     "  acao: líder do hub revisa hoje.", "**Ação:** líder do hub revisa hoje."],
+)
+def test_action_marker_variants_are_normalized(line):
+    from app.agent.reading import normalize_action
+
+    out = normalize_action(f"SLA em 80,0%.\n\n{line}")
+    assert "**Ação:** líder do hub revisa hoje." in out
+    assert out.count("**Ação:**") == 1
+
+
+def test_action_taken_from_leitura_block_when_line_is_missing():
+    from app.agent.reading import normalize_action
+
+    text = 'SLA em 80,0%.\n\n```leitura\n{"title":"t","diagnosis":"d","action":"Líder do hub revisa hoje.","drilldowns":[]}\n```'
+    out = normalize_action(text)
+    assert "**Ação:** Líder do hub revisa hoje." in out
+    assert out.index("**Ação:**") < out.index("```leitura")
+
+
+def test_llm_answer_without_bold_action_is_accepted(client, monkeypatch):
+    _install(monkeypatch, "SLA em 80,0%.\n\nAção: líder do hub revisa o SLA hoje.")
+    client.app.dependency_overrides[get_settings] = lambda: Settings(
+        openrouter_api_key="test-key", chat_rate_limit_enabled=False
+    )
+    try:
+        body = client.post("/api/agent/chat", json={"question": "como esta o sla?"}).json()
+        assert body["source"] == "llm"
+        assert "revisa o SLA hoje" in body["action"]
+    finally:
+        client.app.dependency_overrides.pop(get_settings, None)
+
+
+def test_bare_tool_call_in_prose_is_removed():
+    from app.agent.reading import _pt_severity
+
+    text = (
+        'Analista investiga query_metrics group_by=["store"], metrics=["Cancelamento"], min_orders=150, '
+        'sort="Cancelamento", order="worst" para achar lojas acima de 6%.'
+    )
+    out = _pt_severity(text)
+    assert "query_metrics" not in out and "group_by" not in out and "=" not in out
+    assert out == "Analista investiga uma consulta para achar lojas acima de 6%."

@@ -133,9 +133,10 @@ Agente com LLM (opcional): copie `backend/.env.example` para `backend/.env` e pr
 | Variável | Padrão | Para quê |
 |---|---|---|
 | `OPENROUTER_API_KEY` | vazio | Liga o agente com LLM. Vazio: só regras locais |
-| `OPENROUTER_MODEL` | `nvidia/nemotron-3-ultra-550b-a55b:free` | Modelo usado pelo agente |
+| `OPENROUTER_MODEL` | `baidu/ernie-5.5-flash-preview:free` | Modelo usado pelo agente (escolhido num confronto de 5 modelos gratuitos com o placar) |
+| `OPENROUTER_FALLBACK_MODELS` | vazio | Modelos de reserva, por vírgula, que o OpenRouter tenta se o principal falhar. Vazio: congestionamento ganha uma nova tentativa no mesmo modelo e, se falhar, vale a leitura por regras |
 | `LLM_TIMEOUT_S` | `18` | Tempo máximo de cada chamada ao LLM |
-| `LLM_MAX_TOKENS` | `1400` | Limite de tokens gerados por resposta |
+| `LLM_MAX_TOKENS` | `2000` | Limite de tokens gerados por resposta |
 | `LLM_REASONING_EFFORT` | `low` | Esforço de raciocínio enviado via OpenRouter (`low`, `medium`, `high` ou vazio) |
 | `CHAT_BUDGET_S` | `20` | Tempo total por pergunta antes de cair nas regras locais |
 | `CHAT_RATE_LIMIT_PER_MINUTE` | `8` | Perguntas ao LLM por minuto por IP |

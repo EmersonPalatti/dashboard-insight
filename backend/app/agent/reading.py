@@ -89,9 +89,24 @@ def _internal_terms() -> tuple[re.Pattern[str], dict[str, str]]:
 _TOOL_ARGS = re.compile(r"\s*\((?=[^()]*\b[a-z_]+=)[^()]*\)")
 
 
+# Chamada de ferramenta escrita na prosa ("investiga query_metrics group_by=["store"], sort="x"").
+_ARG = r"""[a-z_]+=(?:\[[^\]]*\]|"[^"]*"|'[^']*'|[^\s,;.]+)"""
+_BARE_ARGS = re.compile(rf"(?:,?\s*{_ARG})+")
+
+
+@lru_cache(maxsize=1)
+def _tool_call() -> re.Pattern[str]:
+    from app.agent.llm import TOOLS  # import tardio: llm carrega a camada semântica e o repositório
+
+    names = "|".join(sorted((t["function"]["name"] for t in TOOLS), key=len, reverse=True))
+    return re.compile(rf"`?\b(?:{names})\b`?(?:\([^()]*\))?(?:,?\s*{_ARG})*")
+
+
 def _pt_internal(text: str) -> str:
     pattern, terms = _internal_terms()
-    return pattern.sub(lambda m: terms[m.group(1)], _TOOL_ARGS.sub("", text))
+    text = _tool_call().sub("uma consulta", _TOOL_ARGS.sub("", text))
+    text = _BARE_ARGS.sub("", text)
+    return pattern.sub(lambda m: terms[m.group(1)], text)
 
 
 def _pt_severity(text: str) -> str:
@@ -350,6 +365,25 @@ def parse_leitura(text: str) -> ParsedReading | None:
 
 def _strip_fence(text: str) -> str:
     return _OPEN_FENCE.sub("", _FENCE.sub("", text)).strip()
+
+
+# "Ação:", "**Ação**:", "__Ação:__", "Acao:" no começo da linha: modelos diferentes formatam a marca
+# de jeitos diferentes. Sem normalizar, uma resposta boa sem o negrito vira leitura local.
+_ACTION_LINE = re.compile(r"(?im)^[ \t]*(?:\*\*|__)?[ \t]*a[çc][ãa]o[ \t]*(?:\*\*|__)?[ \t]*:[ \t]*(?:\*\*|__)?[ \t]*")
+
+
+def normalize_action(text: str) -> str:
+    """Padroniza a linha de ação em `**Ação:**`; sem a linha, usa a ação do bloco `leitura` se houver."""
+    text = _ACTION_LINE.sub("**Ação:** ", text)
+    if "**Ação:**" in text:
+        return text
+    parsed = parse_leitura(text)
+    if parsed is None or not parsed.action.strip():
+        return text
+    fence = text.find("```")
+    body = (text[:fence] if fence >= 0 else text).rstrip()
+    rest = text[fence:] if fence >= 0 else ""
+    return f"{body}\n\n**Ação:** {parsed.action.strip()}\n\n{rest}".rstrip()
 
 
 def split_markdown(text: str) -> tuple[str, str]:

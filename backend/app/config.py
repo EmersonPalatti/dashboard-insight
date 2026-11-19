@@ -9,7 +9,11 @@ from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_MODEL = "nvidia/nemotron-3-ultra-550b-a55b:free"
+# Escolhido no confronto de 19/11/2026 (12 perguntas do placar, mesmas regras): ERNIE respondeu 6 de 7
+# pelo LLM com p50 de 9 s; Nemotron 3 Ultra estourou o prazo em 8 de 12, Nemotron 3.5 Super VL acertou
+# 3 de 8, Nemotron 3.5 Lightning estourou 6 de 12 e Gemma 4 31B ficou 12 de 12 com o provedor
+# congestionado (429). "preview" pode sair do ar: troque por OPENROUTER_MODEL sem mexer em código.
+DEFAULT_MODEL = "baidu/ernie-5.5-flash-preview:free"
 
 
 class Settings(BaseSettings):
@@ -28,12 +32,16 @@ class Settings(BaseSettings):
 
     openrouter_api_key: str | None = None
     openrouter_model: str = DEFAULT_MODEL
-    # Modelos gratuitos com raciocínio (como Nemotron 3 Ultra) contam o raciocínio dentro de
-    # `max_tokens` (700 cortava 3/4 das respostas com finish=length). A leitura local já aparece na
-    # tela primeiro em ~0,15 s enquanto o LLM roda em paralelo; 1400 tokens e 20 s de orçamento
-    # evitam corte no meio e cobrem 2–3 rodadas sem estender muito a espera.
+    # Modelos de reserva, separados por vírgula, que o OpenRouter tenta se o principal falhar.
+    # Vazio de propósito: nenhum gratuito medido ficou no nível do ERNIE (Super VL acertou 3 de 8),
+    # e um fallback pior que as regras locais trocaria uma leitura boa por uma pior. Ligue só com placar.
+    openrouter_fallback_models: str = ""
+    # Modelos gratuitos com raciocínio contam o raciocínio dentro de `max_tokens` (700 cortava 3/4
+    # das respostas do Nemotron; 1400 ainda cortava 2 de 26 rodadas do ERNIE). A leitura local já
+    # aparece na tela em ~0,15 s enquanto o LLM roda; 2000 tokens e 20 s de orçamento evitam corte e
+    # cobrem 2–3 rodadas. O teto só custa tempo quando o modelo de fato usa os tokens.
     llm_timeout_s: float = 18.0
-    llm_max_tokens: int = 1400
+    llm_max_tokens: int = 2000
     llm_reasoning_effort: str | None = "low"
     chat_budget_s: float = 20.0
     chat_rate_limit_per_minute: int = 8
@@ -62,6 +70,12 @@ class Settings(BaseSettings):
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
+    @property
+    def fallback_models(self) -> list[str]:
+        primary = self.openrouter_model.strip()
+        names = (m.strip() for m in self.openrouter_fallback_models.split(","))
+        return list(dict.fromkeys(m for m in names if m and m != primary))
 
     @property
     def llm_enabled(self) -> bool:

@@ -25,7 +25,7 @@ export interface AgentDrill {
 
 export type AgentReadingStatus = "rules" | "upgraded" | "cancelled" | "failed";
 /** Por que a leitura do modelo não chegou (vem do backend em `fallback_reason`). */
-export type AgentFallback = "quota" | "timeout" | "error";
+export type AgentFallback = "quota" | "busy" | "timeout" | "error";
 
 export interface AgentTicket {
   id: string;

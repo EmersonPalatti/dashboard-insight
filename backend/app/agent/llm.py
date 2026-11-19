@@ -1353,6 +1353,35 @@ def _call_with_deadline(fn: Any, kwargs: dict[str, Any], limit_s: float) -> Any:
         raise LLMDeadlineExceeded(f"LLM sem resposta em {limit_s:.1f} s") from None
 
 
+def is_account_quota(exc: Exception) -> bool:
+    """429 da própria conta ("Rate limit exceeded: free-models-per-day/min").
+
+    O 429 que o OpenRouter repassa do provedor ("Provider returned error") é congestionamento do
+    modelo gratuito naquele instante e costuma passar em segundos.
+    """
+    return "rate limit exceeded" in str(exc).lower()
+
+
+# No placar de 45 perguntas, 14 voltaram 429 do provedor do ERNIE. Uma nova tentativa curta no mesmo
+# modelo recupera parte delas sem trocar por um modelo pior. Só tenta se ainda sobra prazo para
+# uma resposta de verdade; senão o 429 segue e vale a leitura local.
+BUSY_RETRY_DELAY_S = 1.5
+_BUSY_RETRY_MIN_LEFT_S = 4.0
+
+
+def _call_retrying_busy(client: Any, kwargs: dict[str, Any], timeout: float, deadline: float | None) -> Any:
+    try:
+        return _call_with_deadline(client.chat.completions.create, kwargs, timeout)
+    except openai.RateLimitError as exc:
+        left = (deadline - time.monotonic()) if deadline is not None else timeout
+        if is_account_quota(exc) or left < BUSY_RETRY_DELAY_S + _BUSY_RETRY_MIN_LEFT_S:
+            raise
+        log.warning("Provedor do modelo congestionado (429); nova tentativa em %.1f s", BUSY_RETRY_DELAY_S)
+        time.sleep(BUSY_RETRY_DELAY_S)
+        retry = {**kwargs, "timeout": min(timeout, left - BUSY_RETRY_DELAY_S)}
+        return _call_with_deadline(client.chat.completions.create, retry, retry["timeout"])
+
+
 def _create_completion(
     client: Any,
     *,
@@ -1374,12 +1403,19 @@ def _create_completion(
         kwargs["tools"] = tools
     if tool_choice is not None:
         kwargs["tool_choice"] = tool_choice
+    extra: dict[str, Any] = {}
     effort = (getattr(settings, "llm_reasoning_effort", None) or "").strip().lower()
     if effort:
-        kwargs["extra_body"] = {"reasoning": {"effort": effort, "exclude": True}}
+        extra["reasoning"] = {"effort": effort, "exclude": True}
+    # Fallback de modelo feito pelo próprio OpenRouter (lista `models`): desligado por padrão.
+    fallbacks = settings.fallback_models
+    if fallbacks:
+        extra["models"] = [settings.openrouter_model, *fallbacks]
+    if extra:
+        kwargs["extra_body"] = extra
 
     try:
-        return _call_with_deadline(client.chat.completions.create, kwargs, timeout)
+        return _call_retrying_busy(client, kwargs, timeout, deadline)
     except openai.BadRequestError as exc:
         can_retry = "extra_body" in kwargs or kwargs.get("tool_choice") == "required"
         remaining = (deadline - time.monotonic()) if deadline is not None else timeout

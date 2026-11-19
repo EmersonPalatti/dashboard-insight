@@ -237,7 +237,7 @@ def render_markdown(suite: SuiteResult) -> str:
         ]
         reasons = s.get("fallback_reasons") or {}
         if reasons:
-            names = {"quota": "cota", "timeout": "prazo", "error": "erro"}
+            names = {"quota": "cota", "busy": "provedor congestionado", "timeout": "prazo", "error": "erro"}
             text = " · ".join(f"{names.get(k, k)} {v}" for k, v in sorted(reasons.items()))
             lines.append(f"| Motivo do fallback | {text} |")
         if reasons.get("quota"):

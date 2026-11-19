@@ -133,6 +133,7 @@ export function Markdown({ text }: { text: string }) {
 
 const FALLBACK_NOTE = {
   quota: "A cota diária do modelo gratuito acabou. Vale a leitura pelas regras até a cota voltar.",
+  busy: "O modelo gratuito está congestionado agora. Vale a leitura pelas regras; tente de novo em instantes.",
   timeout: "O modelo gratuito demorou demais e a leitura dele foi descartada. Vale a leitura pelas regras.",
   error: "A leitura do modelo não chegou. Vale a leitura pelas regras.",
 } as const;

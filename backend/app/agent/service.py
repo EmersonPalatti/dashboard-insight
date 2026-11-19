@@ -10,7 +10,7 @@ from datetime import UTC, datetime, timedelta
 import openai
 
 from app.agent import llm, local
-from app.agent.reading import response_llm, response_local
+from app.agent.reading import normalize_action, response_llm, response_local
 from app.config import Settings
 from app.repository import Repository
 from app.schemas import ChatRequest, ChatResponse
@@ -26,7 +26,7 @@ _CONTEXT_SHARE = 0.25
 _ACTION = "**Ação:**"
 
 
-FallbackReason = str  # "quota" | "timeout" | "error"
+FallbackReason = str  # "quota" | "busy" | "timeout" | "error"
 
 
 class _QuotaBreaker:
@@ -67,8 +67,10 @@ quota_breaker = _QuotaBreaker()
 
 def _reason(exc: Exception) -> FallbackReason:
     if isinstance(exc, openai.RateLimitError):
-        quota_breaker.open_for(exc)
-        return "quota"
+        if llm.is_account_quota(exc):
+            quota_breaker.open_for(exc)
+            return "quota"
+        return "busy"
     if isinstance(exc, (llm.LLMDeadlineExceeded, openai.APITimeoutError)):
         return "timeout"
     return "error"
@@ -103,6 +105,8 @@ def chat(req: ChatRequest, repo: Repository, settings: Settings, use_llm: bool =
     reason: FallbackReason = "error"
     try:
         result = llm.answer_with_tools(req.question, req.history, repo, f, settings, deadline=tools_deadline)
+        if result:
+            result = (normalize_action(result[0]), result[1])
         if result and _acceptable(result[0]):
             text, used = result
             return response_llm(text, "llm-tools", settings.openrouter_model, used, local_reading, repo, f)
@@ -114,16 +118,18 @@ def chat(req: ChatRequest, repo: Repository, settings: Settings, use_llm: bool =
         reason = _reason(exc)
         log.warning("LLM com tools falhou (%s), tentando contexto: %s", reason, exc)
 
-    # Cota esgotada não tenta o contexto: a segunda chamada também volta 429.
+    # Cota esgotada ou provedor congestionado não tentam o contexto: a segunda chamada também volta 429.
     # None (texto vazio, rodadas esgotadas ou resposta sem ação) ainda tenta contexto se sobrou
     # pelo menos a reserva. Menos que isso, a chamada não fecha a tempo: vai a leitura local.
-    if reason == "quota":
+    if reason in ("quota", "busy"):
         return _local(local_reading, reason)
     if deadline - time.monotonic() < reserve:
         log.warning("Prazo restante abaixo da reserva (%.1f s); pulando o modo contexto", reserve)
         return _local(local_reading, "timeout")
     try:
         context = llm.answer_with_context(req.question, req.history, repo, f, settings, deadline=deadline)
+        if context and context[0]:
+            context = (normalize_action(context[0]), context[1])
         if context and _acceptable(context[0]):
             text, used = context
             return response_llm(text, "llm-context", settings.openrouter_model, used, local_reading, repo, f)
