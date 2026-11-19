@@ -141,6 +141,7 @@ Agente com LLM (opcional): copie `backend/.env.example` para `backend/.env` e pr
 | `CHAT_BUDGET_S` | `20` | Tempo total por pergunta antes de cair nas regras locais |
 | `INVESTIGATION_ENABLED` | `true` | Pergunta "por que mudou" com período anterior usa o grafo de investigação em vez do loop de tools. No placar: mesma taxa de resposta pelo LLM, 1,4 chamada por pergunta contra 3,4 e p50 de 8,6 s contra 11,5 s |
 | `INVESTIGATION_MAX_PROBES` | `0` | Consultas extras que uma revisão curta do LLM (em JSON) pode pedir antes da síntese. `0` pula a revisão: com o ERNIE ela estourava o teto de tokens sem devolver o JSON |
+| `INVESTIGATION_SYNTH_MAX_TOKENS` | `3000` | Teto de tokens da síntese do grafo (inclui o raciocínio do modelo); separado de `LLM_MAX_TOKENS` |
 | `CHAT_RATE_LIMIT_PER_MINUTE` | `8` | Perguntas ao LLM por minuto por IP |
 | `CHAT_GLOBAL_RATE_LIMIT_PER_MINUTE` | `60` | Teto de chamadas ao LLM por minuto, somando todos os IPs. `0` desliga |
 | `CHAT_RATE_LIMIT_ENABLED` | `true` | Liga as cotas acima |

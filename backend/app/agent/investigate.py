@@ -436,7 +436,7 @@ def synthesize(state: InvestigationState) -> dict[str, Any]:
     # Exceção sobe: o serviço classifica (cota, congestionado, prazo) e escolhe o fallback.
     response = llm._create_completion(
         llm._client(settings, timeout=timeout), settings=settings, messages=messages, timeout=timeout,
-        deadline=state["deadline"],
+        deadline=state["deadline"], max_tokens=settings.investigation_synth_max_tokens,
     )
     llm._log_usage("investigate-synth", settings.openrouter_model, 0, response, state.get("tools_used", []))
     choices = getattr(response, "choices", None) or []

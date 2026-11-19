@@ -54,6 +54,10 @@ class Settings(BaseSettings):
     # tokens sem JSON em 9 de 9 tentativas (400 e 1200 tokens), gastando 3–7 s. Ligue com um modelo que
     # devolva o JSON, medindo no placar.
     investigation_max_probes: int = 0
+    # Teto da síntese do grafo, separado do loop de tools: é a única chamada da investigação e o
+    # raciocínio do ERNIE vai junto. Com 2000, 5 de 8 respostas chegaram; com 3000, 7 de 8 (duas
+    # usaram ~2.850 tokens), com p50 de ~10 s contra ~8,6 s.
+    investigation_synth_max_tokens: int = 3000
     chat_rate_limit_per_minute: int = 8
     # Teto de chamadas ao LLM por minuto, somando todos os IPs. 0 desliga.
     chat_global_rate_limit_per_minute: int = 60

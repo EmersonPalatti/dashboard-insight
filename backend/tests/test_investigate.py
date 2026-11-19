@@ -207,7 +207,7 @@ def test_assess_done_goes_straight_to_synthesis(repo, monkeypatch):
     assert _is_assess(assess) and assess["max_tokens"] == inv.ASSESS_MAX_TOKENS and "tools" not in assess
     assert synth["messages"][0]["content"].startswith(SYSTEM_PROMPT)
     assert "Modo investigação" in synth["messages"][0]["content"]
-    assert "tools" not in synth and synth["max_tokens"] == _settings().llm_max_tokens
+    assert "tools" not in synth and synth["max_tokens"] == _settings().investigation_synth_max_tokens
     body = synth["messages"][1]["content"]
     assert body.startswith("<evidencias_investigacao>") and "<pergunta_operador>" in body
     assert "hipotese_preliminar" in body  # a hipótese da revisão chega à síntese como dado
