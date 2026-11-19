@@ -92,7 +92,7 @@ Decisões que vale conhecer:
 - **Um contrato de filtro.** `Filters` (Pydantic) é a query string da API e da URL do navegador. Os tipos TypeScript são gerados do OpenAPI: se um schema muda, o `astro check` quebra no build.
 - **Ilhas que se falam sem Provider global.** O filtro grava num átomo Nanostores; KPIs, gráficos, tabelas e agente são ilhas separadas que escutam o mesmo átomo e compartilham um `QueryClient`. A comanda aberta publica sua evidência num segundo átomo: ele decide qual gráfico sobe para a investigação (os painéis são movidos no DOM, não reordenados por CSS), o que esse gráfico destaca e o que o fechamento mostra em foco.
 - **Sem salto de layout.** Moldura, título e dica fixa de cada painel saem no HTML do Astro; a ilha só preenche o corpo, e o skeleton reserva a altura final. Acima da dobra hidrata com `client:load`; gráficos, tabelas e fechamento com `client:visible`, e os painéis recolhidos só hidratam quando abertos; a conversa do agente, a folha de filtros e o diálogo de exportação entram com `React.lazy`.
-- **Agente com limites.** O LLM fecha a resposta num bloco estruturado que o backend valida: atalho para hub ou loja que não existe no recorte é descartado. Até 3 rodadas de ferramentas, orçamento de 12 s por pergunta, histórico curto, corpo de até 64 KB (contado no stream, não só no `Content-Length`), 8 perguntas por minuto por IP e um teto global por minuto. Se o LLM falha, demora ou a cota acaba, a resposta vem das regras locais em vez de um erro.
+- **Agente com limites.** O LLM fecha a resposta num bloco estruturado que o backend valida: atalho para hub ou loja que não existe no recorte é descartado. Até 3 rodadas de ferramentas, orçamento de 20 s por pergunta (prazo de relógio, não só de leitura: o OpenRouter manda keep-alive), disjuntor de cota que desliga o LLM até o reset depois de um 429 (o plano gratuito sem créditos dá 50 chamadas por dia), histórico curto, corpo de até 64 KB (contado no stream, não só no `Content-Length`), 8 perguntas por minuto por IP e um teto global por minuto. Se o LLM falha, demora ou a cota acaba, a resposta vem das regras locais em vez de um erro.
 
 ## Limpeza dos dados
 
@@ -134,10 +134,10 @@ Agente com LLM (opcional): copie `backend/.env.example` para `backend/.env` e pr
 |---|---|---|
 | `OPENROUTER_API_KEY` | vazio | Liga o agente com LLM. Vazio: só regras locais |
 | `OPENROUTER_MODEL` | `nvidia/nemotron-3-ultra-550b-a55b:free` | Modelo usado pelo agente |
-| `LLM_TIMEOUT_S` | `10` | Tempo máximo de cada chamada ao LLM |
-| `LLM_MAX_TOKENS` | `700` | Limite de tokens gerados por resposta |
+| `LLM_TIMEOUT_S` | `18` | Tempo máximo de cada chamada ao LLM |
+| `LLM_MAX_TOKENS` | `1400` | Limite de tokens gerados por resposta |
 | `LLM_REASONING_EFFORT` | `low` | Esforço de raciocínio enviado via OpenRouter (`low`, `medium`, `high` ou vazio) |
-| `CHAT_BUDGET_S` | `12` | Tempo total por pergunta antes de cair nas regras locais |
+| `CHAT_BUDGET_S` | `20` | Tempo total por pergunta antes de cair nas regras locais |
 | `CHAT_RATE_LIMIT_PER_MINUTE` | `8` | Perguntas ao LLM por minuto por IP |
 | `CHAT_GLOBAL_RATE_LIMIT_PER_MINUTE` | `60` | Teto de chamadas ao LLM por minuto, somando todos os IPs. `0` desliga |
 | `CHAT_RATE_LIMIT_ENABLED` | `true` | Liga as cotas acima |

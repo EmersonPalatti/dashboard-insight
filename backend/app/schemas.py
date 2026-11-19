@@ -290,6 +290,13 @@ class ChatResponse(BaseModel):
         default_factory=list,
         description="Consultas usadas, em português, sem o nome da função.",
     )
+    fallback_reason: Literal["quota", "timeout", "error"] | None = Field(
+        default=None,
+        description=(
+            "Por que a leitura veio das regras com o LLM ligado: cota do modelo gratuito esgotada, "
+            "prazo estourado ou erro. Vazio quando o LLM respondeu ou não foi chamado."
+        ),
+    )
 
 
 class Health(BaseModel):

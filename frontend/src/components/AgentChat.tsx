@@ -297,8 +297,9 @@ export function AgentConversation({ visible, onClose }: ConversationProps) {
             : message,
         );
       } else if (llmEnabledRef.current === true) {
+        const fallback = llm.fallback_reason ?? undefined;
         replaceMessage(assistantId, (message) =>
-          message.comanda ? { ...message, comanda: { ...message.comanda, status: "failed" } } : message,
+          message.comanda ? { ...message, comanda: { ...message.comanda, status: "failed", fallback } } : message,
         );
       }
     } catch {
@@ -421,7 +422,7 @@ export function AgentConversation({ visible, onClose }: ConversationProps) {
               <Info className="mt-px size-3.5 shrink-0 text-warn" aria-hidden />
               <span>
                 {isFreeModel(meta.llm_model) ? "Modelo gratuito" : "Modelo"} <span className="font-medium text-ink">{modelName(meta.llm_model)}</span>{" "}
-                via OpenRouter: pode demorar, errar a leitura ou ficar fora do ar. A leitura por regras chega primeiro e continua valendo se o modelo falhar.
+                via OpenRouter: pode demorar, errar a leitura, ficar fora do ar ou esgotar a cota do dia. A leitura por regras chega primeiro e continua valendo se o modelo falhar.
               </span>
             </p>
           )}

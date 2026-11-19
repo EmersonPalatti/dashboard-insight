@@ -437,6 +437,11 @@ export interface components {
              * @description Consultas usadas, em português, sem o nome da função.
              */
             tool_labels?: string[];
+            /**
+             * Fallback Reason
+             * @description Por que a leitura veio das regras com o LLM ligado: cota do modelo gratuito esgotada, prazo estourado ou erro. Vazio quando o LLM respondeu ou não foi chamado.
+             */
+            fallback_reason?: ("quota" | "timeout" | "error") | null;
         };
         /** ChatTurn */
         ChatTurn: {

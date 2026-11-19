@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import statistics
 import sys
 import time
@@ -47,6 +48,7 @@ class RunResult:
     answer: str = ""
     action: str = ""
     error: str | None = None
+    fallback_reason: str | None = None
 
 
 @dataclass
@@ -90,6 +92,7 @@ class SuiteResult:
             },
             "fallback_local_rate": (modes.get("local", 0) / llm_runs) if llm_runs else None,
             "fallback_context_rate": (modes.get("llm-context", 0) / llm_runs) if llm_runs else None,
+            "fallback_reasons": dict(Counter(r.fallback_reason for r in rs if r.fallback_reason)),
             "latency_p50_s": _percentile(latencies, 0.50),
             "latency_p95_s": _percentile(latencies, 0.95),
             "failed_checks": dict(fails.most_common()),
@@ -145,6 +148,7 @@ def run_case(
         checks=[asdict(c) for c in g.checks],
         answer=resp.answer,
         action=resp.action,
+        fallback_reason=resp.fallback_reason,
     )
 
 
@@ -231,6 +235,19 @@ def render_markdown(suite: SuiteResult) -> str:
             f"| Caiu nas regras locais | {_p(s['fallback_local_rate'])} |",
             f"| Caiu no LLM com contexto | {_p(s['fallback_context_rate'])} |",
         ]
+        reasons = s.get("fallback_reasons") or {}
+        if reasons:
+            names = {"quota": "cota", "timeout": "prazo", "error": "erro"}
+            text = " · ".join(f"{names.get(k, k)} {v}" for k, v in sorted(reasons.items()))
+            lines.append(f"| Motivo do fallback | {text} |")
+        if reasons.get("quota"):
+            lines += [
+                "",
+                (
+                    f"> **Atenção:** {reasons['quota']} execuções caíram por cota esgotada do modelo. "
+                    "Essas notas medem as regras locais, não o LLM."
+                ),
+            ]
     lines += ["", "## Por categoria", "", "| Categoria | Execuções | Aprovação | Nota média |", "|---|---|---|---|"]
     for cat, v in s["by_category"].items():
         lines.append(f"| {cat} | {v['runs']} | {_p(v['pass_rate'])} | {_s(v['mean_score'])} |")
@@ -288,6 +305,7 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--all-cases", action="store_true", help="ignora a marcação engines e roda todos os casos")
     p.add_argument("--out", type=Path, default=None, help="placar em markdown")
     p.add_argument("--json", type=Path, default=None, help="resultado completo em JSON")
+    p.add_argument("--log", type=Path, default=None, help="grava log INFO do agente (tokens, finish_reason, fallbacks)")
     p.add_argument("--repeat", type=int, default=1, help="repetições por caso (só com LLM)")
     p.add_argument("--sleep", type=float, default=0.0, help="segundos entre chamadas ao LLM (cota gratuita)")
     p.add_argument("--max-latency", type=float, default=None,
@@ -317,15 +335,31 @@ def main(argv: list[str] | None = None) -> SuiteResult:
         max_latency = settings.chat_budget_s + 5 if args.engine == "auto" and settings.llm_enabled else DEFAULT_LOCAL_LATENCY_S
 
     print(f"Rodando {len(cases)} casos · motor {args.engine} · dados {data_path}", flush=True)
-    suite = run_suite(
-        repo, settings, cases,
-        engine=args.engine,
-        repeat=max(1, args.repeat),
-        sleep_s=max(0.0, args.sleep),
-        max_latency_s=max_latency,
-        data_path=str(data_path),
-        progress=not args.quiet,
-    )
+    agent_logger = logging.getLogger("app.agent")
+    prev_level = agent_logger.level
+    log_handler: logging.Handler | None = None
+    if args.log is not None:
+        args.log.parent.mkdir(parents=True, exist_ok=True)
+        log_handler = logging.FileHandler(args.log, mode="w", encoding="utf-8")
+        log_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s %(message)s"))
+        agent_logger.setLevel(logging.INFO)
+        agent_logger.addHandler(log_handler)
+    try:
+        suite = run_suite(
+            repo, settings, cases,
+            engine=args.engine,
+            repeat=max(1, args.repeat),
+            sleep_s=max(0.0, args.sleep),
+            max_latency_s=max_latency,
+            data_path=str(data_path),
+            progress=not args.quiet,
+        )
+    finally:
+        if log_handler is not None:
+            log_handler.flush()
+            agent_logger.removeHandler(log_handler)
+            log_handler.close()
+            agent_logger.setLevel(prev_level)
     print_summary(suite)
     if args.out:
         args.out.parent.mkdir(parents=True, exist_ok=True)

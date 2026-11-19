@@ -131,9 +131,19 @@ export function Markdown({ text }: { text: string }) {
   return <div className="space-y-1.5">{blocks}</div>;
 }
 
-export function readingNote(status: "rules" | "upgraded" | "cancelled" | "failed", toolLabels: string[]): string {
+const FALLBACK_NOTE = {
+  quota: "A cota diária do modelo gratuito acabou. Vale a leitura pelas regras até a cota voltar.",
+  timeout: "O modelo gratuito demorou demais e a leitura dele foi descartada. Vale a leitura pelas regras.",
+  error: "A leitura do modelo não chegou. Vale a leitura pelas regras.",
+} as const;
+
+export function readingNote(
+  status: "rules" | "upgraded" | "cancelled" | "failed",
+  toolLabels: string[],
+  fallback?: keyof typeof FALLBACK_NOTE,
+): string {
   if (status === "cancelled") return "Leitura do modelo cancelada. Vale a leitura pelas regras.";
-  if (status === "failed") return "A leitura do modelo não chegou. Vale a leitura pelas regras.";
+  if (status === "failed") return FALLBACK_NOTE[fallback ?? "error"];
   if (status === "upgraded") {
     return toolLabels.length
       ? `Leitura do modelo. Consultou: ${toolLabels.join(", ")}.`

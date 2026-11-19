@@ -556,3 +556,42 @@ def test_empty_choices_falls_back_to_context_and_context_is_compact(client, repo
         assert answer_with_context("resumo", [], repo, Filters(), get_settings()) is None
     finally:
         client.app.dependency_overrides.pop(get_settings, None)
+
+
+# ------------------------------------------------------------ prazo de parede
+def test_completion_respects_wall_clock_deadline_even_with_keepalive():
+    """O OpenRouter manda keep-alive e o timeout de leitura do httpx nunca estoura: o prazo é de parede."""
+    import time as _time
+
+    from app.agent import llm as llm_mod
+
+    class _SlowCompletions:
+        def create(self, **kwargs):
+            _time.sleep(3.0)  # simula a geração longa com keep-alive: o SDK não desiste sozinho
+            return SimpleNamespace(choices=[])
+
+    client = SimpleNamespace(chat=SimpleNamespace(completions=_SlowCompletions()))
+    settings = Settings(openrouter_api_key="k", llm_reasoning_effort=None)
+    started = _time.monotonic()
+    with pytest.raises(llm_mod.LLMDeadlineExceeded):
+        llm_mod._create_completion(
+            client, settings=settings, messages=[{"role": "user", "content": "oi"}], timeout=0.3
+        )
+    assert _time.monotonic() - started < 1.5
+
+
+def test_completion_within_deadline_returns_response():
+    from app.agent import llm as llm_mod
+
+    seen: dict = {}
+
+    class _FastCompletions:
+        def create(self, **kwargs):
+            seen.update(kwargs)
+            return SimpleNamespace(choices=["ok"])
+
+    client = SimpleNamespace(chat=SimpleNamespace(completions=_FastCompletions()))
+    settings = Settings(openrouter_api_key="k", llm_reasoning_effort=None)
+    res = llm_mod._create_completion(client, settings=settings, messages=[], timeout=2.0)
+    assert res.choices == ["ok"]
+    assert seen["timeout"] == 2.0

@@ -28,13 +28,14 @@ class Settings(BaseSettings):
 
     openrouter_api_key: str | None = None
     openrouter_model: str = DEFAULT_MODEL
-    # Modelo gratuito, resposta rápida: cada chamada ao LLM tem até 10 s e a conversa inteira 12 s
-    # (tools + contexto). Estourou, o operador fica com a leitura local, que já está na tela.
-    # 700 tokens cabem a resposta (até 120 palavras), a linha **Ação:** e o bloco ```leitura```.
-    llm_timeout_s: float = 10.0
-    llm_max_tokens: int = 700
+    # Modelos gratuitos com raciocínio (como Nemotron 3 Ultra) contam o raciocínio dentro de
+    # `max_tokens` (700 cortava 3/4 das respostas com finish=length). A leitura local já aparece na
+    # tela primeiro em ~0,15 s enquanto o LLM roda em paralelo; 1400 tokens e 20 s de orçamento
+    # evitam corte no meio e cobrem 2–3 rodadas sem estender muito a espera.
+    llm_timeout_s: float = 18.0
+    llm_max_tokens: int = 1400
     llm_reasoning_effort: str | None = "low"
-    chat_budget_s: float = 12.0
+    chat_budget_s: float = 20.0
     chat_rate_limit_per_minute: int = 8
     # Teto de chamadas ao LLM por minuto, somando todos os IPs. 0 desliga.
     chat_global_rate_limit_per_minute: int = 60

@@ -52,7 +52,7 @@ export function AgentChatComanda({
   const [expanded, setExpanded] = useState(false);
   const collapsible = isLongComanda(ticket.detail);
   const clamped = collapsible && !expanded;
-  const note = waiting ? "Leitura pelas regras. Aprofundando com o modelo…" : readingNote(ticket.status, ticket.toolLabels);
+  const note = waiting ? "Leitura pelas regras. Aprofundando com o modelo…" : readingNote(ticket.status, ticket.toolLabels, ticket.fallback);
   return (
     <article className="tile mr-2 px-3 py-2.5" aria-label={`${agentStamp(ticket.series)} · ${ticket.title}`}>
       <div className="border-b-[1.5px] border-dashed border-rule pb-1.5">
@@ -247,7 +247,7 @@ export function AgentOpenBand({
               <X className="size-3.5" aria-hidden /> Tirar da fila
             </button>
           </div>
-          <p className="mt-3 text-meta text-pretty text-muted">{readingNote(ticket.status, ticket.toolLabels)}</p>
+          <p className="mt-3 text-meta text-pretty text-muted">{readingNote(ticket.status, ticket.toolLabels, ticket.fallback)}</p>
           <p className="mt-1 text-meta tabular-nums text-muted">{baseLine(ticket)}</p>
         </div>
       </div>

@@ -323,11 +323,13 @@ def test_local_baseline_floor(repo, capsys):
 def test_runner_writes_markdown(parquet_path, tmp_path):
     out = tmp_path / "placar.md"
     js = tmp_path / "placar.json"
+    log_file = tmp_path / "eval.log"
     suite = main(["--engine", "local", "--data", str(parquet_path), "--cases", "overview,vazio",
-                  "--out", str(out), "--json", str(js), "--quiet"])
+                  "--out", str(out), "--json", str(js), "--log", str(log_file), "--quiet"])
     text = out.read_text(encoding="utf-8")
     assert "# Placar do agente de insights" in text
     assert "| Taxa de aprovação |" in text
     assert "ov-geral" in text and "empty-periodo" in text
     assert js.exists() and '"pass_rate"' in js.read_text(encoding="utf-8")
+    assert log_file.exists()
     assert {r.category for r in suite.results} == {"overview", "vazio"}

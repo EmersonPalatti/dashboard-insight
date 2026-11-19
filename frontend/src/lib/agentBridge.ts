@@ -24,6 +24,8 @@ export interface AgentDrill {
 }
 
 export type AgentReadingStatus = "rules" | "upgraded" | "cancelled" | "failed";
+/** Por que a leitura do modelo não chegou (vem do backend em `fallback_reason`). */
+export type AgentFallback = "quota" | "timeout" | "error";
 
 export interface AgentTicket {
   id: string;
@@ -37,6 +39,7 @@ export interface AgentTicket {
   lowSample: boolean;
   source: "local" | "llm";
   status: AgentReadingStatus;
+  fallback?: AgentFallback;
   toolLabels: string[];
   /** `JSON.stringify` do recorte no momento da pergunta. */
   scope: string;

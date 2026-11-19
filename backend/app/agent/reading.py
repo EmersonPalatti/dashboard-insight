@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import get_args
 
 from app import semantic
@@ -44,6 +45,7 @@ _TOOL_LABEL = {
 _DRILL_LABEL = {"sla_rate": "Etapa que explica o atraso", "cycle_p50": "Etapa que explica o ciclo"}
 _CALL = re.compile(r"^(\w+)\((.*)\)$")
 _FENCE = re.compile(r"```(?:leitura|json)?[^\n]*\n(\{.*?\})\s*```", re.DOTALL)
+_OPEN_FENCE = re.compile(r"\n?```(?:leitura|json)\b[\s\S]*$", re.IGNORECASE)
 _MARKS = re.compile(r"[*_#`]")
 _SEVERITY_PT = [
     (re.compile(r"\balertas\s+high\b", re.IGNORECASE), "alertas críticos"),
@@ -61,14 +63,45 @@ _SEVERITY_PT = [
 ]
 
 
+# Flags e chaves internas que o modelo gratuito às vezes copia das tools para o texto.
+_FLAG_PT = {
+    "volume_low_sample": "volume pequeno",
+    "low_sample": "amostra pequena",
+    "sla_below": "SLA abaixo do recorte",
+    "cancel_above": "cancelamento acima do recorte",
+    "sla_pct": "SLA",
+    "cancel_pct": "cancelamento",
+    "stuck_pct": "pedidos presos",
+}
+
+
+@lru_cache(maxsize=1)
+def _internal_terms() -> tuple[re.Pattern[str], dict[str, str]]:
+    """Chave interna → rótulo pt-BR. Métricas vêm da camada semântica, nunca de lista duplicada aqui."""
+    terms = {key: metric.label for key, metric in semantic.load().metrics.items() if "_" in key}
+    terms.update(_FLAG_PT)
+    # Mais longa primeiro: `volume_low_sample` antes de `low_sample`. Crase em volta sai junto.
+    alternation = "|".join(sorted(map(re.escape, terms), key=len, reverse=True))
+    return re.compile(rf"`?\b({alternation})\b`?"), terms
+
+
+# Parêntese com argumentos de ferramenta copiados ("(window=jantar, sort=production_p50)").
+_TOOL_ARGS = re.compile(r"\s*\((?=[^()]*\b[a-z_]+=)[^()]*\)")
+
+
+def _pt_internal(text: str) -> str:
+    pattern, terms = _internal_terms()
+    return pattern.sub(lambda m: terms[m.group(1)], _TOOL_ARGS.sub("", text))
+
+
 def _pt_severity(text: str) -> str:
-    """Troca rótulos em inglês de severidade (`high`/`medium`/`low`) por pt-BR."""
+    """Troca severidade em inglês (`high`/`medium`/`low`) e chaves internas das tools por pt-BR."""
     for pattern, repl in _SEVERITY_PT:
         text = pattern.sub(
             lambda m, r=repl: (r[0].upper() + r[1:]) if m.group(0)[0].isupper() else r,
             text,
         )
-    return text
+    return _pt_internal(text)
 
 
 @dataclass
@@ -316,7 +349,7 @@ def parse_leitura(text: str) -> ParsedReading | None:
 
 
 def _strip_fence(text: str) -> str:
-    return _FENCE.sub("", text).strip()
+    return _OPEN_FENCE.sub("", _FENCE.sub("", text)).strip()
 
 
 def split_markdown(text: str) -> tuple[str, str]:
@@ -379,6 +412,7 @@ def response_llm(
     parsed = parse_leitura(text)
     clean_text = _pt_severity(text)
     if parsed is None:
+        clean_text = _strip_fence(clean_text)
         diagnosis, action = split_markdown(clean_text)
         if not action:
             fallback = response_local(local)

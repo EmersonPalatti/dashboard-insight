@@ -2529,6 +2529,23 @@
             "type": "array",
             "title": "Tool Labels",
             "description": "Consultas usadas, em português, sem o nome da função."
+          },
+          "fallback_reason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "quota",
+                  "timeout",
+                  "error"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fallback Reason",
+            "description": "Por que a leitura veio das regras com o LLM ligado: cota do modelo gratuito esgotada, prazo estourado ou erro. Vazio quando o LLM respondeu ou não foi chamado."
           }
         },
         "type": "object",

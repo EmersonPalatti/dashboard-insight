@@ -19,6 +19,8 @@ import logging
 import re
 import time
 import unicodedata
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeout
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -1330,6 +1332,27 @@ def _log_usage(mode: str, model: str, round_idx: int, response: Any, tools_used:
     )
 
 
+# O `timeout` do SDK vira timeout de leitura do httpx, e o OpenRouter manda bytes de keep-alive
+# enquanto o modelo gera: cada byte zera o relógio e a chamada passa do prazo (46 s com timeout de 18 s).
+# O prazo de parede fica aqui: a chamada roda numa thread e, estourado o prazo, a resposta é
+# abandonada (a thread termina sozinha) e o agente segue a cadeia com o que tem.
+_CALL_GRACE_S = 0.5
+_llm_pool = ThreadPoolExecutor(max_workers=8, thread_name_prefix="llm-call")
+
+
+class LLMDeadlineExceeded(TimeoutError):
+    """Chamada ao LLM passou do prazo de parede da pergunta."""
+
+
+def _call_with_deadline(fn: Any, kwargs: dict[str, Any], limit_s: float) -> Any:
+    future = _llm_pool.submit(fn, **kwargs)
+    try:
+        return future.result(timeout=max(0.1, limit_s) + _CALL_GRACE_S)
+    except FutureTimeout:
+        future.cancel()
+        raise LLMDeadlineExceeded(f"LLM sem resposta em {limit_s:.1f} s") from None
+
+
 def _create_completion(
     client: Any,
     *,
@@ -1356,7 +1379,7 @@ def _create_completion(
         kwargs["extra_body"] = {"reasoning": {"effort": effort, "exclude": True}}
 
     try:
-        return client.chat.completions.create(**kwargs)
+        return _call_with_deadline(client.chat.completions.create, kwargs, timeout)
     except openai.BadRequestError as exc:
         can_retry = "extra_body" in kwargs or kwargs.get("tool_choice") == "required"
         remaining = (deadline - time.monotonic()) if deadline is not None else timeout
@@ -1368,7 +1391,7 @@ def _create_completion(
         if retry_kwargs.get("tool_choice") == "required":
             retry_kwargs["tool_choice"] = "auto"
         retry_kwargs["timeout"] = min(timeout, remaining)
-        return client.chat.completions.create(**retry_kwargs)
+        return _call_with_deadline(client.chat.completions.create, retry_kwargs, retry_kwargs["timeout"])
 
 
 def answer_with_tools(

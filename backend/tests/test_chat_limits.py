@@ -509,7 +509,7 @@ def test_llm_strips_think_block_passes_max_tokens_and_handles_empty_choices(clie
         assert body["mode"] == "llm-tools"
         assert body["answer"].startswith("Resposta final.")
         assert "<think>" not in body["answer"]
-        assert captured[0]["max_tokens"] == 700
+        assert captured[0]["max_tokens"] == 1400
     finally:
         client.app.dependency_overrides.pop(get_settings, None)
 
@@ -525,9 +525,9 @@ def test_llm_strips_think_block_passes_max_tokens_and_handles_empty_choices(clie
 def test_latency_defaults_fit_the_free_model_budget():
     """Padrões do modelo gratuito: resposta rápida e reserva coerente para o modo contexto."""
     fields = Settings.model_fields
-    assert fields["chat_budget_s"].default == 12.0
-    assert fields["llm_timeout_s"].default == 10.0
-    assert fields["llm_max_tokens"].default == 700
+    assert fields["chat_budget_s"].default == 20.0
+    assert fields["llm_timeout_s"].default == 18.0
+    assert fields["llm_max_tokens"].default == 1400
     budget = fields["chat_budget_s"].default
     assert context_reserve(budget) == CONTEXT_MIN_S == 3.0
     # Tools ficam com o resto do orçamento, abaixo do timeout de uma chamada.
@@ -555,3 +555,70 @@ def test_context_is_skipped_when_less_than_the_reserve_remains(client, monkeypat
         assert "tools" in calls[0]
     finally:
         client.app.dependency_overrides.pop(get_settings, None)
+
+
+# ------------------------------------------------------------ cota do modelo gratuito
+def _rate_limit(message: str):
+    import httpx
+    import openai
+
+    request = httpx.Request("POST", "https://openrouter.ai/api/v1/chat/completions")
+    return openai.RateLimitError(message, response=httpx.Response(429, request=request), body=None)
+
+
+def test_daily_quota_skips_context_and_opens_breaker(client, monkeypatch):
+    """429 diário: nada de segunda chamada, leitura local com motivo, e as próximas nem chamam o LLM."""
+    calls: list[dict] = []
+
+    def create(*_args, **kwargs):
+        calls.append(kwargs)
+        raise _rate_limit("Rate limit exceeded: free-models-per-day")
+
+    _install_llm(monkeypatch, create)
+    client.app.dependency_overrides[get_settings] = lambda: Settings(
+        openrouter_api_key="test-key", chat_rate_limit_enabled=False
+    )
+    try:
+        first = client.post("/api/agent/chat", json={"question": "como esta o sla?"}).json()
+        assert first["mode"] == "local"
+        assert first["fallback_reason"] == "quota"
+        assert len(calls) == 1  # o modo contexto não gasta outra chamada que também voltaria 429
+
+        second = client.post("/api/agent/chat", json={"question": "e o cancelamento?"}).json()
+        assert second["fallback_reason"] == "quota"
+        assert len(calls) == 1  # disjuntor aberto: nem chega no OpenRouter
+    finally:
+        client.app.dependency_overrides.pop(get_settings, None)
+
+
+def test_minute_quota_breaker_is_short():
+    from app.agent.service import _QuotaBreaker
+
+    breaker = _QuotaBreaker()
+    before = time.monotonic()
+    breaker.open_for(_rate_limit("Rate limit exceeded: free-models-per-min"))
+    assert breaker.is_open()
+    assert breaker._until - before <= _QuotaBreaker.MINUTE_COOLDOWN_S + 1
+
+
+def test_llm_timeout_sets_fallback_reason(client, monkeypatch):
+    from app.agent import llm as llm_mod
+
+    def create(*_args, **kwargs):
+        raise llm_mod.LLMDeadlineExceeded("lento")
+
+    _install_llm(monkeypatch, create)
+    client.app.dependency_overrides[get_settings] = lambda: Settings(
+        openrouter_api_key="test-key", chat_rate_limit_enabled=False
+    )
+    try:
+        body = client.post("/api/agent/chat", json={"question": "como esta o sla?"}).json()
+        assert body["mode"] == "local"
+        assert body["fallback_reason"] == "timeout"
+    finally:
+        client.app.dependency_overrides.pop(get_settings, None)
+
+
+def test_local_engine_has_no_fallback_reason(client):
+    body = client.post("/api/agent/chat", json={"question": "como esta o sla?", "engine": "local"}).json()
+    assert body["fallback_reason"] is None

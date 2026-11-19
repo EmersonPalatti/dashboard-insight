@@ -264,3 +264,49 @@ def test_llm_severity_is_translated_to_pt_br(client, monkeypatch):
         assert "alertas críticos" in body["action"]
     finally:
         client.app.dependency_overrides.pop(get_settings, None)
+
+
+def test_llm_truncated_leitura_fence_keeps_answer_and_action(client, monkeypatch):
+    payload = (
+        "SLA em 80,0%.\n\n"
+        "**Ação:** Líder do hub deve revisar o SLA hoje.\n\n"
+        '```leitura\n{"title":"Corte no meio'
+    )
+    _install(monkeypatch, payload)
+    client.app.dependency_overrides[get_settings] = lambda: Settings(
+        openrouter_api_key="test-key", chat_rate_limit_enabled=False
+    )
+    try:
+        body = client.post("/api/agent/chat", json={"question": "como esta o sla?"}).json()
+        assert body["mode"] == "llm-tools"
+        assert body["source"] == "llm"
+        assert "revisar o SLA hoje" in body["action"]
+        assert body["title"]
+        assert body["diagnosis"]
+        assert "```leitura" not in body["answer"]
+        assert "Corte no meio" not in body["answer"]
+    finally:
+        client.app.dependency_overrides.pop(get_settings, None)
+
+
+def test_internal_keys_from_tools_are_translated_in_llm_text():
+    from app.agent.reading import _pt_severity
+
+    text = "Hub 8 com `sla_below` e low_sample; volume_low_sample na loja. sla_rate 80% e cycle_p50 alto."
+    out = _pt_severity(text)
+    for raw in ("sla_below", "low_sample", "volume_low_sample", "sla_rate", "cycle_p50", "`"):
+        assert raw not in out
+    assert "SLA abaixo do recorte" in out
+    assert "volume pequeno" in out
+    assert "amostra pequena" in out
+
+
+def test_copied_tool_arguments_are_removed_from_llm_text():
+    from app.agent.reading import _pt_severity
+
+    text = "Acionar as 10 lojas com maior preparo no jantar (window=jantar, sort=production_p50, min_measured=100) hoje."
+    out = _pt_severity(text)
+    assert "window=" not in out and "sort=" not in out
+    assert out == "Acionar as 10 lojas com maior preparo no jantar hoje."
+    # Parêntese comum continua.
+    assert _pt_severity("SLA de 80,0% (sobre 1.200 entregas).") == "SLA de 80,0% (sobre 1.200 entregas)."
