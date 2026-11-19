@@ -9,7 +9,7 @@ from datetime import date
 
 import pytest
 
-from app.alerts import THIN_SLA_ACTION, _hours_label, _stage_action, _weighted_sla, detect_alerts
+from app.alerts import BROKEN_CANCEL, THIN_SLA_ACTION, _hours_label, _stage_action, _weighted_sla, detect_alerts
 from app.filters import Filters
 from app.repository import MIN_MEASURED
 
@@ -200,9 +200,33 @@ def test_weighted_sla_uses_measured_not_delivered():
 def test_cancel_action_names_worst_store_from_data(repo):
     f = Filters()
     alert = _by_id(repo, f)["cancel-recorte"]
-    worst = repo.breakdown(f, "store", sort="cancel_rate", limit=1, min_orders=150)[0]
+    operating = [
+        s for s in repo.breakdown(f, "store", sort="cancel_rate", limit=100, min_orders=150)
+        if (s["cancel_rate"] or 0) < BROKEN_CANCEL
+    ]
+    worst = operating[0]
     assert worst["label"] in alert.action and worst["parent"] in alert.action
     assert "Ligar hoje" in alert.action
+    assert "Loja Quebrada" not in alert.action
+
+
+def test_cancel_recorte_skips_broken_store_for_rupture_check(repo):
+    # Loja 33 cancela 100% (sem entregas) e Loja 34 cancela 50% (em operação).
+    alerts = _by_id(repo, Filters(store=[33, 34]))
+    assert "Tirar" in alerts["cancel-store-33"].action
+    recorte = alerts["cancel-recorte"]
+    assert "Loja 34" in recorte.action
+    assert "fora as lojas sem entregas" in recorte.action
+    assert "Loja 33" not in recorte.action
+
+
+def test_cancel_recorte_with_only_healthy_operating_stores_takes_broken_offline(repo):
+    # Loja 30 cancela 100% e Loja 18 é saudável (0%): quem puxa o recorte é a loja sem entregas.
+    alerts = _by_id(repo, Filters(store=[30, 18]))
+    recorte = alerts["cancel-recorte"]
+    assert "Tirar Loja Quebrada do ar hoje" in recorte.action
+    assert "ruptura" not in recorte.action
+    assert "Loja 18" not in recorte.action
 
 
 def test_freight_action_names_store_from_data(repo):
