@@ -103,11 +103,12 @@ def chat(req: ChatRequest, repo: Repository, settings: Settings, use_llm: bool =
     if quota_breaker.is_open():
         return _local(local_reading, "quota")
 
-    deadline = time.monotonic() + settings.chat_budget_s
-    reserve = context_reserve(settings.chat_budget_s)
+    graph = settings.investigation_enabled and investigate.should_investigate(req.question, req.history, repo, f)
+    budget = settings.investigation_budget_s if graph else settings.chat_budget_s
+    deadline = time.monotonic() + budget
+    reserve = context_reserve(budget)
     tools_deadline = deadline - reserve
     reason: FallbackReason = "error"
-    graph = settings.investigation_enabled and investigate.should_investigate(req.question, req.history, repo, f)
     first = "investigação" if graph else "LLM com tools"
     try:
         if graph:

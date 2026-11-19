@@ -432,7 +432,8 @@ def synthesize(state: InvestigationState) -> dict[str, Any]:
         system_prompt=llm.SYSTEM_PROMPT + _SYNTH_APPENDIX,
     )
     messages[-1]["content"] = evidence_block(state) + messages[-1]["content"]
-    timeout = min(remaining, settings.llm_timeout_s)
+    # Sem o teto por chamada (llm_timeout_s): a síntese é a única chamada do grafo e pode levar ~27 s.
+    timeout = remaining
     # Exceção sobe: o serviço classifica (cota, congestionado, prazo) e escolhe o fallback.
     response = llm._create_completion(
         llm._client(settings, timeout=timeout), settings=settings, messages=messages, timeout=timeout,
@@ -478,7 +479,7 @@ def run_graph(
     """Roda o grafo e devolve o estado final (testes e logs). Exceção do LLM na síntese sobe."""
     initial: InvestigationState = {
         "question": question, "history": list(history), "filters": f, "repo": repo, "settings": settings,
-        "deadline": deadline if deadline is not None else time.monotonic() + settings.chat_budget_s,
+        "deadline": deadline if deadline is not None else time.monotonic() + settings.investigation_budget_s,
         "evidence": [], "probes": 0, "assess_rounds": 0, "next_probe": None, "hypothesis": "",
         "seen": [], "tools_used": [], "trace": [], "timings": {}, "answer": None,
     }

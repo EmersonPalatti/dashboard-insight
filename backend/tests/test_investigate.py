@@ -340,3 +340,32 @@ def test_parse_assessment_is_tolerant():
     assert ok["next"] == {"tool": "drill_cause", "args": {"metric": "sla_rate"}}
     assert inv.parse_assessment("nada aqui") is None
     assert inv.parse_assessment("[1, 2]") is None
+
+
+def test_graph_gets_its_own_budget_and_the_synthesis_is_not_capped_per_call(repo, monkeypatch):
+    """Pergunta do grafo usa investigation_budget_s; a síntese não fica presa ao llm_timeout_s."""
+    seen: list[dict] = []
+    _install(monkeypatch, [_resp(FINAL)], seen)
+    captured: dict = {}
+    real = inv.investigate
+
+    def spy(*args, deadline=None, **kw):
+        captured["left"] = deadline - time.monotonic()
+        return real(*args, deadline=deadline, **kw)
+
+    monkeypatch.setattr(inv, "investigate", spy)
+    settings = _settings(investigation_max_probes=0, investigation_budget_s=35.0, chat_budget_s=20.0)
+    res = service.chat(ChatRequest(question=WHY_SLA, filters=MAR), repo, settings)
+    assert res.source == "llm"
+    # 35 s menos a reserva do modo contexto (3 s), não os 20 s do resto do agente.
+    assert 31.0 < captured["left"] <= 32.0
+    # Síntese com o prazo do grafo, acima do teto por chamada (llm_timeout_s=10 nos testes).
+    assert seen[-1]["timeout"] > settings.llm_timeout_s
+    assert seen[-1]["max_tokens"] == settings.investigation_synth_max_tokens
+
+
+def test_graph_budget_defaults():
+    fields = Settings.model_fields
+    assert fields["investigation_budget_s"].default == 35.0
+    assert fields["investigation_synth_max_tokens"].default == 7000
+    assert fields["chat_budget_s"].default == 20.0  # o resto do agente não fica mais lento

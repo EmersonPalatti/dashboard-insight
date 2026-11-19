@@ -55,9 +55,14 @@ class Settings(BaseSettings):
     # devolva o JSON, medindo no placar.
     investigation_max_probes: int = 0
     # Teto da síntese do grafo, separado do loop de tools: é a única chamada da investigação e o
-    # raciocínio do ERNIE vai junto. Com 2000, 5 de 8 respostas chegaram; com 3000, 7 de 8 (duas
-    # usaram ~2.850 tokens), com p50 de ~10 s contra ~8,6 s.
-    investigation_synth_max_tokens: int = 3000
+    # raciocínio do ERNIE vai junto. Abril e fevereiro fecham com ~2.100–2.400 tokens (10–13 s), mas
+    # março pede ~6.000 (~27 s, a ~220 tokens/s): com 3000 a síntese voltava vazia (finish=length)
+    # e a pergunta caía nas regras em produção.
+    investigation_synth_max_tokens: int = 7000
+    # Prazo próprio da pergunta que vai ao grafo (o resto do agente fica em chat_budget_s). A espera
+    # maior não trava o operador: a leitura por regras já está na tela e é substituída quando a
+    # síntese chega. A síntese usa este prazo, não o teto por chamada (llm_timeout_s).
+    investigation_budget_s: float = 35.0
     chat_rate_limit_per_minute: int = 8
     # Teto de chamadas ao LLM por minuto, somando todos os IPs. 0 desliga.
     chat_global_rate_limit_per_minute: int = 60
