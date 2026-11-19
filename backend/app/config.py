@@ -28,10 +28,13 @@ class Settings(BaseSettings):
 
     openrouter_api_key: str | None = None
     openrouter_model: str = DEFAULT_MODEL
-    llm_timeout_s: float = 45.0
-    llm_max_tokens: int = 900
+    # Modelo gratuito, resposta rápida: cada chamada ao LLM tem até 10 s e a conversa inteira 12 s
+    # (tools + contexto). Estourou, o operador fica com a leitura local, que já está na tela.
+    # 700 tokens cabem a resposta (até 120 palavras), a linha **Ação:** e o bloco ```leitura```.
+    llm_timeout_s: float = 10.0
+    llm_max_tokens: int = 700
     llm_reasoning_effort: str | None = "low"
-    chat_budget_s: float = 20.0
+    chat_budget_s: float = 12.0
     chat_rate_limit_per_minute: int = 8
     # Teto de chamadas ao LLM por minuto, somando todos os IPs. 0 desliga.
     chat_global_rate_limit_per_minute: int = 60

@@ -11,6 +11,7 @@ import re
 from dataclasses import dataclass
 from typing import get_args
 
+from app import semantic
 from app.filters import ChannelType, Filters, Modal, OrderStatus, Segment
 from app.repository import VALUE_LABELS, Repository
 from app.schemas import ChatResponse, DrillDown, ReadingBase
@@ -36,9 +37,12 @@ _TOOL_LABEL = {
     "get_kpis": "KPIs do recorte",
     "get_alerts": "Alertas do recorte",
     "get_timeseries": "Série do recorte",
-    "get_heatmap": "Mapa de calor (dia × hora)",
-    "compare_slices": "Comparação de subfatias",
+    "query_metrics": "Consulta do recorte",
+    "explain_change": "Por que mudou",
+    "drill_cause": "Etapa que explica o atraso",
 }
+_DRILL_LABEL = {"sla_rate": "Etapa que explica o atraso", "cycle_p50": "Etapa que explica o ciclo"}
+_CALL = re.compile(r"^(\w+)\((.*)\)$")
 _FENCE = re.compile(r"```(?:leitura|json)?[^\n]*\n(\{.*?\})\s*```", re.DOTALL)
 _MARKS = re.compile(r"[*_#`]")
 _SEVERITY_PT = [
@@ -89,14 +93,53 @@ class ParsedReading:
     sent_drilldowns: bool
 
 
+def _metric_label(key: str) -> str | None:
+    """'SLA (no prazo)' -> 'SLA'; 'Cancelamento' -> 'cancelamento' (sigla fica maiúscula)."""
+    metric = semantic.load().metrics.get(key)
+    if metric is None:
+        return None
+    label = metric.label.split(" (")[0].strip()
+    return label if label[:2].isupper() else label[:1].lower() + label[1:]
+
+
+def _dim_label(key: str) -> str | None:
+    dim = semantic.load().dimensions.get(key)
+    return dim.label.lower() if dim else None
+
+
+def _labels(keys: str, lookup) -> list[str]:
+    return [label for key in keys.split(",") if key and (label := lookup(key.strip()))]
+
+
 def label_for(name: str) -> str:
-    """Rótulo pt-BR. Nome de função desconhecido não vaza para a tela."""
+    """Rótulo pt-BR. Nome de função desconhecido não vaza para a tela.
+
+    O ToolRunner registra a chamada como `nome(args)`: `query_metrics(sla_rate,cancel_rate:hub,hour)`,
+    `explain_change(cancel_rate:store)`, `drill_cause(sla_rate)`; o agente local usa `get_breakdown(dim)`.
+    """
     if name in _TOOL_LABEL:
         return _TOOL_LABEL[name]
-    if name.startswith("get_breakdown(") and name.endswith(")"):
-        dim = name[len("get_breakdown("):-1]
-        return _DIMENSION_LABEL.get(dim, "Quebra do recorte")
-    return "Consulta do recorte"
+    match = _CALL.match(name)
+    if not match:
+        return "Consulta do recorte"
+    tool, args = match.groups()
+    if tool == "get_breakdown":
+        return _DIMENSION_LABEL.get(args, "Quebra do recorte")
+    if tool == "drill_cause":
+        return _DRILL_LABEL.get(args, _TOOL_LABEL["drill_cause"])
+    metric_part, _, dim_part = args.partition(":")
+    metrics = _labels(metric_part, _metric_label)
+    dims = _labels(dim_part, _dim_label)
+    if tool == "explain_change" and metrics:
+        return f"Por que mudou: {metrics[0]}" + (f" por {dims[0]}" if dims else "")
+    if tool == "query_metrics" and metrics:
+        if len(metrics) > 3:
+            shown = f"{', '.join(metrics[:2])} e mais {len(metrics) - 2}"
+        else:
+            shown = " e ".join([", ".join(metrics[:-1]), metrics[-1]]) if len(metrics) > 1 else metrics[0]
+        where = f" por {' × '.join(dims)}" if dims else " no recorte"
+        return f"Consulta: {shown}{where}"
+    return _TOOL_LABEL.get(tool, "Consulta do recorte")
 
 
 def labels_for(names: list[str]) -> list[str]:

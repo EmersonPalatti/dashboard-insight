@@ -6,6 +6,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from app.agent.service import CONTEXT_MIN_S, context_reserve
 from app.config import Settings, get_settings
 from app.main import chat_global_limiter, chat_limiter
 
@@ -270,8 +271,8 @@ def test_chat_tool_call_id_none_and_malformed_json_handled(client, monkeypatch):
 def _llm_settings(**overrides) -> Settings:
     base = {
         "openrouter_api_key": "test-key",
-        "chat_budget_s": 20,
-        "llm_timeout_s": 45,
+        "chat_budget_s": 12,
+        "llm_timeout_s": 10,
         "chat_rate_limit_enabled": False,
     }
     base.update(overrides)
@@ -395,8 +396,9 @@ def test_timeout_is_passed_to_the_client_and_capped_for_tools(client, monkeypatc
         body = client.post("/api/agent/chat", json={"question": "como está o sla?"}).json()
         assert body["mode"] == "llm-context"
         assert client_timeouts[0] == create_timeouts[0]
-        # 25% do orçamento de 20s fica para o contexto: a chamada de tools não leva os 20 nem os 45.
-        assert 12 < client_timeouts[0] < 16
+        # 3 s do orçamento de 12 s ficam para o contexto: a chamada de tools leva até 9 s, não os 10 do timeout.
+        assert 8 < client_timeouts[0] <= 9
+        assert client_timeouts[0] == pytest.approx(12 - CONTEXT_MIN_S, abs=0.5)
         assert client_timeouts[1] == create_timeouts[1]
         assert create_timeouts[1] > 0
     finally:
@@ -507,7 +509,7 @@ def test_llm_strips_think_block_passes_max_tokens_and_handles_empty_choices(clie
         assert body["mode"] == "llm-tools"
         assert body["answer"].startswith("Resposta final.")
         assert "<think>" not in body["answer"]
-        assert captured[0]["max_tokens"] == 900
+        assert captured[0]["max_tokens"] == 700
     finally:
         client.app.dependency_overrides.pop(get_settings, None)
 
@@ -516,5 +518,40 @@ def test_llm_strips_think_block_passes_max_tokens_and_handles_empty_choices(clie
     try:
         body = client.post("/api/agent/chat", json={"question": "resumo"}).json()
         assert body["mode"] == "local"
+    finally:
+        client.app.dependency_overrides.pop(get_settings, None)
+
+
+def test_latency_defaults_fit_the_free_model_budget():
+    """Padrões do modelo gratuito: resposta rápida e reserva coerente para o modo contexto."""
+    fields = Settings.model_fields
+    assert fields["chat_budget_s"].default == 12.0
+    assert fields["llm_timeout_s"].default == 10.0
+    assert fields["llm_max_tokens"].default == 700
+    budget = fields["chat_budget_s"].default
+    assert context_reserve(budget) == CONTEXT_MIN_S == 3.0
+    # Tools ficam com o resto do orçamento, abaixo do timeout de uma chamada.
+    assert budget - context_reserve(budget) <= fields["llm_timeout_s"].default
+    # Orçamento pequeno (testes) não é engolido pela reserva.
+    assert context_reserve(0.4) == pytest.approx(0.1)
+
+
+def test_context_is_skipped_when_less_than_the_reserve_remains(client, monkeypatch):
+    """Tools gastaram o prazo delas: sobra menos que a reserva e o contexto não é tentado."""
+    calls: list[dict] = []
+
+    def create(*_args, **kwargs):
+        calls.append(kwargs)
+        time.sleep(0.17)
+        return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content="", tool_calls=None))])
+
+    _install_llm(monkeypatch, create)
+    # Orçamento 0,2 s: reserva de 25% = 0,05 s. A chamada de tools leva 0,17 s e deixa ~0,03 s.
+    client.app.dependency_overrides[get_settings] = lambda: _llm_settings(chat_budget_s=0.2, llm_timeout_s=0.2)
+    try:
+        body = client.post("/api/agent/chat", json={"question": "como está o sla?"}).json()
+        assert body["mode"] == "local"
+        assert len(calls) == 1
+        assert "tools" in calls[0]
     finally:
         client.app.dependency_overrides.pop(get_settings, None)

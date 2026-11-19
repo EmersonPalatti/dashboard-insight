@@ -7,7 +7,11 @@ from pathlib import Path
 
 import pytest
 
-from app.agent import local
+from app import fmt
+from app.agent import local, local_answers, local_intent
+from app.agent.reading import labels_for
+from app.alerts import detect_alerts
+from app.analytics import explain_change
 from app.filters import Filters
 
 # Nomes que jamais podem estar hardcoded no código do agente
@@ -68,13 +72,14 @@ THIN_INTENTS = [
 ]
 
 
-def test_no_hardcoded_names_in_source():
-    """Garante que nenhum nome de hub, loja ou cidade foi fixado no código de local.py."""
-    source_path = Path(__file__).resolve().parent.parent / "app" / "agent" / "local.py"
+@pytest.mark.parametrize("module", ["local.py", "local_answers.py", "local_intent.py"])
+def test_no_hardcoded_names_in_source(module):
+    """Garante que nenhum nome de hub, loja ou cidade foi fixado no código do agente local."""
+    source_path = Path(__file__).resolve().parent.parent / "app" / "agent" / module
     content = source_path.read_text(encoding="utf-8")
     for name in DISALLOWED_STATIC_NAMES:
-        assert f'"{name}"' not in content, f"Nome fixo encontrado em local.py: {name}"
-        assert f"'{name}'" not in content, f"Nome fixo encontrado em local.py: {name}"
+        assert f'"{name}"' not in content, f"Nome fixo encontrado em {module}: {name}"
+        assert f"'{name}'" not in content, f"Nome fixo encontrado em {module}: {name}"
 
 
 @pytest.mark.parametrize("question,marker", QUESTIONS_AND_MARKERS)
@@ -127,7 +132,7 @@ def test_low_sample_recorte(repo):
 
 def test_unmatched_question_fallback_to_briefing(repo):
     """Pergunta não reconhecida cai no briefing, sugere perguntas e termina na ação."""
-    res = local.answer("algo completamente aleatorio sem rota", repo, Filters())
+    res = local.answer("algo completamente aleatorio sem sentido", repo, Filters())  # "rota" agora é trânsito no glossário
     assert "**Briefing do recorte**" in res
     action_at = res.rfind("**Ação:**")
     assert action_at != -1
@@ -222,3 +227,295 @@ def test_status_filter_honest_responses(repo):
     assert "0,0%" in res_deliv
     assert "remover o filtro" in res_deliv.lower()
     assert "**Ação:**" in res_deliv
+
+
+# ----------------------------------------------------------------- entidade citada na pergunta
+class _MetaRepo:
+    """Só o que o índice de entidades lê: `meta()` e `cached()`. Nomes de teste, não do código."""
+
+    def __init__(self, hubs, stores, cities):
+        self._meta = {"hubs": hubs, "stores": stores, "cities": cities}
+
+    def meta(self):
+        return self._meta
+
+    def cached(self, key, compute):
+        return compute()
+
+
+def _opt(value, label, parent=None):
+    return {"value": value, "label": label, "parent": parent, "orders": 1}
+
+
+@pytest.fixture
+def names_repo():
+    return _MetaRepo(
+        hubs=[_opt(8, "Golden Shopping", "Rio de Janeiro"), _opt(3, "Green Shopping", "Porto Alegre"),
+              _opt(13, "Hip Hop Shopping", "Rio de Janeiro"), _opt(86, "R Shopping", "São Paulo")],
+        stores=[_opt(53, "Papa Sucis", 8), _opt(294, "Papa Sucis", 13), _opt(60, "Papa Zum", 3),
+                _opt(70, "Iumpica", 8), _opt(30, "Loja Quebrada", 3)],
+        cities=[_opt("São Paulo", "São Paulo", "SP"), _opt("Rio de Janeiro", "Rio de Janeiro", "RJ")],
+    )
+
+
+@pytest.mark.parametrize(
+    ("question", "dimension", "label", "ids"),
+    [
+        ("e a loja Papa Sucis, ta indo bem?", "store", "Papa Sucis", (53, 294)),  # homônimas: as duas unidades
+        ("como está o hub golden shopping?", "hub", "Golden Shopping", (8,)),
+        ("e o golden?", "hub", "Golden Shopping", (8,)),  # palavra distintiva de um nome só
+        ("qual o sla do hip hop?", "hub", "Hip Hop Shopping", (13,)),  # nome sem a palavra comum
+        ("como anda a iumpi?", "store", "Iumpica", (70,)),  # começo único com 5+ letras
+        ("cancelamento em sao paulo", "city", "São Paulo", ("São Paulo",)),  # sem acento
+    ],
+)
+def test_entity_comes_from_data_labels(names_repo, question, dimension, label, ids):
+    entity = local_intent.find_entity(question, names_repo)
+    assert entity is not None
+    assert (entity.dimension, entity.label, entity.ids) == (dimension, label, ids)
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "as entregas são lentas?",  # "são" não é São Paulo
+        "qual shopping cancela mais?",  # palavra comum a vários hubs
+        "e a papa?",  # ambígua entre duas lojas
+        "tem alguma loja quebrada?",  # nome que é termo do glossário
+        "como está o r?",  # nome curto demais
+    ],
+)
+def test_common_words_do_not_become_entities(names_repo, question):
+    assert local_intent.find_entity(question, names_repo) is None
+
+
+def test_named_store_answers_about_that_store(repo):
+    reading = local.build_reading("e a loja Loja 25, ta indo bem?", repo, Filters())
+    m = repo.metrics(Filters(store=[25]))
+    line = next(row for row in reading.answer.splitlines() if row.startswith("- Loja 25:"))
+    assert fmt.integer(m["orders"]) in line and fmt.pct(m["cancel_rate"]) in line
+    assert "Loja 25" in reading.title and "Loja 25" in reading.action
+    assert reading.drilldowns and reading.drilldowns[0].filters == {"store": [25]}
+
+
+def test_named_broken_store_gets_the_take_down_action(repo):
+    reading = local.build_reading("como está a Loja 33?", repo, Filters())
+    assert "Tirar Loja 33 do ar" in reading.action
+    assert "ampliar o período" not in reading.action  # 100% cancelado: a taxa é o problema, não a amostra
+
+
+def test_named_hub_answers_with_its_slowest_stage(repo):
+    reading = local.build_reading("qual etapa explica o Hub Lento estar lento?", repo, Filters())
+    assert "trânsito" in reading.answer
+    assert reading.action.startswith("Time de frota") and "Hub Lento" in reading.action
+
+
+def test_named_entity_never_escapes_the_recorte(repo):
+    res = local.answer("como está a Loja 25?", repo, Filters(city=["Curitiba"]))
+    assert "não tem pedidos no recorte atual" in res
+    assert "**Ação:**" in res
+
+
+def test_this_hub_means_the_filtered_hub(repo):
+    reading = local.build_reading("me da um resumo desse hub", repo, Filters(hub=[2]))
+    assert reading.title == "Hub Lento"
+
+
+# ----------------------------------------------------------------- fora do escopo
+@pytest.mark.parametrize(
+    ("question", "forbidden"),
+    [
+        ("quais os motivos dos cancelamentos?", ("principal motivo", "cliente desistiu")),
+        ("quais itens do cardápio vendem mais?", ("item mais vendido", "pizza")),
+        ("qual a nota media dos clientes nas avaliacoes?", ("estrelas", "nota média de")),
+        ("a chuva atrapalhou as entregas?", ("choveu", "dias de chuva")),
+        ("qual entregador atrasa mais?", ("o entregador mais",)),
+        ("temos muita reclamação de cliente?", ("reclamações registradas",)),
+    ],
+)
+def test_out_of_scope_says_the_data_does_not_exist(repo, question, forbidden):
+    reading = local.build_reading(question, repo, Filters())
+    assert reading.answer.startswith("O dataset não")
+    assert "sem inventar número" in reading.answer
+    assert reading.title == "Fora do que o dataset registra"
+    assert reading.action.strip()
+    for phrase in forbidden:
+        assert phrase not in reading.answer.lower()
+
+
+def test_chargeback_is_measured_with_its_limits(repo):
+    res = local.answer("temos muito chargeback?", repo, Filters())
+    assert "Chargeback no recorte" in res
+    assert "não há valor contestado nem motivo" in res
+    assert "**Ação:**" in res
+
+
+# ----------------------------------------------------------------- por que mudou
+def test_why_decomposes_against_the_previous_period(repo):
+    f = Filters(start=date(2021, 3, 1), end=date(2021, 3, 31))
+    res = local.answer("por que o SLA caiu vs o período anterior?", repo, f)
+    change = explain_change(repo, f, metric="sla_rate", by="hub")
+    delta = change["total"]["delta"]
+    assert f"{fmt.decimal(abs(delta) * 100, 1)} p.p." in res
+    assert "no período anterior" in res
+    top = max((d for d in change["drivers"] if d["key"] is not None and d["contribution"] * delta > 0),
+              key=lambda d: abs(d["contribution"]))
+    assert top["label"] in res
+    assert "efeito taxa" in res or "efeito mix" in res
+
+
+def test_why_without_previous_period_compares_the_last_week(repo):
+    res = local.answer("o cancelamento subiu vs o período anterior?", repo, Filters())
+    assert "não há período anterior" in res
+    assert "semana anterior" in res
+    assert "**Ação:**" in res
+
+
+def test_why_at_the_start_of_the_data_says_there_is_nothing_to_compare(repo):
+    res = local.answer("o SLA caiu vs o período anterior?", repo, Filters(start=date(2021, 1, 1), end=date(2021, 1, 5)))
+    assert "Sem período anterior" in res
+    assert "**Ação:**" in res
+
+
+# ----------------------------------------------------------------- janelas de tempo
+def test_weekend_against_weekdays_uses_the_concept_windows(repo):
+    res = local.answer("fim de semana é pior que dia útil no SLA?", repo, Filters())
+    weekend = repo.subslice_metrics(Filters(), weekdays=[5, 6])
+    weekdays = repo.subslice_metrics(Filters(), weekdays=[5, 6], complement=True)
+    assert f"SLA {fmt.pct(weekend['sla_rate'])}" in res
+    assert f"SLA {fmt.pct(weekdays['sla_rate'])}" in res
+    assert "dias úteis" in res.lower()
+
+
+def test_written_hour_range_beats_the_glossary_window(repo):
+    res = local.answer("o jantar (19h-21h) cancela mais que o resto do dia?", repo, Filters())
+    inside = repo.subslice_metrics(Filters(), hours=[19, 20])
+    outside = repo.subslice_metrics(Filters(), hours=[19, 20], complement=True)
+    assert f"cancelamento {fmt.pct(inside['cancel_rate'])}" in res
+    assert f"cancelamento {fmt.pct(outside['cancel_rate'])}" in res
+    assert "19h–21h" in res
+
+
+# ----------------------------------------------------------------- ações consistentes
+def test_store_that_only_cancels_gets_the_alert_action_family(repo):
+    reading = local.build_reading("tem alguma loja que só cancela pedido?", repo, Filters())
+    assert reading.action.startswith("Tirar ") and " do ar hoje" in reading.action
+    assert "ligar para a loja" not in reading.action.lower()
+
+
+def test_null_bucket_is_listed_but_never_the_target(repo, monkeypatch):
+    real = repo.query_metrics
+
+    def with_null(f, **kwargs):
+        out = real(f, **kwargs)
+        dims = kwargs.get("group_by") or []
+        if dims == ["driver_type"]:
+            metric = kwargs["metrics"][0]
+            ghost = {"keys": {"driver_type": {"key": None, "label": "Não informado"}}, "orders": 999, "measured": 0,
+                     "low_sample": True, metric: 0.99}
+            out = {**out, "rows": [ghost, *out["rows"]]}
+        return out
+
+    monkeypatch.setattr(repo, "query_metrics", with_null)
+    reading = local.build_reading("cancelamento por tipo de entregador", repo, Filters())
+    assert "Fora do ranking: Não informado" in reading.answer
+    assert "Não informado" not in reading.action
+
+
+def test_payment_null_bucket_is_not_the_target(repo, monkeypatch):
+    real = repo.breakdown
+
+    def with_null(f, by, **kwargs):
+        rows = real(f, by, **kwargs)
+        if by == "payment_method":
+            ghost = {**rows[0], "key": None, "label": "Sem pagamento", "orders": 10**6, "cancel_rate": 0.9,
+                     "cancel_above": True}
+            rows = [ghost, *rows]
+        return rows
+
+    monkeypatch.setattr(repo, "breakdown", with_null)
+    reading = local.build_reading("como estão as formas de pagamento?", repo, Filters())
+    assert "Sem pagamento" in reading.answer
+    assert "Sem pagamento" not in reading.action
+
+
+# ----------------------------------------------------------------- métrica × dimensão
+def test_any_metric_by_any_dimension_routes_to_the_generic_breakdown(repo):
+    reading = local.build_reading("cancelamento ta alto em qual cidade", repo, Filters())
+    assert reading.title == "Cancelamento por cidade"
+    for row in repo.breakdown(Filters(), "city", sort="cancel_rate", min_orders=100):
+        assert f"- {row['label']}: {fmt.pct(row['cancel_rate'])}" in reading.answer
+    # A ação desce da cidade para a loja que mais cancela nela (aqui, uma loja quebrada: tirar do ar).
+    worst_city = repo.breakdown(Filters(), "city", sort="cancel_rate", limit=1, min_orders=100)[0]
+    stores = repo.breakdown(Filters(city=[worst_city["key"]]), "store", sort="cancel_rate", limit=1, min_orders=150)
+    assert stores[0]["label"] in reading.action
+
+
+def test_worst_hour_looks_at_every_hour_with_base(repo):
+    res = local.answer("em que horario o sla fica pior?", repo, Filters())
+    rows = repo.breakdown(Filters(), "hour", sort="sla_rate", desc=False, limit=24, min_measured=100)
+    worst = rows[0]
+    first = next(line for line in res.splitlines() if line.startswith("- "))
+    assert first.startswith(f"- {int(worst['key']):02d}h: {fmt.pct(worst['sla_rate'])}")
+
+
+def test_prepare_verb_routes_to_preparation_time(repo):
+    res = local.answer("as lojas estão demorando pra preparar?", repo, Filters())
+    assert f"recorte em {fmt.minutes(repo.metrics(Filters())['production_p50'])}" in res
+    assert "Preparo" in res
+
+
+def test_how_many_orders_answers_the_volume(repo):
+    f = Filters(start=date(2021, 3, 1), end=date(2021, 3, 31))
+    res = local.answer("quantos pedidos tivemos?", repo, f)
+    assert fmt.integer(repo.metrics(f)["orders"]) in res
+
+
+def test_channel_question_compares_marketplace_and_own(repo):
+    reading = local.build_reading("marketplace ou canal próprio, qual cancela mais?", repo, Filters())
+    for row in repo.breakdown(Filters(), "channel_type"):
+        assert f"cancelamento {fmt.pct(row['cancel_rate'])}" in reading.answer
+    assert "marketplace" in reading.action or "canal próprio" in reading.action
+
+
+def test_unrouted_question_closes_with_the_lead_alert_action(repo):
+    reading = local.build_reading("algo completamente aleatorio sem sentido", repo, Filters())
+    assert reading.action in {a.action for a in detect_alerts(repo, Filters())}
+    assert not reading.action.startswith("Operador deve usar uma das perguntas")
+
+
+NEW_ROUTES = [
+    "e a loja Loja 25, ta indo bem?",
+    "qual etapa explica o Hub Lento estar lento?",
+    "quais os motivos dos cancelamentos?",
+    "temos muito chargeback?",
+    "por que o cancelamento subiu vs o período anterior?",
+    "o volume caiu na última semana?",
+    "fim de semana é pior que dia útil no SLA?",
+    "como está o almoço?",
+    "cancelamento por cidade",
+    "em que horario o sla fica pior?",
+    "melhor hub em SLA",
+    "qual hub tem menos pedidos?",
+]
+
+
+@pytest.mark.parametrize("question", NEW_ROUTES)
+def test_new_routes_keep_the_comanda_contract(repo, question):
+    reading = local.build_reading(question, repo, Filters(start=date(2021, 2, 1), end=date(2021, 3, 31)))
+    assert reading.title.strip() and reading.diagnosis.strip() and reading.action.strip()
+    assert "**Ação:**" not in reading.action and "**Ação:**" in reading.answer
+    assert reading.tools
+    assert all("get_" not in label and "query_" not in label for label in labels_for(reading.tools))
+    hubs = {int(h["key"]) for h in repo.breakdown(Filters(), "hub", limit=100)}
+    for drill in reading.drilldowns:
+        assert set(drill.filters) <= {"city", "hub", "store", "segment", "channel_type", "modal", "status"}
+        assert all(h in hubs for h in drill.filters.get("hub", []))
+
+
+def test_answer_helpers_format_ptbr():
+    assert local_answers.signed("sla_rate", -0.0001) == "0,0 p.p."
+    assert local_answers.signed("sla_rate", 0.018) == "+1,8 p.p."
+    assert local_answers.in_window("dias úteis") == "nos dias úteis"
+    assert local_answers.in_window("Sexta") == "na sexta"
+    assert local_answers.in_window("19h–21h") == "na faixa 19h–21h"

@@ -114,40 +114,40 @@ def test_llm_tools_stay_in_recorte_and_return_full_hours(repo):
     from app.agent.llm import ToolRunner
 
     runner = ToolRunner(repo, Filters(city=["Curitiba"]))
-    hours = runner.run("get_breakdown", {"by": "hour", "limit": 3, "sort": "cancel_rate"})
-    h_cols = hours["columns"]
-    labels = [row[h_cols.index("label")] for row in hours["rows"]]
-    assert len(labels) == 24
-    assert labels == [f"{h:02d}h" for h in range(24)]  # ignora limit/sort em hora
-    hubs = runner.run("get_breakdown", {"by": "hub", "limit": 50})
-    hub_cols = hubs["columns"]
-    assert "id" in hub_cols
-    assert {row[hub_cols.index("parent")] for row in hubs["rows"]} == {"Curitiba"}  # filtro forçado no servidor
-    err = runner.run("get_breakdown", {"by": "drop table"})
+    hours = runner.run("query_metrics", {"metrics": ["cancel_rate"], "group_by": ["hour"], "limit": 3})
+    labels = [row[hours["columns"].index("hour")] for row in hours["rows"]]
+    assert labels == [f"{h}h" for h in range(24)]  # série no tempo sai inteira e em ordem
+    hubs = runner.run("query_metrics", {"metrics": ["orders"], "group_by": ["hub"], "limit": 15})
+    assert "hub_id" in hubs["columns"]
+    assert sum(row[hubs["columns"].index("orders")] for row in hubs["rows"]) == repo.metrics(
+        Filters(city=["Curitiba"])
+    )["orders"]  # filtro forçado no servidor
+    err = runner.run("query_metrics", {"metrics": ["orders"], "group_by": ["drop table"]})
     assert "dimensão inválida" in err["erro"]
-    assert runner.used[0] == "get_breakdown(hour)"
+    assert runner.used[0] == "query_metrics(cancel_rate:hour)"
 
 
-def test_breakdown_coerces_ascending_and_caps_min_orders(repo, monkeypatch):
+def test_query_metrics_coerces_order_and_caps_min_orders(repo, monkeypatch):
     from app.agent.llm import ToolRunner
 
     seen: list[dict] = []
-    real = repo.breakdown
+    real = repo.query_metrics
 
     def wrapped(*args, **kwargs):
         seen.append(kwargs)
         return real(*args, **kwargs)
 
-    monkeypatch.setattr(repo, "breakdown", wrapped)
+    monkeypatch.setattr(repo, "query_metrics", wrapped)
     runner = ToolRunner(repo, Filters())
-    runner.run("get_breakdown", {"by": "hub", "ascending": "false", "limit": 3})
-    runner.run("get_breakdown", {"by": "hub", "ascending": "true", "limit": 3})
-    runner.run("get_breakdown", {"by": "hub", "ascending": True, "limit": 3})
-    runner.run("get_breakdown", {"by": "hub", "ascending": 1, "limit": 3})
-    runner.run("get_breakdown", {"by": "hub", "ascending": 0, "limit": 3})
-    runner.run("get_breakdown", {"by": "hub", "ascending": False, "limit": 3})
-    runner.run("get_breakdown", {"by": "hub", "min_orders": 10**9, "limit": 3})
-    assert [call["desc"] for call in seen] == [True, False, False, False, True, True, True]
+    base = {"metrics": ["orders"], "group_by": ["hub"], "limit": 3}
+    runner.run("query_metrics", {**base, "ascending": "false"})
+    runner.run("query_metrics", {**base, "ascending": "true"})
+    runner.run("query_metrics", {**base, "order": "asc"})
+    runner.run("query_metrics", {**base, "desc": 0})
+    runner.run("query_metrics", {**base, "order": "worst", "sort": "sla_rate"})
+    runner.run("query_metrics", {**base, "order": "worst", "sort": "cancel_rate"})
+    runner.run("query_metrics", {**base, "min_orders": 10**9})
+    assert [call["desc"] for call in seen] == [True, False, False, False, False, True, True]
     assert seen[-1]["min_orders"] == 100_000
 
 
