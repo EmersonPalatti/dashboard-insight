@@ -58,7 +58,10 @@ PROMPT_BUDGET = 10_000
 # consulta não cabe e o modelo gratuito leva alguns segundos só para redigir.
 FINAL_ROUND_MIN_S = 4.0
 _SCOPE_PART_LIMIT = 80
-_DATA_TAGS = ("dados_recorte", "termos_reconhecidos", "historico", "pergunta_operador", "contexto_recorte")
+_DATA_TAGS = (
+    "dados_recorte", "termos_reconhecidos", "historico", "pergunta_operador", "contexto_recorte",
+    "evidencias_investigacao",
+)
 _REMOVED_TOOLS = ("compare_slices", "get_breakdown", "get_heatmap")
 
 _DIMENSIONS: tuple[str, ...] = tuple(DIMENSIONS)
@@ -1369,12 +1372,14 @@ BUSY_RETRY_DELAY_S = 1.5
 _BUSY_RETRY_MIN_LEFT_S = 4.0
 
 
-def _call_retrying_busy(client: Any, kwargs: dict[str, Any], timeout: float, deadline: float | None) -> Any:
+def _call_retrying_busy(
+    client: Any, kwargs: dict[str, Any], timeout: float, deadline: float | None, retry_busy: bool = True
+) -> Any:
     try:
         return _call_with_deadline(client.chat.completions.create, kwargs, timeout)
     except openai.RateLimitError as exc:
         left = (deadline - time.monotonic()) if deadline is not None else timeout
-        if is_account_quota(exc) or left < BUSY_RETRY_DELAY_S + _BUSY_RETRY_MIN_LEFT_S:
+        if not retry_busy or is_account_quota(exc) or left < BUSY_RETRY_DELAY_S + _BUSY_RETRY_MIN_LEFT_S:
             raise
         log.warning("Provedor do modelo congestionado (429); nova tentativa em %.1f s", BUSY_RETRY_DELAY_S)
         time.sleep(BUSY_RETRY_DELAY_S)
@@ -1391,11 +1396,15 @@ def _create_completion(
     tools: list[dict[str, Any]] | None = None,
     tool_choice: str | None = None,
     deadline: float | None = None,
+    max_tokens: int | None = None,
+    retry_busy: bool = True,
 ) -> Any:
+    """`max_tokens` troca o teto das settings numa chamada curta; `retry_busy=False` devolve o 429
+    do provedor na hora, para quem prefere seguir sem a chamada a esperar por ela."""
     kwargs: dict[str, Any] = {
         "model": settings.openrouter_model,
         "temperature": 0.2,
-        "max_tokens": settings.llm_max_tokens,
+        "max_tokens": max_tokens or settings.llm_max_tokens,
         "messages": messages,
         "timeout": timeout,
     }
@@ -1415,7 +1424,7 @@ def _create_completion(
         kwargs["extra_body"] = extra
 
     try:
-        return _call_retrying_busy(client, kwargs, timeout, deadline)
+        return _call_retrying_busy(client, kwargs, timeout, deadline, retry_busy)
     except openai.BadRequestError as exc:
         can_retry = "extra_body" in kwargs or kwargs.get("tool_choice") == "required"
         remaining = (deadline - time.monotonic()) if deadline is not None else timeout

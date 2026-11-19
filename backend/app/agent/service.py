@@ -1,4 +1,8 @@
-"""Orquestra o modo dual: LLM com tools → LLM com contexto → regras locais."""
+"""Orquestra o modo dual: LLM com tools → LLM com contexto → regras locais.
+
+Pergunta "por que mudou" com período anterior troca o loop de tools pelo grafo de investigação
+(`investigate.py`); o resto da cadeia e os motivos de fallback são os mesmos.
+"""
 
 from __future__ import annotations
 
@@ -9,7 +13,7 @@ from datetime import UTC, datetime, timedelta
 
 import openai
 
-from app.agent import llm, local
+from app.agent import investigate, llm, local
 from app.agent.reading import normalize_action, response_llm, response_local
 from app.config import Settings
 from app.repository import Repository
@@ -103,20 +107,27 @@ def chat(req: ChatRequest, repo: Repository, settings: Settings, use_llm: bool =
     reserve = context_reserve(settings.chat_budget_s)
     tools_deadline = deadline - reserve
     reason: FallbackReason = "error"
+    graph = settings.investigation_enabled and investigate.should_investigate(req.question, req.history, repo, f)
+    first = "investigação" if graph else "LLM com tools"
     try:
-        result = llm.answer_with_tools(req.question, req.history, repo, f, settings, deadline=tools_deadline)
+        if graph:
+            result = investigate.investigate(req.question, req.history, repo, f, settings, deadline=tools_deadline)
+        else:
+            result = llm.answer_with_tools(req.question, req.history, repo, f, settings, deadline=tools_deadline)
         if result:
             result = (normalize_action(result[0]), result[1])
         if result and _acceptable(result[0]):
             text, used = result
+            # A investigação sai como "llm-tools" (o schema da API não muda); o log separa os modos.
+            log.info("agent_chat mode=%s", "investigate" if graph else "llm-tools")
             return response_llm(text, "llm-tools", settings.openrouter_model, used, local_reading, repo, f)
         if result:
-            log.warning("LLM com tools respondeu sem **Ação:**; tentando contexto")
+            log.warning("%s respondeu sem **Ação:**; tentando contexto", first)
         elif time.monotonic() >= tools_deadline:
             reason = "timeout"
     except Exception as exc:  # noqa: BLE001 — falha do LLM cai no próximo modo, não derruba a resposta
         reason = _reason(exc)
-        log.warning("LLM com tools falhou (%s), tentando contexto: %s", reason, exc)
+        log.warning("%s falhou (%s): %s", first, reason, exc)
 
     # Cota esgotada ou provedor congestionado não tentam o contexto: a segunda chamada também volta 429.
     # None (texto vazio, rodadas esgotadas ou resposta sem ação) ainda tenta contexto se sobrou

@@ -44,6 +44,16 @@ class Settings(BaseSettings):
     llm_max_tokens: int = 2000
     llm_reasoning_effort: str | None = "low"
     chat_budget_s: float = 20.0
+    # Pergunta "por que mudou" com período anterior passa pelo grafo de investigação (investigate.py):
+    # decomposição e drill determinísticos e uma chamada de síntese. No placar de 19/11/2026 (8 perguntas
+    # por configuração) respondeu pelo LLM tanto quanto o loop de tools (5 de 8), com 1,4 chamada por
+    # pergunta contra 3,4 e p50 de 8,6 s contra 11,5 s.
+    investigation_enabled: bool = True
+    # Consultas extras que uma revisão curta do LLM (JSON) pode pedir antes da síntese. 0 pula a revisão.
+    # Zero de propósito: o ERNIE não desliga nem limita o raciocínio, e a revisão estourou o teto de
+    # tokens sem JSON em 9 de 9 tentativas (400 e 1200 tokens), gastando 3–7 s. Ligue com um modelo que
+    # devolva o JSON, medindo no placar.
+    investigation_max_probes: int = 0
     chat_rate_limit_per_minute: int = 8
     # Teto de chamadas ao LLM por minuto, somando todos os IPs. 0 desliga.
     chat_global_rate_limit_per_minute: int = 60
