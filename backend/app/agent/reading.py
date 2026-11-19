@@ -9,8 +9,10 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import get_args
 
+from app import semantic
 from app.filters import ChannelType, Filters, Modal, OrderStatus, Segment
 from app.repository import VALUE_LABELS, Repository
 from app.schemas import ChatResponse, DrillDown, ReadingBase
@@ -36,10 +38,14 @@ _TOOL_LABEL = {
     "get_kpis": "KPIs do recorte",
     "get_alerts": "Alertas do recorte",
     "get_timeseries": "Série do recorte",
-    "get_heatmap": "Mapa de calor (dia × hora)",
-    "compare_slices": "Comparação de subfatias",
+    "query_metrics": "Consulta do recorte",
+    "explain_change": "Por que mudou",
+    "drill_cause": "Etapa que explica o atraso",
 }
+_DRILL_LABEL = {"sla_rate": "Etapa que explica o atraso", "cycle_p50": "Etapa que explica o ciclo"}
+_CALL = re.compile(r"^(\w+)\((.*)\)$")
 _FENCE = re.compile(r"```(?:leitura|json)?[^\n]*\n(\{.*?\})\s*```", re.DOTALL)
+_OPEN_FENCE = re.compile(r"\n?```(?:leitura|json)\b[\s\S]*$", re.IGNORECASE)
 _MARKS = re.compile(r"[*_#`]")
 _SEVERITY_PT = [
     (re.compile(r"\balertas\s+high\b", re.IGNORECASE), "alertas críticos"),
@@ -57,14 +63,60 @@ _SEVERITY_PT = [
 ]
 
 
+# Flags e chaves internas que o modelo gratuito às vezes copia das tools para o texto.
+_FLAG_PT = {
+    "volume_low_sample": "volume pequeno",
+    "low_sample": "amostra pequena",
+    "sla_below": "SLA abaixo do recorte",
+    "cancel_above": "cancelamento acima do recorte",
+    "sla_pct": "SLA",
+    "cancel_pct": "cancelamento",
+    "stuck_pct": "pedidos presos",
+}
+
+
+@lru_cache(maxsize=1)
+def _internal_terms() -> tuple[re.Pattern[str], dict[str, str]]:
+    """Chave interna → rótulo pt-BR. Métricas vêm da camada semântica, nunca de lista duplicada aqui."""
+    terms = {key: metric.label for key, metric in semantic.load().metrics.items() if "_" in key}
+    terms.update(_FLAG_PT)
+    # Mais longa primeiro: `volume_low_sample` antes de `low_sample`. Crase em volta sai junto.
+    alternation = "|".join(sorted(map(re.escape, terms), key=len, reverse=True))
+    return re.compile(rf"`?\b({alternation})\b`?"), terms
+
+
+# Parêntese com argumentos de ferramenta copiados ("(window=jantar, sort=production_p50)").
+_TOOL_ARGS = re.compile(r"\s*\((?=[^()]*\b[a-z_]+=)[^()]*\)")
+
+
+# Chamada de ferramenta escrita na prosa ("investiga query_metrics group_by=["store"], sort="x"").
+_ARG = r"""[a-z_]+=(?:\[[^\]]*\]|"[^"]*"|'[^']*'|[^\s,;.]+)"""
+_BARE_ARGS = re.compile(rf"(?:,?\s*{_ARG})+")
+
+
+@lru_cache(maxsize=1)
+def _tool_call() -> re.Pattern[str]:
+    from app.agent.llm import TOOLS  # import tardio: llm carrega a camada semântica e o repositório
+
+    names = "|".join(sorted((t["function"]["name"] for t in TOOLS), key=len, reverse=True))
+    return re.compile(rf"`?\b(?:{names})\b`?(?:\([^()]*\))?(?:,?\s*{_ARG})*")
+
+
+def _pt_internal(text: str) -> str:
+    pattern, terms = _internal_terms()
+    text = _tool_call().sub("uma consulta", _TOOL_ARGS.sub("", text))
+    text = _BARE_ARGS.sub("", text)
+    return pattern.sub(lambda m: terms[m.group(1)], text)
+
+
 def _pt_severity(text: str) -> str:
-    """Troca rótulos em inglês de severidade (`high`/`medium`/`low`) por pt-BR."""
+    """Troca severidade em inglês (`high`/`medium`/`low`) e chaves internas das tools por pt-BR."""
     for pattern, repl in _SEVERITY_PT:
         text = pattern.sub(
             lambda m, r=repl: (r[0].upper() + r[1:]) if m.group(0)[0].isupper() else r,
             text,
         )
-    return text
+    return _pt_internal(text)
 
 
 @dataclass
@@ -89,14 +141,53 @@ class ParsedReading:
     sent_drilldowns: bool
 
 
+def _metric_label(key: str) -> str | None:
+    """'SLA (no prazo)' -> 'SLA'; 'Cancelamento' -> 'cancelamento' (sigla fica maiúscula)."""
+    metric = semantic.load().metrics.get(key)
+    if metric is None:
+        return None
+    label = metric.label.split(" (")[0].strip()
+    return label if label[:2].isupper() else label[:1].lower() + label[1:]
+
+
+def _dim_label(key: str) -> str | None:
+    dim = semantic.load().dimensions.get(key)
+    return dim.label.lower() if dim else None
+
+
+def _labels(keys: str, lookup) -> list[str]:
+    return [label for key in keys.split(",") if key and (label := lookup(key.strip()))]
+
+
 def label_for(name: str) -> str:
-    """Rótulo pt-BR. Nome de função desconhecido não vaza para a tela."""
+    """Rótulo pt-BR. Nome de função desconhecido não vaza para a tela.
+
+    O ToolRunner registra a chamada como `nome(args)`: `query_metrics(sla_rate,cancel_rate:hub,hour)`,
+    `explain_change(cancel_rate:store)`, `drill_cause(sla_rate)`; o agente local usa `get_breakdown(dim)`.
+    """
     if name in _TOOL_LABEL:
         return _TOOL_LABEL[name]
-    if name.startswith("get_breakdown(") and name.endswith(")"):
-        dim = name[len("get_breakdown("):-1]
-        return _DIMENSION_LABEL.get(dim, "Quebra do recorte")
-    return "Consulta do recorte"
+    match = _CALL.match(name)
+    if not match:
+        return "Consulta do recorte"
+    tool, args = match.groups()
+    if tool == "get_breakdown":
+        return _DIMENSION_LABEL.get(args, "Quebra do recorte")
+    if tool == "drill_cause":
+        return _DRILL_LABEL.get(args, _TOOL_LABEL["drill_cause"])
+    metric_part, _, dim_part = args.partition(":")
+    metrics = _labels(metric_part, _metric_label)
+    dims = _labels(dim_part, _dim_label)
+    if tool == "explain_change" and metrics:
+        return f"Por que mudou: {metrics[0]}" + (f" por {dims[0]}" if dims else "")
+    if tool == "query_metrics" and metrics:
+        if len(metrics) > 3:
+            shown = f"{', '.join(metrics[:2])} e mais {len(metrics) - 2}"
+        else:
+            shown = " e ".join([", ".join(metrics[:-1]), metrics[-1]]) if len(metrics) > 1 else metrics[0]
+        where = f" por {' × '.join(dims)}" if dims else " no recorte"
+        return f"Consulta: {shown}{where}"
+    return _TOOL_LABEL.get(tool, "Consulta do recorte")
 
 
 def labels_for(names: list[str]) -> list[str]:
@@ -273,7 +364,26 @@ def parse_leitura(text: str) -> ParsedReading | None:
 
 
 def _strip_fence(text: str) -> str:
-    return _FENCE.sub("", text).strip()
+    return _OPEN_FENCE.sub("", _FENCE.sub("", text)).strip()
+
+
+# "Ação:", "**Ação**:", "__Ação:__", "Acao:" no começo da linha: modelos diferentes formatam a marca
+# de jeitos diferentes. Sem normalizar, uma resposta boa sem o negrito vira leitura local.
+_ACTION_LINE = re.compile(r"(?im)^[ \t]*(?:\*\*|__)?[ \t]*a[çc][ãa]o[ \t]*(?:\*\*|__)?[ \t]*:[ \t]*(?:\*\*|__)?[ \t]*")
+
+
+def normalize_action(text: str) -> str:
+    """Padroniza a linha de ação em `**Ação:**`; sem a linha, usa a ação do bloco `leitura` se houver."""
+    text = _ACTION_LINE.sub("**Ação:** ", text)
+    if "**Ação:**" in text:
+        return text
+    parsed = parse_leitura(text)
+    if parsed is None or not parsed.action.strip():
+        return text
+    fence = text.find("```")
+    body = (text[:fence] if fence >= 0 else text).rstrip()
+    rest = text[fence:] if fence >= 0 else ""
+    return f"{body}\n\n**Ação:** {parsed.action.strip()}\n\n{rest}".rstrip()
 
 
 def split_markdown(text: str) -> tuple[str, str]:
@@ -336,6 +446,7 @@ def response_llm(
     parsed = parse_leitura(text)
     clean_text = _pt_severity(text)
     if parsed is None:
+        clean_text = _strip_fence(clean_text)
         diagnosis, action = split_markdown(clean_text)
         if not action:
             fallback = response_local(local)

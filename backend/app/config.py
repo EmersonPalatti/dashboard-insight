@@ -9,7 +9,11 @@ from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_MODEL = "nvidia/nemotron-3-ultra-550b-a55b:free"
+# Escolhido no confronto de 19/11/2026 (12 perguntas do placar, mesmas regras): ERNIE respondeu 6 de 7
+# pelo LLM com p50 de 9 s; Nemotron 3 Ultra estourou o prazo em 8 de 12, Nemotron 3.5 Super VL acertou
+# 3 de 8, Nemotron 3.5 Lightning estourou 6 de 12 e Gemma 4 31B ficou 12 de 12 com o provedor
+# congestionado (429). "preview" pode sair do ar: troque por OPENROUTER_MODEL sem mexer em código.
+DEFAULT_MODEL = "baidu/ernie-5.5-flash-preview:free"
 
 
 class Settings(BaseSettings):
@@ -28,10 +32,32 @@ class Settings(BaseSettings):
 
     openrouter_api_key: str | None = None
     openrouter_model: str = DEFAULT_MODEL
-    llm_timeout_s: float = 45.0
-    llm_max_tokens: int = 900
+    # Modelos de reserva, separados por vírgula, que o OpenRouter tenta se o principal falhar.
+    # Vazio de propósito: nenhum gratuito medido ficou no nível do ERNIE (Super VL acertou 3 de 8),
+    # e um fallback pior que as regras locais trocaria uma leitura boa por uma pior. Ligue só com placar.
+    openrouter_fallback_models: str = ""
+    # Modelos gratuitos com raciocínio contam o raciocínio dentro de `max_tokens` (700 cortava 3/4
+    # das respostas do Nemotron; 1400 ainda cortava 2 de 26 rodadas do ERNIE). A leitura local já
+    # aparece na tela em ~0,15 s enquanto o LLM roda; 2000 tokens e 20 s de orçamento evitam corte e
+    # cobrem 2–3 rodadas. O teto só custa tempo quando o modelo de fato usa os tokens.
+    llm_timeout_s: float = 18.0
+    llm_max_tokens: int = 2000
     llm_reasoning_effort: str | None = "low"
     chat_budget_s: float = 20.0
+    # Pergunta "por que mudou" com período anterior passa pelo grafo de investigação (investigate.py):
+    # decomposição e drill determinísticos e uma chamada de síntese. No placar de 19/11/2026 (8 perguntas
+    # por configuração) respondeu pelo LLM tanto quanto o loop de tools (5 de 8), com 1,4 chamada por
+    # pergunta contra 3,4 e p50 de 8,6 s contra 11,5 s.
+    investigation_enabled: bool = True
+    # Consultas extras que uma revisão curta do LLM (JSON) pode pedir antes da síntese. 0 pula a revisão.
+    # Zero de propósito: o ERNIE não desliga nem limita o raciocínio, e a revisão estourou o teto de
+    # tokens sem JSON em 9 de 9 tentativas (400 e 1200 tokens), gastando 3–7 s. Ligue com um modelo que
+    # devolva o JSON, medindo no placar.
+    investigation_max_probes: int = 0
+    # Teto da síntese do grafo, separado do loop de tools: é a única chamada da investigação e o
+    # raciocínio do ERNIE vai junto. Com 2000, 5 de 8 respostas chegaram; com 3000, 7 de 8 (duas
+    # usaram ~2.850 tokens), com p50 de ~10 s contra ~8,6 s.
+    investigation_synth_max_tokens: int = 3000
     chat_rate_limit_per_minute: int = 8
     # Teto de chamadas ao LLM por minuto, somando todos os IPs. 0 desliga.
     chat_global_rate_limit_per_minute: int = 60
@@ -58,6 +84,12 @@ class Settings(BaseSettings):
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
+    @property
+    def fallback_models(self) -> list[str]:
+        primary = self.openrouter_model.strip()
+        names = (m.strip() for m in self.openrouter_fallback_models.split(","))
+        return list(dict.fromkeys(m for m in names if m and m != primary))
 
     @property
     def llm_enabled(self) -> bool:

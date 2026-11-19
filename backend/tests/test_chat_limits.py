@@ -6,6 +6,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from app.agent.service import CONTEXT_MIN_S, context_reserve
 from app.config import Settings, get_settings
 from app.main import chat_global_limiter, chat_limiter
 
@@ -270,8 +271,8 @@ def test_chat_tool_call_id_none_and_malformed_json_handled(client, monkeypatch):
 def _llm_settings(**overrides) -> Settings:
     base = {
         "openrouter_api_key": "test-key",
-        "chat_budget_s": 20,
-        "llm_timeout_s": 45,
+        "chat_budget_s": 12,
+        "llm_timeout_s": 10,
         "chat_rate_limit_enabled": False,
     }
     base.update(overrides)
@@ -395,8 +396,9 @@ def test_timeout_is_passed_to_the_client_and_capped_for_tools(client, monkeypatc
         body = client.post("/api/agent/chat", json={"question": "como está o sla?"}).json()
         assert body["mode"] == "llm-context"
         assert client_timeouts[0] == create_timeouts[0]
-        # 25% do orçamento de 20s fica para o contexto: a chamada de tools não leva os 20 nem os 45.
-        assert 12 < client_timeouts[0] < 16
+        # 3 s do orçamento de 12 s ficam para o contexto: a chamada de tools leva até 9 s, não os 10 do timeout.
+        assert 8 < client_timeouts[0] <= 9
+        assert client_timeouts[0] == pytest.approx(12 - CONTEXT_MIN_S, abs=0.5)
         assert client_timeouts[1] == create_timeouts[1]
         assert create_timeouts[1] > 0
     finally:
@@ -507,7 +509,7 @@ def test_llm_strips_think_block_passes_max_tokens_and_handles_empty_choices(clie
         assert body["mode"] == "llm-tools"
         assert body["answer"].startswith("Resposta final.")
         assert "<think>" not in body["answer"]
-        assert captured[0]["max_tokens"] == 900
+        assert captured[0]["max_tokens"] == 2000
     finally:
         client.app.dependency_overrides.pop(get_settings, None)
 
@@ -518,3 +520,198 @@ def test_llm_strips_think_block_passes_max_tokens_and_handles_empty_choices(clie
         assert body["mode"] == "local"
     finally:
         client.app.dependency_overrides.pop(get_settings, None)
+
+
+def test_latency_defaults_fit_the_free_model_budget():
+    """Padrões do modelo gratuito: resposta rápida e reserva coerente para o modo contexto."""
+    fields = Settings.model_fields
+    assert fields["chat_budget_s"].default == 20.0
+    assert fields["llm_timeout_s"].default == 18.0
+    assert fields["llm_max_tokens"].default == 2000
+    budget = fields["chat_budget_s"].default
+    assert context_reserve(budget) == CONTEXT_MIN_S == 3.0
+    # Tools ficam com o resto do orçamento, abaixo do timeout de uma chamada.
+    assert budget - context_reserve(budget) <= fields["llm_timeout_s"].default
+    # Orçamento pequeno (testes) não é engolido pela reserva.
+    assert context_reserve(0.4) == pytest.approx(0.1)
+
+
+def test_context_is_skipped_when_less_than_the_reserve_remains(client, monkeypatch):
+    """Tools gastaram o prazo delas: sobra menos que a reserva e o contexto não é tentado."""
+    calls: list[dict] = []
+
+    def create(*_args, **kwargs):
+        calls.append(kwargs)
+        time.sleep(0.17)
+        return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content="", tool_calls=None))])
+
+    _install_llm(monkeypatch, create)
+    # Orçamento 0,2 s: reserva de 25% = 0,05 s. A chamada de tools leva 0,17 s e deixa ~0,03 s.
+    client.app.dependency_overrides[get_settings] = lambda: _llm_settings(chat_budget_s=0.2, llm_timeout_s=0.2)
+    try:
+        body = client.post("/api/agent/chat", json={"question": "como está o sla?"}).json()
+        assert body["mode"] == "local"
+        assert len(calls) == 1
+        assert "tools" in calls[0]
+    finally:
+        client.app.dependency_overrides.pop(get_settings, None)
+
+
+# ------------------------------------------------------------ cota do modelo gratuito
+def _rate_limit(message: str):
+    import httpx
+    import openai
+
+    request = httpx.Request("POST", "https://openrouter.ai/api/v1/chat/completions")
+    return openai.RateLimitError(message, response=httpx.Response(429, request=request), body=None)
+
+
+def test_daily_quota_skips_context_and_opens_breaker(client, monkeypatch):
+    """429 diário: nada de segunda chamada, leitura local com motivo, e as próximas nem chamam o LLM."""
+    calls: list[dict] = []
+
+    def create(*_args, **kwargs):
+        calls.append(kwargs)
+        raise _rate_limit("Rate limit exceeded: free-models-per-day")
+
+    _install_llm(monkeypatch, create)
+    client.app.dependency_overrides[get_settings] = lambda: Settings(
+        openrouter_api_key="test-key", chat_rate_limit_enabled=False
+    )
+    try:
+        first = client.post("/api/agent/chat", json={"question": "como esta o sla?"}).json()
+        assert first["mode"] == "local"
+        assert first["fallback_reason"] == "quota"
+        assert len(calls) == 1  # o modo contexto não gasta outra chamada que também voltaria 429
+
+        second = client.post("/api/agent/chat", json={"question": "e o cancelamento?"}).json()
+        assert second["fallback_reason"] == "quota"
+        assert len(calls) == 1  # disjuntor aberto: nem chega no OpenRouter
+    finally:
+        client.app.dependency_overrides.pop(get_settings, None)
+
+
+def test_provider_429_does_not_open_breaker(client, monkeypatch):
+    """429 repassado do provedor (congestionamento) não é a cota da conta: a próxima pergunta tenta de novo."""
+    calls: list[dict] = []
+
+    def create(*_args, **kwargs):
+        calls.append(kwargs)
+        raise _rate_limit("Error code: 429 - Provider returned error")
+
+    _install_llm(monkeypatch, create)
+    client.app.dependency_overrides[get_settings] = lambda: Settings(
+        openrouter_api_key="test-key", chat_rate_limit_enabled=False
+    )
+    try:
+        first = client.post("/api/agent/chat", json={"question": "como esta o sla?"}).json()
+        assert first["fallback_reason"] == "busy"
+        assert len(calls) == 2  # uma nova tentativa no mesmo modelo; o contexto não gasta outra
+        client.post("/api/agent/chat", json={"question": "e o cancelamento?"})
+        assert len(calls) == 4  # disjuntor fechado: a próxima pergunta tenta de novo
+    finally:
+        client.app.dependency_overrides.pop(get_settings, None)
+
+
+def test_minute_quota_breaker_is_short():
+    from app.agent.service import _QuotaBreaker
+
+    breaker = _QuotaBreaker()
+    before = time.monotonic()
+    breaker.open_for(_rate_limit("Rate limit exceeded: free-models-per-min"))
+    assert breaker.is_open()
+    assert breaker._until - before <= _QuotaBreaker.MINUTE_COOLDOWN_S + 1
+
+
+def test_llm_timeout_sets_fallback_reason(client, monkeypatch):
+    from app.agent import llm as llm_mod
+
+    def create(*_args, **kwargs):
+        raise llm_mod.LLMDeadlineExceeded("lento")
+
+    _install_llm(monkeypatch, create)
+    client.app.dependency_overrides[get_settings] = lambda: Settings(
+        openrouter_api_key="test-key", chat_rate_limit_enabled=False
+    )
+    try:
+        body = client.post("/api/agent/chat", json={"question": "como esta o sla?"}).json()
+        assert body["mode"] == "local"
+        assert body["fallback_reason"] == "timeout"
+    finally:
+        client.app.dependency_overrides.pop(get_settings, None)
+
+
+def test_local_engine_has_no_fallback_reason(client):
+    body = client.post("/api/agent/chat", json={"question": "como esta o sla?", "engine": "local"}).json()
+    assert body["fallback_reason"] is None
+
+
+def test_provider_429_is_retried_once_and_recovers(client, monkeypatch):
+    """Congestionamento passageiro: a segunda tentativa no mesmo modelo responde."""
+    from app.agent import llm as llm_mod
+
+    monkeypatch.setattr(llm_mod, "BUSY_RETRY_DELAY_S", 0.01)
+    calls: list[dict] = []
+
+    def create(*_args, **kwargs):
+        calls.append(kwargs)
+        if len(calls) == 1:
+            raise _rate_limit("Error code: 429 - Provider returned error")
+        msg = SimpleNamespace(content="SLA em 80,0%.\n\n**Ação:** Líder do hub revisa o SLA hoje.", tool_calls=None)
+        return SimpleNamespace(choices=[SimpleNamespace(message=msg, finish_reason="stop")], usage=None)
+
+    _install_llm(monkeypatch, create)
+    client.app.dependency_overrides[get_settings] = lambda: Settings(
+        openrouter_api_key="test-key", chat_rate_limit_enabled=False
+    )
+    try:
+        body = client.post("/api/agent/chat", json={"question": "como esta o sla?"}).json()
+        assert body["source"] == "llm"
+        assert body["fallback_reason"] is None
+        assert len(calls) == 2
+    finally:
+        client.app.dependency_overrides.pop(get_settings, None)
+
+
+def test_account_quota_is_not_retried():
+    from app.agent import llm as llm_mod
+
+    calls: list[dict] = []
+
+    def create(**kwargs):
+        calls.append(kwargs)
+        raise _rate_limit("Rate limit exceeded: free-models-per-day")
+
+    client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
+    settings = Settings(openrouter_api_key="k", llm_reasoning_effort=None)
+    import openai
+
+    with pytest.raises(openai.RateLimitError):
+        llm_mod._create_completion(client, settings=settings, messages=[], timeout=10.0, deadline=time.monotonic() + 15)
+    assert len(calls) == 1
+
+
+def test_fallback_models_go_to_openrouter_models_list():
+    from app.agent import llm as llm_mod
+
+    seen: dict = {}
+
+    def create(**kwargs):
+        seen.update(kwargs)
+        return SimpleNamespace(choices=[])
+
+    client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
+    settings = Settings(
+        openrouter_api_key="k",
+        openrouter_model="a/primary:free",
+        openrouter_fallback_models=" b/backup:free, a/primary:free ,,b/backup:free",
+        llm_reasoning_effort="low",
+    )
+    llm_mod._create_completion(client, settings=settings, messages=[], timeout=2.0)
+    assert seen["extra_body"]["models"] == ["a/primary:free", "b/backup:free"]
+    assert seen["extra_body"]["reasoning"]["effort"] == "low"
+
+
+def test_no_fallback_models_by_default():
+    assert Settings.model_fields["openrouter_fallback_models"].default == ""
+    assert Settings(openrouter_api_key="k").fallback_models == []

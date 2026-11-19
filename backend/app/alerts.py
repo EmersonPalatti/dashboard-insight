@@ -208,15 +208,35 @@ def _stage_action(stage: str, gap: float, hub: dict, repo: Repository, f: Filter
     )
 
 
-def _cancel_action(repo: Repository, f: Filters, cancel: float, peak: list[int]) -> str:
-    """Loja de maior cancelamento entre as que têm base (STORE_MIN), com o hub dela para o líder."""
-    stores = repo.breakdown(f, "store", sort="cancel_rate", limit=1, min_orders=STORE_MIN)
-    if stores:
-        store = stores[0]
+def _cancel_action(
+    repo: Repository, f: Filters, cancel: float, peak: list[int], stores: list[dict] | None = None
+) -> str:
+    """Loja de maior cancelamento em operação (STORE_MIN+); loja sem entregas vai para tirar do ar."""
+    if stores is None:
+        stores = repo.breakdown(f, "store", sort="cancel_rate", limit=500, min_orders=STORE_MIN)
+    named = [s for s in stores if s.get("key") is not None]
+    broken = [s for s in named if (s["cancel_rate"] or 0) >= BROKEN_CANCEL]
+    operating = [s for s in named if (s["cancel_rate"] or 0) < BROKEN_CANCEL]
+    elevated = [s for s in operating if (s["cancel_rate"] or 0) >= CANCEL_WARN]
+    if elevated:
+        store = elevated[0]
+        if broken:
+            return (
+                f"Ligar hoje para o líder do hub {store['parent']}: fora as lojas sem entregas, a loja {store['label']} cancela "
+                f"{fmt.pct(store['cancel_rate'])} dos pedidos, a maior taxa entre as lojas em operação com {STORE_MIN}+ pedidos. "
+                f"Checar ruptura de itens e loja fechada com cardápio aberto antes do pico ({_hours_label(peak)})."
+            )
         return (
             f"Ligar hoje para o líder do hub {store['parent']}: a loja {store['label']} cancela "
             f"{fmt.pct(store['cancel_rate'])} dos pedidos, a maior taxa entre as lojas com {STORE_MIN}+ pedidos. "
             f"Checar ruptura de itens e loja fechada com cardápio aberto antes do pico ({_hours_label(peak)})."
+        )
+    if broken:
+        store = max(broken, key=lambda s: (s["canceled"], s["cancel_rate"] or 0.0))
+        return (
+            f"Tirar {store['label']} do ar hoje (hub {store['parent']}): a taxa do recorte é puxada por loja sem entregas "
+            f"({fmt.pct(store['cancel_rate'])} cancelado); o problema é cadastro, integração ou loja fechada recebendo pedido. "
+            "Reativar só depois de um pedido de teste."
         )
     return (
         "Ligar hoje para o líder da operação do recorte: confirmar antes do pico "
@@ -412,7 +432,7 @@ def _detect(repo: Repository, f: Filters) -> list[Alert]:
                     f"{fmt.pct(cancel)} dos pedidos cancelados (teto interno {fmt.pct(CANCEL_WARN, 0)}).{where}"
                     + (f" Recorte com amostra pequena ({base['orders']} pedidos no total)." if thin_cancel else "")
                 ),
-                action=thin_cancel_action if thin_cancel else _cancel_action(repo, f, cancel, peak),
+                action=thin_cancel_action if thin_cancel else _cancel_action(repo, f, cancel, peak, stores=stores),
                 evidence=Evidence(view="kpi", kpi="cancel_rate"),
             ))
 

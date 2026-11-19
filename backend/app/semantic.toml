@@ -1,0 +1,507 @@
+# Camada semântica do agente de insights (fonte única).
+#
+# Inspirada no "knowledge store" do Databricks Genie: definição exata de cada métrica, sinônimos
+# que o operador digita, conceitos de negócio, mapa causal e exemplos "pergunta -> plano".
+# `app/semantic.py` carrega e valida este arquivo; `tests/test_semantic.py` confere que cada
+# métrica bate com METRICS_SQL e cada dimensão com repository.DIMENSIONS.
+#
+# Regras de escrita:
+# - Definições em pt-BR, curtas e iguais ao SQL (inclusive o que fica de fora).
+# - Sinônimos em minúsculas. Acento e plural simples são ignorados na busca ("lojas" casa "loja").
+# - Um sinônimo não pode apontar para duas chaves do mesmo tipo (métrica, dimensão ou conceito).
+# - Nada de nome fixo de hub, loja ou cidade: valores só para códigos crus do dataset.
+
+# Universo (denominador) de cada métrica. As chaves são fixas; o texto vai para o prompt.
+[bases]
+orders = "todos os pedidos do recorte"
+delivered = "pedidos entregues"
+measured = "entregues sem preso e com ciclo registrado"
+valid = "entregues sem preso (ciclo ≤ 4h)"
+sale = "entregues com valor ≤ R$ 5 mil"
+priced = "entregues com frete e custo registrados"
+
+# ------------------------------------------------------------------ métricas (METRICS_SQL)
+
+[metrics.orders]
+label = "Pedidos"
+unit = "count"
+kind = "count"
+better = "up"
+base = "orders"
+definition = "Todos os pedidos do recorte, entregues e cancelados."
+synonyms = ["pedido", "volume", "demanda", "quantidade de pedidos", "número de pedidos", "total de pedidos", "movimento"]
+
+[metrics.delivered]
+label = "Entregues"
+unit = "count"
+kind = "count"
+better = "up"
+base = "orders"
+definition = "Pedidos com status concluído."
+synonyms = ["entregue", "pedidos entregues", "entregas concluídas", "concluídos", "finalizados", "quantas entregas"]
+
+[metrics.canceled]
+label = "Cancelados"
+unit = "count"
+kind = "count"
+better = "down"
+base = "orders"
+definition = "Pedidos com status cancelado."
+synonyms = ["cancelado", "cancelada", "pedidos cancelados", "quantidade de cancelamentos", "número de cancelamentos", "quantos cancelamentos"]
+
+[metrics.gmv]
+label = "GMV"
+unit = "brl"
+kind = "sum"
+better = "up"
+base = "sale"
+definition = "Soma do valor dos pedidos entregues; valor > R$ 5 mil (teste) fica fora."
+synonyms = ["faturamento", "faturou", "receita", "venda", "vendeu", "valor vendido", "volume financeiro", "valor total"]
+
+[metrics.ticket]
+label = "Ticket médio"
+unit = "brl"
+kind = "avg"
+better = "up"
+base = "sale"
+definition = "Valor médio por pedido entregue; valor > R$ 5 mil fica fora."
+synonyms = ["ticket médio", "tíquete médio", "valor médio", "valor médio do pedido", "gasto médio", "aov"]
+
+[metrics.cancel_rate]
+label = "Cancelamento"
+unit = "pct"
+kind = "rate"
+better = "down"
+base = "orders"
+numerator = "canceled"
+definition = "Cancelados ÷ todos os pedidos do recorte."
+synonyms = ["taxa de cancelamento", "índice de cancelamento", "cancela", "cancelam", "cancelou", "cancelar", "cancel", "desistência", "desistiu", "desiste", "ruptura"]
+
+[metrics.measured]
+label = "Base medida"
+unit = "count"
+kind = "count"
+base = "measured"
+definition = "Denominador do SLA; cite-a quando for pequena."
+synonyms = ["pedidos medidos", "entregas medidas", "medidos", "amostra medida"]
+
+[metrics.cycle_p50]
+label = "Ciclo mediano"
+unit = "min"
+kind = "median"
+better = "down"
+base = "valid"
+definition = "Mediana do ciclo (criação → entrega); presos ficam fora."
+synonyms = ["ciclo", "tempo de entrega", "tempo total", "tempo de ciclo", "tempo do pedido", "tempo médio de entrega", "mediana do ciclo", "demora", "demorou", "demorando", "lentidão", "lento", "lenta", "rapidez"]
+
+[metrics.cycle_p90]
+label = "Ciclo p90"
+unit = "min"
+kind = "quantile"
+better = "down"
+base = "valid"
+definition = "Percentil 90 do ciclo: 10% das entregas demoram mais."
+synonyms = ["p90", "percentil 90", "ciclo p90", "cauda", "cauda longa", "pior caso", "entregas mais demoradas"]
+
+[metrics.sla_rate]
+label = "SLA (no prazo)"
+unit = "pct"
+kind = "rate"
+better = "up"
+base = "measured"
+definition = "Entregas no prazo ÷ base medida; prazo do ciclo: food 60 min, goods 120 min."
+synonyms = ["sla", "no prazo", "dentro do prazo", "prazo", "fora do prazo", "entrega no prazo", "atraso", "atrasado", "atrasada", "atrasou", "atrasam", "atrasando", "pontualidade", "pontual", "nível de serviço"]
+
+[metrics.stuck_rate]
+label = "Presos"
+unit = "pct"
+kind = "rate"
+better = "down"
+base = "delivered"
+definition = "Entregues com ciclo > 4h ÷ entregues."
+synonyms = ["taxa de presos", "pedido preso", "preso", "travado", "pedidos travados"]
+
+[metrics.production_p50]
+label = "Preparo na loja"
+unit = "min"
+kind = "median"
+better = "down"
+base = "valid"
+definition = "Preparo: criação → pedido pronto na loja."
+synonyms = ["preparo", "tempo de preparo", "preparação", "produção", "tempo de produção", "cozinha", "demora da loja", "montagem do pedido"]
+
+[metrics.collected_p50]
+label = "Coleta"
+unit = "min"
+kind = "median"
+better = "down"
+base = "valid"
+definition = "Coleta: retirada pelo entregador (subetapa da expedição)."
+synonyms = ["coleta", "tempo de coleta", "coletar", "retirada", "retirar", "espera na loja", "pickup"]
+
+[metrics.expedition_p50]
+label = "Expedição"
+unit = "min"
+kind = "median"
+better = "down"
+base = "valid"
+definition = "Expedição: pedido pronto → entregador sai do hub."
+synonyms = ["expedição", "tempo de expedição", "despacho", "saída do hub", "liberação do pedido", "fila de saída"]
+
+[metrics.transit_p50]
+label = "Trânsito"
+unit = "min"
+kind = "median"
+better = "down"
+base = "valid"
+definition = "Trânsito: saída do hub → entrega ao cliente."
+synonyms = ["trânsito", "tempo de trânsito", "rota", "deslocamento", "percurso", "trajeto", "a caminho", "tempo na rua", "última milha", "last mile"]
+
+[metrics.distance_p50_km]
+label = "Distância mediana"
+unit = "km"
+kind = "median"
+base = "valid"
+definition = "Mediana da distância; > 50 km vira nulo."
+synonyms = ["distância", "km", "quilômetro", "quilometragem", "raio", "raio de entrega", "longe", "distante"]
+
+[metrics.fee_avg]
+label = "Frete cobrado"
+unit = "brl"
+kind = "avg"
+base = "priced"
+definition = "Frete médio cobrado do cliente."
+synonyms = ["frete", "taxa de entrega", "frete cobrado", "valor do frete", "taxa de frete", "delivery fee"]
+
+[metrics.cost_avg]
+label = "Custo logístico"
+unit = "brl"
+kind = "avg"
+better = "down"
+base = "priced"
+definition = "Custo logístico médio da entrega (repasse da corrida)."
+synonyms = ["custo", "custo de entrega", "custo logístico", "custo do entregador", "custo da corrida", "repasse ao entregador"]
+
+[metrics.subsidy]
+label = "Subsídio de frete"
+unit = "brl"
+kind = "avg"
+better = "down"
+base = "priced"
+definition = "Média de custo − frete; positivo = a operação banca a diferença."
+synonyms = ["subsídio", "subsídio de frete", "frete subsidiado", "subsidiado", "subsidiar", "subsidiando", "prejuízo no frete", "diferença de frete"]
+
+# ---------------------------------------------------- métricas extras (EXTRA_METRICS_SQL)
+
+[metrics.chargeback_rate]
+label = "Chargeback"
+unit = "pct"
+kind = "rate"
+better = "down"
+base = "orders"
+extra = true
+definition = "Pedidos com chargeback (pagamento contestado) ÷ pedidos; raro, cite a base."
+synonyms = ["chargeback", "taxa de chargeback", "estorno", "estornado", "contestação", "contestado", "fraude", "disputa de pagamento"]
+
+[metrics.multi_attempt_rate]
+label = "Mais de uma tentativa"
+unit = "pct"
+kind = "rate"
+better = "down"
+base = "delivered"
+extra = true
+definition = "Entregues com mais de uma tentativa ÷ entregues."
+synonyms = ["tentativa", "tentativa de entrega", "mais de uma tentativa", "segunda tentativa", "nova tentativa", "reentrega", "entrega repetida", "cliente ausente"]
+
+[metrics.walking_p50]
+label = "Caminhada"
+unit = "min"
+kind = "median"
+better = "down"
+base = "valid"
+extra = true
+definition = "Caminhada do entregador no hub (subetapa da expedição)."
+synonyms = ["caminhada", "tempo de caminhada", "a pé", "andando", "caminhar", "deslocamento no hub"]
+
+# --------------------------------------------------------------- dimensões (DIMENSIONS)
+
+[dimensions.city]
+label = "Cidade"
+definition = "Cidade do hub (praça); o pai é o estado."
+synonyms = ["praça", "região", "município", "estado", "uf", "capital"]
+
+[dimensions.hub]
+label = "Hub"
+has_id = true
+definition = "Hub (shopping) de onde sai a entrega; filtra por id numérico; o pai é a cidade."
+synonyms = ["shopping", "centro de distribuição", "base operacional", "polo", "unidade"]
+
+[dimensions.store]
+label = "Loja"
+has_id = true
+definition = "Loja parceira dentro do hub; filtra por id numérico. Homônimas no mesmo hub levam #id."
+synonyms = ["restaurante", "parceiro", "estabelecimento", "lojista", "comércio", "merchant", "seller"]
+
+[dimensions.channel]
+label = "Canal"
+definition = "Canal de venda do pedido (nomes vêm dos dados); o pai é o tipo de canal."
+synonyms = ["canal de venda", "app", "aplicativo", "plataforma", "origem do pedido"]
+
+[dimensions.channel_type]
+label = "Tipo de canal"
+definition = "marketplace (venda por plataforma) ou own (canal próprio da loja)."
+synonyms = ["tipo de canal", "próprio", "própria", "venda própria"]
+values = { marketplace = "marketplace", own = "canal próprio" }
+
+[dimensions.segment]
+label = "Segmento"
+definition = "food (restaurante, prazo 60 min) ou good (goods/varejo, prazo 120 min)."
+synonyms = ["categoria", "vertical", "tipo de loja", "comida", "varejo"]
+values = { food = "food", good = "goods" }
+
+[dimensions.modal]
+label = "Modal"
+definition = "Veículo do entregador; nulo = sem entregador alocado (quase só cancelados)."
+synonyms = ["modais", "veículo", "tipo de veículo", "motoboy", "motoqueiro", "motociclista", "ciclista", "bicicleta", "de moto"]
+values = { moto = "moto", bike = "bike" }
+
+[dimensions.driver_type]
+label = "Tipo de entregador"
+definition = "Vínculo do entregador: freelance (autônomo) ou operator (operador logístico); nulo = sem entregador."
+synonyms = ["tipo de entregador", "vínculo", "vínculo do entregador", "terceirizado", "autônomo", "contratado", "tipo de frota"]
+values = { freelance = "freelancer", operator = "operador logístico" }
+
+[dimensions.payment_method]
+label = "Pagamento"
+definition = "Meio de pagamento de maior valor do pedido; nulo = sem pagamento registrado."
+synonyms = ["forma de pagamento", "meio de pagamento", "método de pagamento", "cartão"]
+values = { online = "online", debit = "débito", credit = "crédito", voucher = "voucher", meal_benefit = "vale-refeição", money = "dinheiro", payment_link = "link de pagamento", store_direct_payment = "pagamento direto na loja", debit_store = "débito na loja", credit_store = "crédito na loja", installment_credit_store = "crédito parcelado na loja", voucher_store = "voucher na loja", voucher_dc = "voucher da plataforma", voucher_ol = "voucher online", bank_transfer_dc = "transferência bancária" }
+
+[dimensions.hour]
+label = "Hora"
+definition = "Hora de criação do pedido (0–23), horário de Brasília."
+synonyms = ["horário", "faixa horária", "faixa de horário", "por hora", "hora do dia", "turno"]
+
+[dimensions.weekday]
+label = "Dia da semana"
+definition = "Dia da semana da criação: 0 = segunda … 6 = domingo."
+synonyms = ["dia da semana", "dias da semana", "por dia da semana"]
+values = { 0 = "segunda", 1 = "terça", 2 = "quarta", 3 = "quinta", 4 = "sexta", 5 = "sábado", 6 = "domingo" }
+
+# ----------------------------------------------------------------------------- conceitos
+
+[concepts.recorte]
+label = "Recorte"
+definition = "Filtros ativos (período, cidade, hub, loja, segmento, canal, modal, status); todo número vale só para ele."
+synonyms = ["filtro", "fatia", "seleção", "recorte atual"]
+related = ["city", "hub", "store", "segment", "channel_type", "modal"]
+
+[concepts.pedido_preso]
+label = "Pedido preso"
+definition = "Entregue com ciclo > 4h (travado ou baixa esquecida); sai das medianas e do SLA."
+synonyms = ["pedido preso", "preso", "travado", "parado no fluxo", "ciclo acima de 4h", "mais de 4 horas"]
+related = ["stuck_rate", "measured", "sla_rate", "cycle_p50"]
+
+[concepts.etapas_ciclo]
+label = "Etapas do ciclo"
+definition = "Por pedido, ciclo = preparo + expedição + trânsito; as medianas não somam o ciclo mediano."
+synonyms = ["etapa", "gargalo", "fluxo do pedido", "jornada do pedido", "onde demora"]
+related = ["cycle_p50", "production_p50", "collected_p50", "walking_p50", "expedition_p50", "transit_p50"]
+
+[concepts.amostra_pequena]
+label = "Amostra pequena"
+definition = "low_sample: < 100 medidas (SLA, ciclo); volume_low_sample: < 100 pedidos (cancelamento). Vira indício; cite a base."
+synonyms = ["amostra pequena", "pouca amostra", "poucos pedidos", "base pequena", "low sample", "significativo", "confiável"]
+related = ["measured", "orders"]
+
+[concepts.sem_entregador]
+label = "Cancelamento antes da alocação"
+definition = "~91% dos cancelamentos são antes de alocar entregador (modal nulo): filtrar modal derruba o cancelamento por seleção; filtrar status fixa 0% ou 100%."
+synonyms = ["sem entregador", "antes da alocação", "alocação", "pré-alocação", "sem motoboy"]
+related = ["cancel_rate", "modal", "driver_type"]
+
+[concepts.loja_quebrada]
+label = "Loja quebrada"
+definition = "90%+ de cancelamento com base: cadastro, integração ou fechada com cardápio aberto; tirar do ar hoje."
+synonyms = ["loja quebrada", "loja sem entregas", "loja fora do ar", "loja fechada", "cardápio aberto", "tirar do ar"]
+related = ["cancel_rate", "store"]
+
+[concepts.frota]
+label = "Frota"
+definition = "Falta de entregador aparece em coleta, expedição e trânsito no pico, não no preparo."
+synonyms = ["entregador", "frota", "escala", "escala de entregadores", "courier", "reforçar frota", "falta de entregador"]
+related = ["collected_p50", "expedition_p50", "transit_p50", "modal", "driver_type", "hour"]
+
+[concepts.pico]
+label = "Pico"
+definition = "As 4 horas com mais pedidos do recorte (vem dos dados)."
+synonyms = ["pico", "horário de pico", "hora do rush", "rush", "horário nobre", "maior movimento"]
+related = ["hour", "orders", "sla_rate"]
+
+[concepts.almoco]
+label = "Almoço"
+definition = "Faixa 11h–14h."
+synonyms = ["almoço", "hora do almoço", "meio-dia"]
+related = ["hour"]
+hours = [11, 12, 13]
+
+[concepts.jantar]
+label = "Jantar"
+definition = "Faixa 18h–22h."
+synonyms = ["jantar", "janta", "noite", "à noite"]
+related = ["hour"]
+hours = [18, 19, 20, 21]
+
+[concepts.madrugada]
+label = "Madrugada"
+definition = "Faixa 0h–6h."
+synonyms = ["madrugada", "de madrugada", "virada da noite"]
+related = ["hour"]
+hours = [0, 1, 2, 3, 4, 5]
+
+[concepts.fim_de_semana]
+label = "Fim de semana"
+definition = "Sábado e domingo."
+synonyms = ["fim de semana", "final de semana", "fds", "sábado e domingo"]
+related = ["weekday"]
+weekdays = [5, 6]
+
+[concepts.dias_uteis]
+label = "Dias úteis"
+definition = "Segunda a sexta."
+synonyms = ["dias úteis", "dia útil", "durante a semana", "segunda a sexta"]
+related = ["weekday"]
+weekdays = [0, 1, 2, 3, 4]
+
+[concepts.subsidio_frete]
+label = "Subsídio de frete"
+definition = "Entrega custa mais que o frete; alavancas: frete mínimo e raio da loja."
+synonyms = ["subsídio de frete", "frete subsidiado", "frete grátis", "frete negativo", "margem de frete"]
+related = ["subsidy", "fee_avg", "cost_avg", "distance_p50_km"]
+
+[concepts.reguas]
+label = "Réguas internas"
+definition = "SLA < 80% crítico, < 85% atenção; cancelamento ≥ 9% crítico, ≥ 6% atenção; presos > 3% atenção; subsídio ≥ R$ 3 por entrega."
+synonyms = ["meta", "régua", "teto", "limite", "crítico", "atenção", "aceitável"]
+related = ["sla_rate", "cancel_rate", "stuck_rate", "subsidy"]
+
+[concepts.desvio]
+label = "Desvio do recorte"
+definition = "sla_below: SLA > 5 p.p. abaixo do recorte; cancel_above: > 1,6× o recorte e ≥ 6%; amostra pequena não marca."
+synonyms = ["fora da curva", "outlier", "desvio", "destoa", "acima da média", "abaixo da média", "pior que a média"]
+related = ["sla_rate", "cancel_rate", "hub", "store"]
+
+[concepts.variacao]
+label = "Variação"
+definition = "Contra o período anterior de mesma duração; use os deltas prontos (p.p. em taxas)."
+synonyms = ["piorou", "melhorou", "subiu", "caiu", "aumentou", "diminuiu", "variação", "evolução", "tendência", "período anterior", "semana passada", "mês passado"]
+related = ["orders", "sla_rate", "cancel_rate", "cycle_p50"]
+
+[concepts.limpeza]
+label = "Limpeza dos dados"
+definition = "Horário de Brasília (UTC−3); tempo negativo vira nulo."
+synonyms = ["limpeza", "fuso", "fuso horário", "horário de brasília", "utc", "pedido de teste", "dado sujo"]
+related = ["stuck_rate", "gmv", "ticket", "hour"]
+
+# ------------------------------------------------------------------------- mapa causal
+# Quando o efeito piora: métricas a checar e dimensões onde a causa se concentra, em ordem.
+
+[causal.sla_rate]
+drivers = ["stuck_rate", "production_p50", "expedition_p50", "collected_p50", "transit_p50", "distance_p50_km"]
+dimensions = ["hub", "store", "hour", "modal"]
+note = "Presos altos: problema de dado, não de prazo. Etapa acima da mediana: preparo → lojas lentas; coleta/expedição → fila do hub; trânsito → frota ou raio no pico."
+
+[causal.cycle_p50]
+drivers = ["production_p50", "expedition_p50", "transit_p50", "distance_p50_km"]
+dimensions = ["hub", "store", "hour", "segment"]
+note = "Mesma leitura do SLA; goods demora mais, mix de segmento move a mediana."
+
+[causal.cancel_rate]
+drivers = ["canceled", "orders"]
+dimensions = ["store", "modal", "hour", "hub", "channel"]
+note = "Comece pela loja: 90%+ = quebrada (tirar do ar); senão ruptura ou loja fechada antes do pico."
+
+[causal.transit_p50]
+drivers = ["distance_p50_km", "multi_attempt_rate"]
+dimensions = ["hub", "modal", "hour"]
+note = "Sobe com distância e no pico; bike faz rotas curtas. Ação: reforçar motos ou reduzir raio."
+
+[causal.production_p50]
+drivers = []
+dimensions = ["store", "hour", "segment"]
+note = "Ligar para as lojas mais lentas: tempo informado e pausa de cardápio."
+
+[causal.stuck_rate]
+drivers = []
+dimensions = ["hub", "store", "driver_type"]
+note = "Concentrado num hub = baixa esquecida: cobrar o líder pela finalização."
+
+[causal.subsidy]
+drivers = ["cost_avg", "fee_avg", "distance_p50_km"]
+dimensions = ["store", "hub", "channel_type"]
+note = "Custo sobe com distância; frete é comercial: subir frete mínimo ou rever raio."
+
+[causal.orders]
+drivers = []
+dimensions = ["weekday", "channel", "hub", "store"]
+note = "Queda costuma vir de um canal ou hub; dia da semana e hora têm sazonalidade."
+
+[causal.gmv]
+drivers = ["delivered", "ticket", "cancel_rate"]
+dimensions = ["channel", "store", "segment"]
+note = "GMV = entregues × ticket: separe volume de ticket."
+
+[causal.chargeback_rate]
+drivers = []
+dimensions = ["payment_method", "channel", "store"]
+note = "Acionar financeiro/antifraude no meio ou canal que concentra."
+
+# ------------------------------------------------------------------ exemplos confiáveis
+
+[[examples]]
+question = "Por que o SLA caiu?"
+plan = "explain_change(metric=sla_rate, by=hub) contra o período anterior; no hub que mais puxa a queda, drill_cause(metric=sla_rate, group={hub: [id]}) acha a etapa mais lenta; fechar com a ação dessa etapa."
+
+[[examples]]
+question = "Qual loja mais cancela?"
+plan = "query_metrics([cancel_rate, canceled, orders], group_by=[store], sort=cancel_rate, min_orders=150). Loja com 90%+ é quebrada: tirar do ar hoje. Senão, ligar para a loja sobre ruptura e loja fechada com cardápio aberto antes do pico."
+
+[[examples]]
+question = "Como está o jantar de sexta?"
+plan = "query_metrics([orders, sla_rate, cycle_p50, cancel_rate], where={window: jantar, weekday: [4]}, compare=rest). Nunca média de horas; se o SLA cai, drill_cause(metric=sla_rate, group={window: jantar, weekday: [4]}) acha a etapa: antecipar a escala antes das 18h."
+
+[[examples]]
+question = "Fim de semana vende mais que dia útil?"
+plan = "query_metrics([orders, gmv, ticket, sla_rate], where={window: fim_de_semana}, compare=rest); o resto são os dias úteis. Compare pedidos por dia, não o total (2 dias contra 5)."
+
+[[examples]]
+question = "Quanto estamos pagando de frete subsidiado?"
+plan = "get_kpis para subsidy, fee_avg e cost_avg do recorte; query_metrics([subsidy, cost_avg, fee_avg, distance_p50_km], group_by=[store], sort=subsidy, min_orders=150) para achar a loja. Ação: subir o frete mínimo dela ou rever o raio."
+
+[[examples]]
+question = "O hub piorou?"
+plan = "Confirmar o id em query_metrics([orders], group_by=[hub]); query_metrics([sla_rate, cycle_p50, cancel_rate], where={hub: [id]}, compare=previous) e drill_cause(metric=sla_rate, group={hub: [id]}). Hub fora do recorte: dizer isso; nunca inventar nome."
+
+[[examples]]
+question = "Chargeback por forma de pagamento"
+plan = "query_metrics([chargeback_rate, orders], group_by=[payment_method]). Evento raro: citar quantos pedidos sustentam cada taxa e não cobrar ninguém com base pequena."
+
+[[examples]]
+question = "Onde está o gargalo do ciclo?"
+plan = "query_metrics([production_p50, expedition_p50, transit_p50, measured], group_by=[hub]) contra o recorte; a etapa com maior folga acima da mediana define a ação. As etapas não somam o ciclo mediano."
+
+[[examples]]
+question = "Moto ou bike entrega mais rápido?"
+plan = "query_metrics([transit_p50, distance_p50_km, sla_rate, measured], group_by=[modal]). Bike faz rotas curtas: comparar trânsito com a distância ao lado. Filtrar modal tira os cancelados sem entregador."
+
+[[examples]]
+question = "Por que o volume caiu esta semana?"
+plan = "explain_change(metric=orders, by=channel) e depois by=hub; get_timeseries(grain=day) para achar o dia da queda. Ação com o parceiro do canal ou o líder do hub que mais caiu."
+
+[[examples]]
+question = "Muita entrega precisa de segunda tentativa?"
+plan = "query_metrics([multi_attempt_rate, delivered, transit_p50], group_by=[hub]). Ação no hub com maior taxa: revisar endereço e contato com o cliente antes da saída."
+
+[[examples]]
+question = "Quais os alertas agora?"
+plan = "get_alerts; responder pelo mais crítico com o número e a ação dele, sem repetir a lista inteira."

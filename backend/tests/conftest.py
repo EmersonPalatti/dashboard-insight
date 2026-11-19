@@ -333,3 +333,13 @@ def client(parquet_path: Path):
 @pytest.fixture(scope="session")
 def repo(client):
     return client.app.state.repo
+
+
+@pytest.fixture(autouse=True)
+def _reset_quota_breaker():
+    """O disjuntor de cota do LLM é global ao processo: um teste com 429 não pode calar os outros."""
+    from app.agent.service import quota_breaker
+
+    quota_breaker.reset()
+    yield
+    quota_breaker.reset()

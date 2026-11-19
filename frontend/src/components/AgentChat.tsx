@@ -1,5 +1,5 @@
 import { useStore } from "@nanostores/react";
-import { Bot, ChevronDown, RotateCcw, SendHorizontal, X } from "lucide-react";
+import { Bot, ChevronDown, Info, RotateCcw, SendHorizontal, X } from "lucide-react";
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   $agentActivity,
@@ -21,11 +21,17 @@ import { Markdown, clip, plainText } from "./agent/markdown";
 
 const SUGGESTIONS = [
   "Quais os alertas e o que fazer hoje?",
+  "Por que o SLA mudou em relação ao período anterior?",
   "Onde está o gargalo do ciclo?",
   "Quais lojas mais cancelam?",
   "Como está o pico do jantar?",
   "Quanto estamos subsidiando de frete?",
 ];
+/** Modelos do plano gratuito do OpenRouter terminam em ":free" (cota e fila compartilhadas). */
+const isFreeModel = (model: string) => model.endsWith(":free");
+/** "nvidia/nemotron-3-ultra:free" → "nemotron-3-ultra": o provedor e o plano já estão no texto do aviso. */
+const modelName = (model: string) => model.replace(/:free$/, "").split("/").pop() || model;
+
 /** Quantas sugestões aparecem de início; o resto fica atrás de "Mais perguntas". */
 const SUGGESTIONS_SHOWN = 3;
 
@@ -291,8 +297,9 @@ export function AgentConversation({ visible, onClose }: ConversationProps) {
             : message,
         );
       } else if (llmEnabledRef.current === true) {
+        const fallback = llm.fallback_reason ?? undefined;
         replaceMessage(assistantId, (message) =>
-          message.comanda ? { ...message, comanda: { ...message.comanda, status: "failed" } } : message,
+          message.comanda ? { ...message, comanda: { ...message.comanda, status: "failed", fallback } } : message,
         );
       }
     } catch {
@@ -410,6 +417,15 @@ export function AgentConversation({ visible, onClose }: ConversationProps) {
             Responde só sobre {active ? (active === 1 ? "este filtro" : `estes ${active} filtros`) : "este recorte"}.{" "}
             {meta ? (meta.llm_enabled ? "Respostas calculadas direto sobre os dados do recorte." : "Leitura local por regras e estatísticas do recorte.") : ""}
           </p>
+          {meta?.llm_enabled && meta.llm_model && (
+            <p className="flex items-start gap-1.5 text-meta text-pretty text-muted">
+              <Info className="mt-px size-3.5 shrink-0 text-warn" aria-hidden />
+              <span>
+                {isFreeModel(meta.llm_model) ? "Modelo gratuito" : "Modelo"} <span className="font-medium text-ink">{modelName(meta.llm_model)}</span>{" "}
+                via OpenRouter: pode demorar, errar a leitura, ficar fora do ar ou esgotar a cota do dia. A leitura por regras chega primeiro e continua valendo se o modelo falhar.
+              </span>
+            </p>
+          )}
         </div>
       </header>
 

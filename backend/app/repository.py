@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import csv
 import io
+import json
+import re
 import tempfile
 import threading
 from collections import OrderedDict
@@ -102,6 +104,150 @@ NULL_LABELS = {
     "payment_method": "Sem pagamento",
 }
 _NULL_LABEL = "Não informado"
+
+# Métricas só da consulta estruturada (query_metrics). Ficam fora de METRICS_SQL para não mudar
+# o contrato dos endpoints que já existem.
+EXTRA_METRICS_SQL = f"""
+    avg(has_chargeback::int) as chargeback_rate,
+    avg((delivery_attempts > 1)::int) filter (where status = 'delivered') as multi_attempt_rate,
+    median(walking_min) filter (where {_VALID}) as walking_p50
+"""
+# Numerador e denominador de cada taxa, com a mesma base do avg() correspondente (avg ignora nulo).
+# A decomposição do "por que mudou" precisa dos dois por grupo para somar exato.
+RATE_PARTS: dict[str, tuple[str, str]] = {
+    "cancel_rate": ("status = 'canceled'", "status is not null"),
+    "sla_rate": (f"{_MEASURED} and on_time(segment, cycle_min)", _MEASURED),
+    "stuck_rate": ("status = 'delivered' and cycle_outlier", "status = 'delivered' and cycle_outlier is not null"),
+    "chargeback_rate": ("has_chargeback", "has_chargeback is not null"),
+    "multi_attempt_rate": (
+        "status = 'delivered' and delivery_attempts > 1",
+        "status = 'delivered' and delivery_attempts is not null",
+    ),
+}
+RATE_PARTS_SQL = ",\n".join(
+    f"count(*) filter (where {num})::int as {name}__num, count(*) filter (where {den})::int as {name}__den"
+    for name, (num, den) in RATE_PARTS.items()
+)
+
+
+def _aliases(sql: str) -> list[str]:
+    return re.findall(r"\bas (\w+),?\s*$", sql, re.MULTILINE)
+
+
+# Chaves aceitas por query_metrics: tudo de METRICS_SQL menos os avisos de amostra, mais as extras.
+QUERY_METRICS: tuple[str, ...] = tuple(
+    [a for a in _aliases(METRICS_SQL) if a not in ("low_sample", "volume_low_sample")]
+    + _aliases(EXTRA_METRICS_SQL)
+)
+TIME_DIMENSIONS = ("hour", "weekday")
+QUERY_COMPARES = ("previous", "rest")
+_TIME_RANGES = {"hour": range(24), "weekday": range(7)}
+_MAX_QUERY_METRICS = 8
+_MAX_GROUP_BY = 2
+_MAX_QUERY_LIMIT = 50
+_MAX_WHERE_VALUES = 50
+# Soma por grupo: grupo sem pedido vale 0, não "sem dado".
+ADDITIVE_METRICS = ("orders", "delivered", "canceled", "gmv", "measured")
+
+
+def _normalize_metrics(metrics: list[str] | None) -> list[str]:
+    wanted = list(dict.fromkeys(str(m).strip() for m in (metrics or [])))
+    if not wanted:
+        raise ValueError(f"Informe ao menos uma métrica. Válidas: {', '.join(QUERY_METRICS)}.")
+    if len(wanted) > _MAX_QUERY_METRICS:
+        raise ValueError(f"No máximo {_MAX_QUERY_METRICS} métricas por consulta (recebidas {len(wanted)}).")
+    unknown = [m for m in wanted if m not in QUERY_METRICS]
+    if unknown:
+        raise ValueError(f"Métrica desconhecida: {', '.join(unknown)}. Válidas: {', '.join(QUERY_METRICS)}.")
+    return wanted
+
+
+def _normalize_group_by(group_by: list[str] | None) -> list[str]:
+    dims = [str(d).strip() for d in (group_by or [])]
+    if len(dims) > _MAX_GROUP_BY:
+        raise ValueError(f"No máximo {_MAX_GROUP_BY} dimensões em group_by (recebidas {len(dims)}).")
+    if len(set(dims)) != len(dims):
+        raise ValueError("group_by não pode repetir dimensão.")
+    unknown = [d for d in dims if d not in DIMENSIONS]
+    if unknown:
+        raise ValueError(f"Dimensão desconhecida: {', '.join(unknown)}. Válidas: {', '.join(DIMENSIONS)}.")
+    return dims
+
+
+def _time_value(dim: str, value: Any) -> int:
+    valid = _TIME_RANGES[dim]
+    try:
+        number = int(str(value).strip()) if isinstance(value, str) else int(value)
+    except (TypeError, ValueError):
+        number = None
+    if isinstance(value, bool) or number is None or number not in valid or (
+        isinstance(value, float) and value != number
+    ):
+        raise ValueError(f"{dim} aceita só inteiros de {valid.start} a {valid.stop - 1} (recebido {value!r}).")
+    return number
+
+
+def _normalize_where(where: dict[str, Any] | None) -> dict[str, list]:
+    """Valida a subfatia: dimensão de DIMENSIONS -> valores. Hora e dia da semana viram inteiros."""
+    norm: dict[str, list] = {}
+    for dim, raw in (where or {}).items():
+        if dim not in DIMENSIONS:
+            raise ValueError(f"Dimensão desconhecida em where: {dim!r}. Válidas: {', '.join(DIMENSIONS)}.")
+        values = list(raw) if isinstance(raw, (list, tuple, set)) else [raw]
+        if len(values) > _MAX_WHERE_VALUES:
+            raise ValueError(f"No máximo {_MAX_WHERE_VALUES} valores por dimensão em where ({dim}).")
+        if dim in _TIME_RANGES:
+            clean: list = sorted({_time_value(dim, v) for v in values})
+        else:
+            # Sem diferenciar maiúsculas: "hub centro" e "Hub Centro" são o mesmo valor.
+            by_lower: dict[str, str] = {}
+            for v in values:
+                text = "" if v is None else str(v).strip()
+                if text:
+                    by_lower.setdefault(text.lower(), text)
+            clean = [by_lower[k] for k in sorted(by_lower)]
+        if clean:
+            norm[dim] = clean
+    return dict(sorted(norm.items()))
+
+
+def _where_sql(norm: dict[str, list]) -> tuple[str, list]:
+    """SQL da subfatia (só `?`). Valor casa com a chave ou o rótulo; o rótulo de nulo casa com nulo."""
+    clauses: list[str] = []
+    params: list = []
+    for dim, values in norm.items():
+        key, label, _ = DIMENSIONS[dim]
+        if dim in _TIME_RANGES:
+            clauses.append(f"list_contains(?, {key})")
+            params.append(values)
+            continue
+        lowered = [v.lower() for v in values]
+        clause = (
+            f"list_contains(?, lower(cast({label} as varchar))) or list_contains(?, lower(cast({key} as varchar)))"
+        )
+        params.extend([lowered, lowered])
+        if NULL_LABELS.get(dim, _NULL_LABEL).lower() in lowered:
+            clause += f" or {key} is null"
+        clauses.append(f"({clause})")
+    return " and ".join(clauses), params
+
+
+def _empty_compare(metrics: list[str]) -> dict:
+    """Grupo sem par no outro lado: soma vale 0, taxa/mediana não existe."""
+    return {
+        **{m: (0 if m in ADDITIVE_METRICS else None) for m in metrics},
+        "orders": 0,
+        "measured": 0,
+    }
+
+
+def _delta(current: dict, other: dict | None, metrics: list[str]) -> dict | None:
+    if other is None:
+        return None
+    return {
+        m: (current[m] - other[m] if current.get(m) is not None and other.get(m) is not None else None)
+        for m in metrics
+    }
 
 
 def _flag_outliers(rows: list[dict], base: dict) -> list[dict]:
@@ -477,6 +623,224 @@ class Repository:
             + f.cache_key()
         )
         return self.cached(cache_id, build)
+
+    # ------------------------------------------------------ consulta estruturada
+    def _grouped_rows(
+        self,
+        f: Filters,
+        group_by: list[str],
+        sub_sql: str = "",
+        sub_params: list | None = None,
+        *,
+        complement: bool = False,
+        min_orders: int = 0,
+        min_measured: int = 0,
+    ) -> list[dict]:
+        """Todas as métricas (+ partes das taxas) por grupo, sem limite. Sem group_by: uma linha, o total."""
+        base_where, params = f.where()
+        where = f"({base_where})"
+        if sub_sql:
+            where += f" and not coalesce(({sub_sql}), false)" if complement else f" and ({sub_sql})"
+            params = [*params, *(sub_params or [])]
+        columns: list[str] = []
+        for i, dim in enumerate(group_by):
+            key, label, _ = DIMENSIONS[dim]
+            null_label = NULL_LABELS.get(dim, _NULL_LABEL).replace("'", "''")
+            columns.append(
+                f"{key} as g{i}_key, case when {key} is null then '{null_label}' else {label} end as g{i}_label"
+            )
+        select = ", ".join([*columns, METRICS_SQL, EXTRA_METRICS_SQL, RATE_PARTS_SQL])
+        sql = f"select {select} from orders where {where}"
+        if group_by:
+            sql += f" group by all having count(*) >= ? and count(*) filter (where {_MEASURED}) >= ?"
+            params = [*params, int(min_orders), int(min_measured)]
+        return self._rows(sql, params)
+
+    def grouped_metrics(self, f: Filters, by: str) -> list[dict]:
+        """Todos os grupos de uma dimensão no recorte, sem limite, com `key`/`label`, todas as métricas
+        de QUERY_METRICS e `<taxa>__num`/`<taxa>__den` (RATE_PARTS). Base do explain_change."""
+        _normalize_group_by([by])
+
+        def build() -> list[dict]:
+            rows = self._grouped_rows(f, [by])
+            for row in rows:
+                row["key"] = row.pop("g0_key")
+                row["label"] = row.pop("g0_label")
+            return rows
+
+        return self.cached(f"grp:{by}:" + f.cache_key(), build)
+
+    def query_metrics(
+        self,
+        f: Filters,
+        *,
+        metrics: list[str],
+        group_by: list[str] | None = None,
+        where: dict[str, list] | None = None,
+        compare: str | None = None,
+        sort: str | None = None,
+        desc: bool = True,
+        limit: int = 10,
+        min_orders: int = 0,
+        min_measured: int = 0,
+    ) -> dict:
+        """Consulta estruturada dentro do recorte: métricas × até 2 dimensões, subfatia e comparação.
+
+        Valores crus (taxas de 0 a 1). `compare="previous"` usa o período anterior de mesmo tamanho;
+        `"rest"` usa o complemento de `where` dentro do recorte. Entrada inválida -> ValueError (pt-BR).
+        """
+        wanted = _normalize_metrics(metrics)
+        dims = _normalize_group_by(group_by)
+        norm_where = _normalize_where(where)
+        if compare not in (None, *QUERY_COMPARES):
+            raise ValueError(f"compare aceita {', '.join(QUERY_COMPARES)} ou nada (recebido {compare!r}).")
+        if compare == "rest" and not norm_where:
+            raise ValueError("compare='rest' compara a subfatia com o resto do recorte: informe where.")
+        sort_metric: str | None = None
+        sort_delta = False
+        if sort:
+            sort = str(sort).strip()
+            sort_delta = sort.startswith("delta:")
+            sort_metric = sort.removeprefix("delta:")
+            if sort_metric not in QUERY_METRICS:
+                raise ValueError(f"Ordenação desconhecida: {sort!r}. Use uma métrica ou 'delta:<métrica>'.")
+            if sort_delta and compare is None:
+                raise ValueError("Ordenar por 'delta:' pede compare='previous' ou compare='rest'.")
+            if sort_metric not in wanted:
+                wanted.append(sort_metric)  # a coluna da ordenação aparece na resposta
+        limit = max(1, min(int(limit), _MAX_QUERY_LIMIT))
+        min_orders = max(0, int(min_orders))
+        min_measured = max(0, int(min_measured))
+        args = {
+            "m": wanted, "g": dims, "w": norm_where, "c": compare, "s": sort_metric, "sd": sort_delta,
+            "desc": bool(desc), "l": limit, "mo": min_orders, "mm": min_measured,
+        }
+        cache_id = "qm:" + json.dumps(args, ensure_ascii=False, sort_keys=True) + ":" + f.cache_key()
+        return self.cached(
+            cache_id,
+            lambda: self._query_metrics(
+                f, wanted, dims, norm_where, compare, sort_metric, sort_delta, bool(desc), limit,
+                min_orders, min_measured,
+            ),
+        )
+
+    def _query_metrics(
+        self,
+        f: Filters,
+        wanted: list[str],
+        dims: list[str],
+        norm_where: dict[str, list],
+        compare: str | None,
+        sort_metric: str | None,
+        sort_delta: bool,
+        desc: bool,
+        limit: int,
+        min_orders: int,
+        min_measured: int,
+    ) -> dict:
+        sub_sql, sub_params = _where_sql(norm_where)
+        notes: list[str] = []
+        start, end = self.period(f)
+
+        def shape(row: dict) -> dict:
+            return {
+                "orders": row["orders"], "measured": row["measured"], "low_sample": row["low_sample"],
+                **{m: row[m] for m in wanted},
+            }
+
+        current = (
+            self._grouped_rows(f, dims, sub_sql, sub_params, min_orders=min_orders, min_measured=min_measured)
+            if dims else []
+        )
+        total = shape(self._grouped_rows(f, [], sub_sql, sub_params)[0])
+
+        other_f: Filters | None = None
+        complement = False
+        compare_period = None
+        if compare == "previous":
+            prev = self.previous_period(f)
+            if prev is None:
+                notes.append(
+                    f"Sem período anterior de mesmo tamanho na base ({self.min_date:%d/%m/%Y} a "
+                    f"{self.max_date:%d/%m/%Y}); comparação omitida."
+                )
+                compare = None
+            else:
+                other_f = f.with_period(*prev)
+                compare_period = {"start": prev[0], "end": prev[1]}
+        elif compare == "rest":
+            other_f, complement = f, True
+            compare_period = {"start": start, "end": end}
+            if set(dims) & set(norm_where):
+                notes.append(
+                    "O resto exclui os valores de where, então agrupar pela mesma dimensão deixa as linhas "
+                    "sem par; compare pelos totais."
+                )
+
+        total_compare = None
+        others: dict[tuple, dict] = {}
+        if other_f is not None:
+            total_compare = shape(self._grouped_rows(other_f, [], sub_sql, sub_params, complement=complement)[0])
+            if dims:
+                for row in self._grouped_rows(other_f, dims, sub_sql, sub_params, complement=complement):
+                    others[tuple(row[f"g{i}_key"] for i in range(len(dims)))] = shape(row)
+
+        rows: list[dict] = []
+        for row in current:
+            out = {
+                "keys": {
+                    dim: {"key": row[f"g{i}_key"], "label": row[f"g{i}_label"]} for i, dim in enumerate(dims)
+                },
+                **shape(row),
+            }
+            if compare is not None:
+                cmp = others.get(tuple(row[f"g{i}_key"] for i in range(len(dims)))) or _empty_compare(wanted)
+                out["compare"] = {m: cmp[m] for m in (*wanted, "orders", "measured")}
+                out["delta"] = _delta(out, cmp, wanted)
+            else:
+                out["compare"] = None
+            rows.append(out)
+
+        if sort_delta and compare is None:
+            notes.append(f"Sem comparação, a ordenação usa {sort_metric} em vez da variação.")
+            sort_delta = False
+
+        def key_tuple(r: dict) -> tuple:
+            return tuple((v is None, v) for v in (r["keys"][d]["key"] for d in dims))
+
+        if sort_metric is None and any(d in TIME_DIMENSIONS for d in dims):
+            rows.sort(key=key_tuple)  # série no tempo sai em ordem cronológica
+            if len(dims) == 1:
+                limit = min(_MAX_QUERY_LIMIT, max(limit, len(_TIME_RANGES[dims[0]])))
+        else:
+            metric = sort_metric or "orders"
+
+            def value(r: dict) -> Any:
+                return (r["delta"] or {}).get(metric) if sort_delta else r.get(metric)
+
+            rows.sort(key=lambda r: (-r["orders"], key_tuple(r)))  # desempate estável: volume
+            present = [r for r in rows if value(r) is not None]
+            present.sort(key=value, reverse=desc)
+            rows = present + [r for r in rows if value(r) is None]  # sem valor sempre por último
+
+        n_groups = len(rows)
+        if n_groups > limit:
+            notes.append(f"Mostrando {limit} de {n_groups} grupos.")
+        return {
+            "metrics": wanted,
+            "group_by": dims,
+            "where": norm_where,
+            "compare": compare,
+            "period": {"start": start, "end": end},
+            "compare_period": compare_period if compare is not None else None,
+            "total": total,
+            "total_compare": total_compare,
+            "total_delta": _delta(total, total_compare, wanted),
+            "rows": rows[:limit],
+            "truncated": n_groups > limit,
+            "n_groups": n_groups,
+            "note": " ".join(notes) or None,
+        }
 
     def orders_page(self, f: Filters, offset: int, limit: int, sort: str, desc: bool) -> dict:
         if sort not in ORDER_SORTS:

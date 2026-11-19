@@ -1,4 +1,10 @@
-"""Agente local: intenção por palavras-chave + estatísticas do recorte. Funciona sem API key."""
+"""Agente local: intenção (camada semântica + palavras-chave) e estatísticas do recorte. Sem API key.
+
+Roteamento (`_plan`), em ordem: recorte vazio → fora do escopo → chargeback → entidade citada
+(hub/loja/cidade; "por que" e janela dentro dela) → "por que mudou" → janela de tempo → rotas por
+palavra-chave → métrica × dimensão (`local_answers.by_dimension`) quando a rota não cobre o par
+pedido → métrica sozinha → pergunta anterior do histórico → briefing.
+"""
 
 from __future__ import annotations
 
@@ -6,10 +12,12 @@ import re
 import unicodedata
 
 from app import fmt
+from app.agent import local_answers as la
+from app.agent.local_intent import Entity, Intent, has_any, parse
 from app.agent.reading import Reading, validate_drilldowns
-from app.alerts import STAGES, detect_alerts
+from app.alerts import STAGES, STORE_MIN, detect_alerts
 from app.filters import Filters
-from app.repository import MIN_MEASURED, Repository
+from app.repository import MIN_MEASURED, VALUE_LABELS, Repository
 from app.schemas import DrillDown
 
 SEVERITY = {"high": "Crítico", "medium": "Atenção", "low": "Observar"}
@@ -117,9 +125,13 @@ def briefing(repo: Repository, f: Filters) -> str:
         f"- Cancelamento {fmt.pct(m['cancel_rate'])} · subsídio de frete {fmt.brl(m['subsidy'])} por entrega",
     ]
     if alerts:
-        lines += ["", "**Alertas e ações**"]
-        for a in alerts[:4]:
-            lines.append(f"- **{a.title}**: {a.detail} **Ação:** {a.action}")
+        # A ação do alerta que fecha a resposta sai da lista; os outros mantêm o próximo passo na linha.
+        lead = _lead_alert(repo, alerts)
+        lines += ["", "**Alertas**"]
+        for a in [lead, *[x for x in alerts if x is not lead]][:4]:
+            tail = "" if a is lead else f" Próximo passo: {a.action}"
+            lines.append(f"- **{a.title}** ({SEVERITY[a.severity].lower()}): {a.detail}{tail}")
+        lines += ["", f"**Ação:** {lead.action}"]
     else:
         hubs = repo.breakdown(f, "hub", sort="orders", limit=1)
         if hubs:
@@ -136,6 +148,9 @@ def briefing(repo: Repository, f: Filters) -> str:
 
 def _alert_count(n: int) -> str:
     return "1 alerta" if n == 1 else f"{n} alertas"
+
+
+_lead_alert = la.lead_alert
 
 
 def _alerts(repo: Repository, f: Filters) -> str:
@@ -181,10 +196,13 @@ def _stages(repo: Repository, f: Filters) -> str:
     lead_hub = max(hubs_all, key=lambda h: h.get(bottleneck_key) or 0.0) if hubs_all else None
 
     if bottleneck_key == "production_p50":
-        stores = repo.breakdown(f, "store", sort="cycle_p50", limit=10, min_orders=10)
+        # Mesma régua de amostra das lojas nos alertas; sem loja com base, a de maior volume no recorte.
+        stores = repo.breakdown(f, "store", sort="production_p50", limit=1, min_orders=STORE_MIN, min_measured=MIN_MEASURED)
         if not stores:
-            stores = repo.breakdown(f, "store", sort="cycle_p50", limit=10, min_orders=1)
-        lead_store = max(stores, key=lambda s: s.get("production_p50") or 0.0) if stores else None
+            stores = repo.breakdown(f, "store", sort="production_p50", limit=1, min_orders=10)
+        if not stores:
+            stores = repo.breakdown(f, "store", sort="production_p50", limit=1, min_orders=1)
+        lead_store = stores[0] if stores and stores[0].get("key") is not None else None
         if lead_store and (lead_store.get("production_p50") or 0) > 0:
             lines += [
                 "",
@@ -329,6 +347,13 @@ def _cancel(repo: Repository, f: Filters) -> str:
     if stores:
         lines += ["", "Lojas que mais cancelam (mín. 150 pedidos):", *_rank_lines(stores, "cancel_rate", fmt.pct)]
 
+    broken = [s for s in stores if la.is_broken(s)]
+    if broken:
+        # Mesma família de ação do alerta de loja sem entregas: tirar do ar, não ligar para checar ruptura.
+        names = ", ".join(s["label"] for s in broken[1:3])
+        also = f" Fazer o mesmo com {names}." if names else ""
+        lines += ["", f"**Ação:** {la.broken_store_action(repo, f, broken[0]['key'], broken[0]['label'])}{also}"]
+        return "\n".join(lines)
     if stores and (stores[0].get("cancel_rate") or 0.0) > 0:
         lines += ["", f"**Ação:** Gerente de contas deve ligar para a loja {stores[0]['label']} hoje e checar ruptura e cardápio aberto com loja fechada."]
         return "\n".join(lines)
@@ -454,7 +479,7 @@ def _stores(repo: Repository, f: Filters) -> str:
     return "\n".join(lines)
 
 
-def _peak(repo: Repository, f: Filters) -> str:
+def _peak(repo: Repository, f: Filters, window=None) -> str:
     hours = repo.breakdown(f, "hour", sort="orders", limit=24)
     if not hours:
         return (
@@ -468,6 +493,16 @@ def _peak(repo: Repository, f: Filters) -> str:
     lines += [f"- {int(h['key']):02d}h: {fmt.integer(h['orders'])} pedidos · SLA {fmt.pct(h['sla_rate'])}" for h in top]
     if worst:
         lines += ["", f"Pior SLA entre os horários de pico: {int(worst['key']):02d}h ({fmt.pct(worst['sla_rate'])})."]
+    if window is not None and window.hours:
+        # "pico do jantar": a faixa citada entra inteira, hora a hora, e a ação mira a pior hora dela.
+        band = repo.query_metrics(f, metrics=["sla_rate"], where={"hour": list(window.hours)})["total"]
+        inside = [h for h in hours if h.get("key") is not None and int(h["key"]) in window.hours and h["sla_rate"] is not None]
+        parts = " · ".join(f"{int(h['key']):02d}h {fmt.pct(h['sla_rate'])}" for h in sorted(inside, key=lambda h: int(h["key"])))
+        lines.append(
+            f"{window.label} ({min(window.hours):02d}h–{max(window.hours) + 1:02d}h): SLA {fmt.pct(band['sla_rate'])}"
+            + (f" · por hora: {parts}" if parts else "")
+        )
+        worst = min(inside, key=lambda h: h["sla_rate"], default=worst)
     if days:
         lines.append(f"Dia mais forte: {WEEKDAYS[int(days[0]['key'])]} ({fmt.integer(days[0]['orders'])} pedidos).")
     if worst:
@@ -511,14 +546,30 @@ def _freight(repo: Repository, f: Filters) -> str:
     return "\n".join(lines)
 
 
-def _channels(repo: Repository, f: Filters) -> str:
+def _channel_types(repo: Repository, f: Filters) -> list[dict]:
+    return [r for r in repo.breakdown(f, "channel_type", sort="orders", limit=3) if r.get("key") is not None]
+
+
+def _channels(repo: Repository, f: Filters, by_type: bool = False) -> str:
     rows = repo.breakdown(f, "channel", sort="orders", limit=6)
     if not rows:
         return (
             "Nenhum canal no recorte.\n\n"
             "**Ação:** Time comercial deve revisar o período para analisar os canais."
         )
-    lines = ["Canais por volume:"]
+    types = _channel_types(repo, f)
+    lines = []
+    if types:
+        lines += [
+            "Por tipo de canal:",
+            *[
+                f"- {VALUE_LABELS.get(t['label'], t['label'])}: {fmt.integer(t['orders'])} pedidos · cancelamento "
+                f"{fmt.pct(t['cancel_rate'])} · SLA {fmt.pct(t['sla_rate'])} · ticket {fmt.brl(t['ticket'])}"
+                for t in types
+            ],
+            "",
+        ]
+    lines.append("Canais por volume:")
     for r in rows:
         kind = "próprio" if r["parent"] == "own" else "marketplace"
         lines.append(f"- {r['label']} ({kind}): {fmt.integer(r['orders'])} pedidos · cancelamento {fmt.pct(r['cancel_rate'])} · ticket {fmt.brl(r['ticket'])}")
@@ -526,7 +577,22 @@ def _channels(repo: Repository, f: Filters) -> str:
     worst_cancel = max((r for r in rows if r.get("cancel_rate") is not None), key=lambda r: r["cancel_rate"], default=None)
     worst_sla = min((r for r in rows if r.get("sla_rate") is not None), key=lambda r: r["sla_rate"], default=None)
 
-    if worst_cancel and (worst_cancel.get("cancel_above") or (worst_cancel.get("cancel_rate") or 0) > 0.06):
+    if by_type and len(types) > 1:
+        # Pergunta "marketplace ou canal próprio": a ação fica no tipo que cancela mais e no canal dele que puxa.
+        worst_type = max(types, key=lambda t: t["cancel_rate"] or 0.0)
+        other = next(t for t in types if t is not worst_type)
+        shown = VALUE_LABELS.get(worst_type["label"], worst_type["label"])
+        inside = max(
+            (r for r in rows if r["parent"] == worst_type["key"] and r.get("cancel_rate") is not None),
+            key=lambda r: r["cancel_rate"] * r["orders"],
+            default=None,
+        )
+        lead = f", começando pelo canal {inside['label']} ({fmt.pct(inside['cancel_rate'])})" if inside else ""
+        action = (
+            f"**Ação:** Time comercial deve revisar hoje os cancelamentos do {shown} ({fmt.pct(worst_type['cancel_rate'])} "
+            f"contra {fmt.pct(other['cancel_rate'])} do {VALUE_LABELS.get(other['label'], other['label'])}){lead}."
+        )
+    elif worst_cancel and (worst_cancel.get("cancel_above") or (worst_cancel.get("cancel_rate") or 0) > 0.06):
         action = f"**Ação:** Time comercial deve alinhar hoje com os parceiros do canal {worst_cancel['label']} os motivos de cancelamento ({fmt.pct(worst_cancel['cancel_rate'])})."
     elif worst_sla and (worst_sla.get("sla_below") or (worst_sla.get("sla_rate") or 1.0) < 0.85):
         action = f"**Ação:** Time comercial e operação devem auditar hoje a integração do canal {worst_sla['label']} para recuperar o SLA ({fmt.pct(worst_sla['sla_rate'])})."
@@ -582,7 +648,7 @@ def _revenue(repo: Repository, f: Filters) -> str:
         )
     seg = repo.breakdown(f, "segment", sort="gmv", limit=2)
     lines = [f"GMV {fmt.brl(m['gmv'])} em {fmt.integer(m['delivered'])} entregas · ticket {fmt.brl(m['ticket'])}."]
-    lines += [f"- {s['label']}: {fmt.brl(s['gmv'])} · ticket {fmt.brl(s['ticket'])}" for s in seg]
+    lines += [f"- {VALUE_LABELS.get(s['label'], s['label'])}: {fmt.brl(s['gmv'])} · ticket {fmt.brl(s['ticket'])}" for s in seg]
 
     worst_cancel = max((s for s in seg if s.get("cancel_rate") is not None), key=lambda s: s["cancel_rate"], default=None)
 
@@ -611,15 +677,25 @@ def _payments(repo: Repository, f: Filters) -> str:
     lines = ["Formas de pagamento por volume:"]
     for r in rows:
         lines.append(
-            f"- {r['label']}: {fmt.integer(r['orders'])} pedidos · cancelamento {fmt.pct(r['cancel_rate'])} · ticket {fmt.brl(r['ticket'])}"
+            f"- {la.value_label('payment_method', r['key'], r['label'])}: {fmt.integer(r['orders'])} pedidos · "
+            f"cancelamento {fmt.pct(r['cancel_rate'])} · ticket {fmt.brl(r['ticket'])}"
+        )
+    # "Sem pagamento" é o balde nulo: aparece na lista, mas não é forma de pagamento para acionar.
+    named = [r for r in rows if r.get("key") is not None] or rows
+    empty = next((r for r in rows if r.get("key") is None), None)
+    if empty is not None:
+        lines.append(
+            f"{empty['label']}: pedido sem pagamento registrado ({fmt.pct(empty['cancel_rate'])} cancelado); "
+            "fica fora da ação."
         )
     if _only_canceled(f):
-        lead = rows[0]
+        lead = named[0]
         action = (
             f"**Ação:** Time de pagamentos deve auditar os {fmt.integer(lead['orders'])} pedidos cancelados "
             f"em {lead['label']} ou remover o filtro de status para comparar taxas."
         )
     else:
+        rows = named
         worst = max(
             (r for r in rows if r.get("cancel_rate") is not None and r["orders"] >= MIN_MEASURED),
             key=lambda r: r["cancel_rate"],
@@ -687,7 +763,9 @@ def _volume(repo: Repository, f: Filters) -> str:
     hubs = repo.breakdown(f, "hub", sort="orders", limit=3)
     lines = [f"Volume no recorte: {fmt.integer(m['orders'])} pedidos ({fmt.integer(m['delivered'])} entregues) · GMV {fmt.brl(m['gmv'])}."]
     if hubs:
-        lines += ["", "Hubs com maior volume:", *_rank_lines(hubs, "orders", fmt.integer)]
+        lines += ["", "Hubs com maior volume:", *[
+            f"- {h['label']} ({h['parent']}): {fmt.integer(h['orders'])} pedidos · SLA {fmt.pct(h['sla_rate'])}" for h in hubs
+        ]]
         action = f"**Ação:** Líder do hub {hubs[0]['label']} deve acompanhar a demanda e o dimensionamento de entregadores no pico de hoje."
     else:
         action = "**Ação:** Time de operações deve acompanhar a demanda horária durante o pico de hoje."
@@ -943,53 +1021,171 @@ def _plain_parts(text: str) -> tuple[str, str]:
     return text[:index].rstrip(), text[index + len(marker):].strip()
 
 
-def build_reading(question: str, repo: Repository, f: Filters, history: list | None = None) -> Reading:
-    """A mesma leitura de `answer`, já separada em comanda. Não chama o modelo."""
+# Pares métrica × dimensão que cada rota por palavra-chave já responde bem. Fora disso, a pergunta
+# "X por Y" vai para a resposta genérica (`local_answers.by_dimension`). None = qualquer métrica.
+_COVERS: dict = {
+    _cancel: ({"cancel_rate", "canceled"}, {"store", "hub", "channel_type"}),
+    _sla: ({"sla_rate", "cycle_p50", "cycle_p90"}, {"hub"}),
+    # _stages é o panorama das etapas; "etapa X por hub/loja" vai para a quebra genérica.
+    _stages: (set(), set()),
+    _freight: ({"subsidy", "fee_avg", "cost_avg"}, {"hub"}),
+    _peak: ({"orders"}, {"hour", "weekday"}),
+    _channels: (None, {"channel", "channel_type"}),
+    _modal: (None, {"modal"}),
+    _payments: (None, {"payment_method"}),
+    _stores: ({"gmv", "cycle_p50", "sla_rate", "cancel_rate", "orders", "ticket"}, {"store"}),
+    _hubs: ({"orders", "sla_rate", "cancel_rate", "cycle_p50"}, {"hub"}),
+    _revenue: ({"gmv", "ticket"}, {"segment"}),
+    _stuck: ({"stuck_rate"}, {"hub"}),
+    _volume: ({"orders"}, {"hub"}),
+}
+# Métrica citada sem rota por palavra-chave: quem responde.
+_METRIC_ROUTES = {
+    "orders": _volume, "delivered": _volume, "canceled": _cancel, "cancel_rate": _cancel, "gmv": _revenue,
+    "ticket": _revenue, "sla_rate": _sla, "cycle_p50": _sla, "cycle_p90": _sla, "measured": _sla,
+    "stuck_rate": _stuck, "fee_avg": _freight, "cost_avg": _freight, "subsidy": _freight,
+    **{stage: _stages for stage in STAGES},
+}
+
+
+def _covers(handler, metric: str, dim: str) -> bool:
+    metrics, dims = _COVERS.get(handler, (set(), set()))
+    return dim in dims and (metrics is None or metric in metrics)
+
+
+def _legacy(handler, repo: Repository, f: Filters, intent: Intent | None = None) -> la.Answer:
+    """Rota antiga (texto pronto) embrulhada no mesmo formato das respostas novas."""
+    hour_windows = [w for w in (intent.windows if intent else []) if w.hours]
+    if handler is _channels and intent is not None and "channel_type" in intent.dimensions:
+        text = _channels(repo, f, by_type=True)
+    elif handler is _peak and hour_windows:
+        text = _peak(repo, f, window=hour_windows[0])
+    else:
+        text = handler(repo, f)
     metrics = repo.metrics(f)
-    text = answer(question, repo, f, history=history)
-    handler = None
-    if metrics["orders"] > 0:
-        handler = _route(question)
-        if handler is None:
-            previous = _previous_user_question(history)
-            if previous:
-                handler = _route(previous)
-    diagnosis, action = _plain_parts(text)
-    if metrics["orders"] == 0:
-        title = "Recorte sem pedidos"
-    elif handler is _alerts:
+    if handler is _alerts:
         alerts = detect_alerts(repo, f)
         # Título próprio: a comanda do agente fica no trilho ao lado da Nº 01 e não pode repetir o título dela.
         title = f"{_alert_count(len(alerts))} no recorte" if alerts else "Nenhum alerta no recorte"
     else:
         title = _headline(handler, metrics)
-    raw = [] if metrics["orders"] == 0 else _drills_for(handler, repo, f)
+    return la.Answer(text, title, _ROUTE_TOOLS.get(handler, ["get_kpis", "get_alerts"]), _drills_for(handler, repo, f))
+
+
+def _unrouted_answer(repo: Repository, f: Filters) -> la.Answer:
+    return la.Answer(_unrouted(repo, f), "Leitura do recorte", ["get_kpis", "get_alerts"], _drills_for(None, repo, f))
+
+
+def _with_previous_metric(intent: Intent, history: list | None) -> Intent:
+    """"e o hub X?" depois de "qual hub cancela mais?": a entidade herda a métrica da pergunta anterior."""
+    if intent.metrics or not history:
+        return intent
+    previous = _previous_user_question(history)
+    if previous:
+        intent.metrics = parse(previous).metrics
+    return intent
+
+
+def _entity_route(repo: Repository, f: Filters, intent: Intent, handler) -> la.Answer:
+    entity = intent.entity
+    fe = la.narrow(f, entity)
+    if fe is not None and repo.metrics(fe)["orders"]:
+        if intent.change and (intent.metrics or intent.previous or intent.week):
+            scope = {"hub": "no hub", "store": "na loja", "city": "em"}[entity.dimension]
+            return la.why(repo, fe, intent, scope_label=f"{scope} {entity.label}")
+        if handler is _alerts or has_any(intent.tokens, ("alerta*", "problema*", "risco*")):
+            return _legacy(_alerts, repo, fe)
+        if intent.windows and "pico" not in intent.tokens:
+            return la.windows(repo, fe, intent)
+    return la.entity_answer(repo, f, intent)
+
+
+_DEICTIC = ("desse", "deste", "esse", "este", "nesse", "neste", "dessa", "desta", "essa", "nessa", "nesta")
+_DEICTIC_DIMS = {"hub": ("hub", "shopping"), "store": ("loja",), "city": ("cidade", "praca")}
+
+
+def _deictic_entity(repo: Repository, f: Filters, intent: Intent) -> Entity | None:
+    """"me dá um resumo desse hub" com um hub só no filtro: a entidade é a do recorte."""
+    for dim, words in _DEICTIC_DIMS.items():
+        values = list(getattr(f, dim))
+        if len(values) != 1:
+            continue
+        if any(has_any(intent.tokens, (f"{d} {w}",)) for d in _DEICTIC for w in words):
+            label = repo.names(dim, values)[0] if dim in ("hub", "store") else str(values[0])
+            return Entity(dim, tuple(values), label, label)
+    return None
+
+
+def _plan(question: str, repo: Repository, f: Filters, history: list | None = None, *, depth: int = 0) -> la.Answer | None:
+    """Escolhe quem responde. None = nada na pergunta (o chamador tenta o histórico ou o briefing)."""
+    intent = parse(question, repo)
+    if intent.out_of_scope:
+        return la.out_of_scope(repo, f, intent.out_of_scope)
+    if "chargeback_rate" in intent.metrics:
+        return la.chargeback(repo, f, intent.dimension, intent)
+    handler = _route(question)
+    if intent.entity is None:
+        intent.entity = _deictic_entity(repo, f, intent)
+    if intent.entity is not None:
+        return _entity_route(repo, f, _with_previous_metric(intent, history), handler)
+    # "por que/caiu/subiu" só vira decomposição com algo para decompor (métrica ou período citado).
+    if intent.change and (intent.metrics or intent.previous or intent.week):
+        return la.why(repo, f, intent)
+    if intent.windows and "pico" not in intent.tokens:
+        return la.windows(repo, f, intent)
+    metric, dim = intent.metric, intent.dimension
+    # "melhor"/"menos" inverte a ordem: as rotas antigas só listam o pior primeiro.
+    if metric and dim and (intent.best or intent.low):
+        return la.by_dimension(repo, f, metric, dim, intent)
+    if handler is not None and handler not in (_alerts, briefing) and metric and dim and not _covers(handler, metric, dim):
+        return la.by_dimension(repo, f, metric, dim, intent)
+    if handler is not None:
+        return _legacy(handler, repo, f, intent)
+    if metric and dim:
+        return la.by_dimension(repo, f, metric, dim, intent)
+    if metric:
+        routed = _METRIC_ROUTES.get(metric)
+        return _legacy(routed, repo, f, intent) if routed else la.by_dimension(repo, f, metric, "hub", intent)
+    if depth == 0:
+        previous = _previous_user_question(history)
+        if previous:
+            return _plan(previous, repo, f, None, depth=1)
+    return None
+
+
+_EMPTY = (
+    "Nenhum pedido no recorte atual. Afrouxe os filtros para o agente ter o que analisar.\n\n"
+    "**Ação:** Operador deve afrouxar os filtros de período, hub ou cidade para carregar dados da operação."
+)
+
+
+def _compose(question: str, repo: Repository, f: Filters, history: list | None = None) -> la.Answer:
+    metrics = repo.metrics(f)
+    if metrics["orders"] == 0:
+        return la.Answer(_EMPTY, "Recorte sem pedidos", ["get_kpis"])
+    result = _plan(question, repo, f, history) or _unrouted_answer(repo, f)
+    if _is_thin(metrics) and not (_only_canceled(f) and (metrics.get("orders") or 0) >= MIN_MEASURED):
+        result.text = _apply_thin(result.text, metrics)
+    return result
+
+
+def build_reading(question: str, repo: Repository, f: Filters, history: list | None = None) -> Reading:
+    """A mesma leitura de `answer`, já separada em comanda. Não chama o modelo."""
+    metrics = repo.metrics(f)
+    result = _compose(question, repo, f, history)
+    diagnosis, action = _plain_parts(result.text)
     return Reading(
-        answer=text,
-        title=title,
+        answer=result.text,
+        title=result.title,
         diagnosis=diagnosis,
         action=action or "Operador deve revisar este recorte hoje.",
-        drilldowns=validate_drilldowns(repo, f, raw),
+        drilldowns=validate_drilldowns(repo, f, result.drills) if metrics["orders"] else [],
         n=int(metrics.get("orders") or 0),
         measured=int(metrics.get("measured") or 0),
         low_sample=bool(metrics.get("low_sample")),
-        tools=_ROUTE_TOOLS.get(handler, ["get_kpis", "get_alerts"]),
+        tools=result.tools or ["get_kpis"],
     )
 
 
 def answer(question: str, repo: Repository, f: Filters, history: list | None = None) -> str:
-    metrics = repo.metrics(f)
-    if metrics["orders"] == 0:
-        return (
-            "Nenhum pedido no recorte atual. Afrouxe os filtros para o agente ter o que analisar.\n\n"
-            "**Ação:** Operador deve afrouxar os filtros de período, hub ou cidade para carregar dados da operação."
-        )
-    handler = _route(question)
-    if handler is None:
-        previous = _previous_user_question(history)
-        if previous:
-            handler = _route(previous)
-    text = handler(repo, f) if handler is not None else _unrouted(repo, f)
-    if _is_thin(metrics) and not (_only_canceled(f) and (metrics.get("orders") or 0) >= MIN_MEASURED):
-        text = _apply_thin(text, metrics)
-    return text
+    return _compose(question, repo, f, history).text
