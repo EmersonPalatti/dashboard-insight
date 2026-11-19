@@ -80,10 +80,13 @@ Por isso tudo aqui (KPIs, gráficos, tabelas, exportação, alertas e agente) us
 frontend/ (Vercel)                         backend/ (Render)
 Astro: casca estática, zero JS     HTTP    FastAPI + Pydantic
  └─ ilhas React (client:load/visible) ───▶  ├─ repository.py  DuckDB em memória ← data/orders.parquet
-    Nanostores: recorte ↔ URL               ├─ alerts.py      regras → alerta + ação + evidência + drill-down
-    TanStack Query: cache, cancelamento     └─ agent/         LLM com tools → contexto → regras locais
-    ECharts · TanStack Table/Virtual
-    Tipos TS gerados do OpenAPI
+    Nanostores: recorte ↔ URL               │                  + query_metrics (até 2 dimensões, comparação)
+    TanStack Query: cache, cancelamento     ├─ semantic.toml  métricas, sinônimos, conceitos, mapa causal
+    ECharts · TanStack Table/Virtual        ├─ analytics.py   explain_change (taxa + mix), drill_cause
+    Tipos TS gerados do OpenAPI             ├─ alerts.py      regras → alerta + ação + evidência + drill-down
+                                            └─ agent/         LLM com tools → contexto → regras locais
+                                                              "por que mudou" → grafo LangGraph
+evals/  placar do agente (45 perguntas, verdade calculada dos dados)
 ```
 
 Decisões que vale conhecer:
@@ -92,7 +95,10 @@ Decisões que vale conhecer:
 - **Um contrato de filtro.** `Filters` (Pydantic) é a query string da API e da URL do navegador. Os tipos TypeScript são gerados do OpenAPI: se um schema muda, o `astro check` quebra no build.
 - **Ilhas que se falam sem Provider global.** O filtro grava num átomo Nanostores; KPIs, gráficos, tabelas e agente são ilhas separadas que escutam o mesmo átomo e compartilham um `QueryClient`. A comanda aberta publica sua evidência num segundo átomo: ele decide qual gráfico sobe para a investigação (os painéis são movidos no DOM, não reordenados por CSS), o que esse gráfico destaca e o que o fechamento mostra em foco.
 - **Sem salto de layout.** Moldura, título e dica fixa de cada painel saem no HTML do Astro; a ilha só preenche o corpo, e o skeleton reserva a altura final. Acima da dobra hidrata com `client:load`; gráficos, tabelas e fechamento com `client:visible`, e os painéis recolhidos só hidratam quando abertos; a conversa do agente, a folha de filtros e o diálogo de exportação entram com `React.lazy`.
-- **Agente com limites.** O LLM fecha a resposta num bloco estruturado que o backend valida: atalho para hub ou loja que não existe no recorte é descartado. Até 3 rodadas de ferramentas, orçamento de 20 s por pergunta (prazo de relógio, não só de leitura: o OpenRouter manda keep-alive), disjuntor de cota que desliga o LLM até o reset depois de um 429 (o plano gratuito sem créditos dá 50 chamadas por dia), histórico curto, corpo de até 64 KB (contado no stream, não só no `Content-Length`), 8 perguntas por minuto por IP e um teto global por minuto. Se o LLM falha, demora ou a cota acaba, a resposta vem das regras locais em vez de um erro.
+- **Camada semântica no lugar de SQL livre.** Inspirado no Genie do Databricks: o modelo não escreve SQL. Ele conhece métricas, dimensões, sinônimos ("atraso" = SLA, "jantar" = 18h–22h) e o mapa causal pelo `semantic.toml`, e pede números por ferramentas estruturadas (`query_metrics`, `explain_change`, `drill_cause`) que o backend valida e calcula. A pergunta reconhece os termos antes de chegar ao modelo, e o glossário do prompt é gerado do mesmo arquivo, então métrica nova entra num lugar só.
+- **Investigação em grafo.** "Por que o SLA mudou?" não depende de o modelo acertar a sequência de ferramentas: o grafo LangGraph (`frame` → `decompose` → `drill` → `synthesize`) faz a decomposição e o aprofundamento no servidor, em menos de meio segundo, e o LLM só redige a resposta com as evidências. No placar, a taxa de resposta pelo LLM foi a mesma do loop de tools, com 1,4 chamada por pergunta em vez de 3,4.
+- **Mudou o agente, roda o placar.** `backend/evals/` tem 45 perguntas de operador (formais, informais, com erro de digitação) cujas respostas certas saem dos dados na hora, sem nome fixo no código. A nota confere ação, entidade, número em pt-BR, termos proibidos, atalhos e recorte; o placar separa o que veio do LLM do que caiu nas regras e por quê (cota, provedor congestionado, prazo ou erro). Foi com ele que o modelo padrão saiu de um confronto entre 5 modelos gratuitos, e `test_evals.py` trava o piso das regras locais.
+- **Agente com limites.** O LLM fecha a resposta num bloco estruturado que o backend valida: atalho para hub ou loja que não existe no recorte é descartado, e nome de ferramenta, campo interno ou id sem nome não chegam ao texto. Até 3 rodadas de ferramentas e orçamento de 20 s por pergunta (35 s no grafo de investigação), com prazo de relógio e não só de leitura, porque o OpenRouter manda keep-alive. Um 429 da conta liga um disjuntor que desliga o LLM até a cota voltar (o plano gratuito sem créditos dá 50 chamadas por dia); um 429 do provedor congestionado ganha uma nova tentativa. Histórico curto, corpo de até 64 KB (contado no stream, não só no `Content-Length`), 8 perguntas por minuto por IP e um teto global por minuto. Se o LLM falha, demora ou a cota acaba, a resposta vem das regras locais em vez de um erro, e a comanda diz o motivo.
 
 ## Limpeza dos dados
 
@@ -185,6 +191,6 @@ Os dois GETs de automação alimentam agendador e mensagem sem chamar o agente c
 
 ## Stack
 
-Astro 7 · React 19 · TypeScript · Tailwind CSS 4 · Lucide · Apache ECharts 6 · Nanostores · TanStack Query / Table / Virtual · Python · FastAPI · Pydantic · DuckDB · Parquet · OpenRouter (API compatível com OpenAI).
+Astro 7 · React 19 · TypeScript · Tailwind CSS 4 · Lucide · Apache ECharts 6 · Nanostores · TanStack Query / Table / Virtual · Python · FastAPI · Pydantic · DuckDB · Parquet · LangGraph · OpenRouter (API compatível com OpenAI).
 
 Dados: Delivery Center, Kaggle. Os nomes de lojas vêm anonimizados no próprio dataset. Projeto independente, sem relação com o iFood.
