@@ -69,8 +69,10 @@ class Filters(BaseModel):
         if self.end:
             clauses.append("created_date <= ?")
             params.append(self.end)
+        if self.city:
+            clauses.append("list_contains(?, lower(city))")
+            params.append([v.lower() for v in self.city])
         for column, values in (
-            ("city", self.city),
             ("hub_id", self.hub),
             ("store_id", self.store),
             ("segment", self.segment),
@@ -88,7 +90,7 @@ class Filters(BaseModel):
         canonical = {
             "start": self.start.isoformat() if self.start else None,
             "end": self.end.isoformat() if self.end else None,
-            "city": sorted(set(self.city)),
+            "city": sorted({c.lower() for c in self.city}),
             "hub": sorted(set(self.hub)),
             "store": sorted(set(self.store)),
             "segment": sorted(set(self.segment)),
