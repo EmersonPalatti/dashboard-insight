@@ -32,6 +32,14 @@ from evals.grader import CaseNotApplicable, Grade, error_grade, grade
 DEFAULT_LOCAL_LATENCY_S = 5.0
 
 
+def default_max_latency_s(engine: str, settings: Settings) -> float:
+    """Teto padrão de latência: local 5 s; auto cobre o maior orçamento ativo + 5 s."""
+    if engine == "auto" and settings.llm_enabled:
+        inv_budget = settings.investigation_budget_s if settings.investigation_enabled else 0.0
+        return max(settings.chat_budget_s, inv_budget) + 5
+    return DEFAULT_LOCAL_LATENCY_S
+
+
 @dataclass
 class RunResult:
     case_id: str
@@ -80,6 +88,7 @@ class SuiteResult:
             "runs": n,
             "cases": len({r.case_id for r in rs}),
             "skipped": len(self.skipped),
+            "errors": sum(1 for r in rs if r.error),
             "pass_rate": (sum(r.passed for r in rs) / n) if n else 0.0,
             "mean_score": (statistics.fmean(r.score for r in rs)) if n else 0.0,
             "by_category": {
@@ -308,8 +317,14 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--log", type=Path, default=None, help="grava log INFO do agente (tokens, finish_reason, fallbacks)")
     p.add_argument("--repeat", type=int, default=1, help="repetições por caso (só com LLM)")
     p.add_argument("--sleep", type=float, default=0.0, help="segundos entre chamadas ao LLM (cota gratuita)")
-    p.add_argument("--max-latency", type=float, default=None,
-                   help=f"teto de latência por caso (padrão: {DEFAULT_LOCAL_LATENCY_S:.0f}s local, chat_budget_s + 5 no auto)")
+    p.add_argument(
+        "--max-latency", type=float, default=None,
+        help=f"teto de latência por caso (padrão: {DEFAULT_LOCAL_LATENCY_S:.0f}s local, maior orçamento + 5s no auto)",
+    )
+    p.add_argument(
+        "--min-pass-rate", type=float, default=None,
+        help="taxa mínima de aprovação (0 a 1); sai com código 1 se ficar abaixo ou houver erro",
+    )
     p.add_argument("--quiet", action="store_true", help="sem uma linha por caso")
     return p
 
@@ -319,6 +334,8 @@ def main(argv: list[str] | None = None) -> SuiteResult:
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(encoding="utf-8", errors="replace")
     args = _parser().parse_args(argv)
+    if args.min_pass_rate is not None and not (0.0 <= args.min_pass_rate <= 1.0):
+        raise SystemExit("--min-pass-rate deve ficar entre 0 e 1")
     settings = get_settings()
     data_path = args.data or settings.data_path
     repo = Repository(Path(data_path), settings.sla_food_min, settings.sla_good_min)
@@ -330,9 +347,7 @@ def main(argv: list[str] | None = None) -> SuiteResult:
     if not cases:
         raise SystemExit(f"Nenhum caso casa com --cases {args.cases!r}")
 
-    max_latency = args.max_latency
-    if max_latency is None:
-        max_latency = settings.chat_budget_s + 5 if args.engine == "auto" and settings.llm_enabled else DEFAULT_LOCAL_LATENCY_S
+    max_latency = args.max_latency if args.max_latency is not None else default_max_latency_s(args.engine, settings)
 
     print(f"Rodando {len(cases)} casos · motor {args.engine} · dados {data_path}", flush=True)
     agent_logger = logging.getLogger("app.agent")
@@ -370,6 +385,15 @@ def main(argv: list[str] | None = None) -> SuiteResult:
         payload = {"summary": suite.summary(), **asdict(suite)}
         args.json.write_text(json.dumps(payload, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
         print(f"JSON: {args.json}")
+    if args.min_pass_rate is not None:
+        summary = suite.summary()
+        if summary["runs"] == 0 or summary["errors"] > 0 or summary["pass_rate"] + 1e-9 < args.min_pass_rate:
+            print(
+                f"Falha no piso de aprovação: pass_rate={summary['pass_rate']:.3f} "
+                f"(mínimo {args.min_pass_rate:.3f}), erros={summary['errors']}, execuções={summary['runs']}.",
+                file=sys.stderr,
+            )
+            raise SystemExit(1)
     return suite
 
 

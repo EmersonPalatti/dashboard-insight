@@ -17,16 +17,11 @@ from dataclasses import dataclass
 from datetime import timedelta
 
 from app import fmt
+from app.alerts import BROKEN_CANCEL, HUB_MIN, STORE_MIN, STUCK_HUB_MAX
 from app.analytics import OTHERS_LABEL, explain_change
 from app.filters import Filters
 from app.repository import MIN_MEASURED, Repository
 from evals.grader import CaseNotApplicable, Entity, Expectations, NumberFact
-
-# Mesmas réguas de amostra do painel: hub com 300 pedidos, loja com 150 (alerts.HUB_MIN/STORE_MIN).
-HUB_MIN = 300
-STORE_MIN = 150
-STUCK_HUB_MAX = 0.30
-BROKEN_CANCEL = 0.90
 
 STAGE_WORDS: dict[str, tuple[str, ...]] = {
     "production_p50": ("preparo", "producao"),
@@ -35,7 +30,9 @@ STAGE_WORDS: dict[str, tuple[str, ...]] = {
     "transit_p50": ("transito", "trânsito", "rota", "deslocamento"),
 }
 NO_DATA = (
-    "nao existe", "não existe", "nao temos", "não temos", "nao ha ", "não há ", "nao tem ", "não tem ",
+    "nao existe", "não existe", "nao temos", "não temos",
+    "nao ha dado", "nao ha registro", "nao ha informac",
+    "nao tem dado", "nao tem avaliac", "nao tem registro",
     "sem dado", "sem informac", "nao dispon", "não dispon", "indisponi", "nao registra", "não registra",
     "nao traz", "não traz", "nao possui", "não possui", "nao contem", "não contém", "fora do escopo",
     "nao consigo", "não consigo", "nao e possivel", "não é possível", "nao cobre", "não cobre",
@@ -44,13 +41,13 @@ NO_DATA = (
 EMPTY = ("nenhum pedido", "sem pedido", "nao ha pedido", "não há pedido", "recorte vazio", "zero pedido", "0 pedidos")
 PROMPT_LEAK = [
     "analista de operacoes de delivery",
+    "protocolo de investigacao",
     "unidades e matematica",
-    "como responder e comanda",
-    "o que nao fazer",
+    "nunca invente loja",
     "nunca revele",
     "dados_recorte",
-    "re:responda \\*\\*somente\\*\\*",
-    "re:_pct.{0,20}ja vem",
+    "re:responda \\*\\*so\\*\\*",
+    "re:_pct.{0,20}ja esta",
 ]
 
 
@@ -309,12 +306,13 @@ def exp_worst_hour(repo: Repository, f: Filters) -> Expectations:
 
 
 def exp_dinner_peak(repo: Repository, f: Filters) -> Expectations:
-    # 19h–21h é o pico do painel; 18h–21h é a janela `jantar` da camada semântica (where.window).
-    by_hour = {int(r["key"]): r for r in _rows(repo, f, "hour")}
-    options = [pct("SLA 19h–21h", repo.subslice_metrics(f, hours=[19, 20, 21])["sla_rate"]),
-               pct("SLA 18h–21h", repo.subslice_metrics(f, hours=[18, 19, 20, 21])["sla_rate"])]
-    options += [pct(f"SLA às {h}h", by_hour[h]["sla_rate"]) for h in (18, 19, 20, 21) if h in by_hour and by_hour[h]["sla_rate"] is not None]
-    return Expectations(numbers=[tuple(options)], must_mention=[("pico", "jantar")])
+    # Só a faixa conta (hora isolada não prova o pico). Faixas semiabertas: horas 19–21 = 19h–22h (pico do
+    # painel); horas 18–21 = 18h–22h, a janela `jantar` da camada semântica (where.window).
+    options = (
+        pct("SLA 19h–22h", repo.subslice_metrics(f, hours=[19, 20, 21])["sla_rate"]),
+        pct("SLA 18h–22h (jantar)", repo.subslice_metrics(f, hours=[18, 19, 20, 21])["sla_rate"]),
+    )
+    return Expectations(numbers=[options], must_mention=[("pico", "jantar")])
 
 
 def exp_cycle(repo: Repository, f: Filters) -> Expectations:
@@ -498,11 +496,15 @@ def exp_weekend(repo: Repository, f: Filters) -> Expectations:
 
 
 def exp_dinner_cancel(repo: Repository, f: Filters) -> Expectations:
-    options_in, options_out = [], []
-    for hours in ([19, 20, 21], [19, 20]):
-        options_in.append(pct(f"cancelamento {hours}", repo.subslice_metrics(f, hours=hours)["cancel_rate"]))
-        options_out.append(pct(f"cancelamento fora {hours}", repo.subslice_metrics(f, hours=hours, complement=True)["cancel_rate"]))
-    return Expectations(numbers=[tuple(options_in), tuple(options_out)], must_mention=[("jantar", "19h")])
+    # Faixa "19h-21h" é semiaberta [19, 21) = horas 19 e 20 (mesma convenção do painel e do agente).
+    hours = [19, 20]
+    return Expectations(
+        numbers=[
+            pct("cancelamento 19h–21h", repo.subslice_metrics(f, hours=hours)["cancel_rate"]),
+            pct("cancelamento fora de 19h–21h", repo.subslice_metrics(f, hours=hours, complement=True)["cancel_rate"]),
+        ],
+        must_mention=[("jantar", "19h")],
+    )
 
 
 def exp_vs_previous(repo: Repository, f: Filters) -> Expectations:

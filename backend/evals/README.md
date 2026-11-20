@@ -11,7 +11,7 @@ expectativas. **A verdade sai dos dados na hora**: `expect(repo, f)` roda as mes
 (`metrics`, `breakdown`, `subslice_metrics`, `previous_period`) e escolhe "o hub com mais pedidos", "a loja que
 mais cancela com 150+ pedidos" e assim por diante. Nenhum nome fica fixo no código, então o mesmo caso roda no
 parquet sintético dos testes e nos 369 mil pedidos reais. Casos "por quê" usam uma decomposição exata da
-variação (Σ peso′·taxa′ − peso·taxa por hub) para achar quem mais empurrou a taxa.
+variação (decomposição simétrica taxa + mix via `analytics.explain_change`, onde a soma dos grupos fecha exatamente com a variação total) para achar quem mais empurrou a taxa.
 
 Verificações de cada resposta (peso entre parênteses):
 
@@ -19,13 +19,13 @@ Verificações de cada resposta (peso entre parênteses):
 |---|---|
 | `action` (2) | Linha `**Ação:**`, campo `action` preenchido e específico: cita hub, loja, cidade, canal, forma de pagamento, faixa de horário ou dia |
 | `entities` (3) | Nomeia a entidade certa no texto (sem diferenciar acento e caixa) ou oferece o atalho com o id dela |
-| `numbers` (3) | O número certo aparece no texto, lido em pt-BR (`82,4%`, `R$ 1.234,56`, `38 min`, `−1,6 p.p.`, `369 mil`). Número de entidade precisa estar na mesma linha dela |
-| `mentions` (1) | Conceitos obrigatórios (ex.: dizer que o dado não existe) |
+| `numbers` (3) | O número certo aparece no texto, lido em pt-BR (`82,4%`, `R$ 1.234,56`, `38 min`, `−1,6 p.p.`, `369 mil`). Folga de 0,15 em %, p.p. e min; contagem e R$ por extenso precisam bater no arredondamento (abreviado como `369 mil` ganha meia unidade). Número de entidade precisa estar na mesma linha dela |
+| `mentions` (1) | Conceitos obrigatórios (ex.: dizer que o dado não existe), a partir do início de uma palavra (`pico` não casa com `típico`; radical como `cancel` vale) |
 | `forbidden` (2) | Sem severidade em inglês, nome de ferramenta (atual ou removida), flag ou campo interno (`low_sample`, `sla_below`…), `None`, JSON cru fora do bloco `leitura`, trecho do prompt |
 | `drilldowns` (1) | Chaves só do `Filters` (sem período); hub, loja e cidade existem no dado |
 | `scope` (2) | `base.n` igual aos pedidos do recorte |
 | `format_ptbr` (1, aviso) | Sem `82.4%`, `R$ 1,234.56`, `38.5 min` |
-| `latency` (1, aviso) | Abaixo do teto (5 s local; `chat_budget_s + 5` com LLM) |
+| `latency` (1, aviso) | Abaixo do teto (5 s local; `max(chat_budget_s, investigation_budget_s) + 5` com LLM e investigação ativa, ou `chat_budget_s + 5` sem ela) |
 
 Nota do caso = média ponderada das verificações (cada uma de 0 a 1). O caso **passa** quando nenhuma
 verificação de erro fica abaixo de 1; aviso só desconta da nota.
@@ -47,7 +47,10 @@ python -m evals.run --engine auto --repeat 3 --sleep 4 --out placar-llm.md
 
 `--repeat` mede a variação do modelo (sem LLM a resposta é determinística e roda uma vez). `--sleep` espaça
 as chamadas para a cota gratuita. Sem chave, `auto` avisa e cai nas regras locais. `--all-cases` ignora a marcação
-`engines` e roda tudo. O teste `tests/test_evals.py` roda o motor local no sintético e trava um piso de aprovação.
+`engines` e roda tudo. Flags auxiliares: `--log arquivo.log` grava o log `INFO` do agente (tokens, `finish_reason`,
+fallbacks), `--max-latency SEGUNDOS` sobrescreve o teto de aviso de latência, `--quiet` omite a linha por caso e
+`--min-pass-rate TAXA` (0 a 1, ex.: `1.0` no CI) encerra com código 1 se a aprovação ficar abaixo do piso ou houver
+erro. O teste `tests/test_evals.py` roda o motor local no sintético e trava 100% de aprovação.
 
 ## Como ler o placar
 
@@ -80,4 +83,5 @@ Case("sla-pior-modal", "sla", "qual modal atrasa mais?", exp_pior_modal, filters
   não sair inflado.
 - Caso de "por quê" tira os grupos esperados de `analytics.explain_change` (`change_drivers`), a mesma régua
   do agente; não refaça a decomposição no caso.
-- Nada de nome fixo: `test_cases_have_no_fixed_entity_names` reprova hub, loja ou cidade escritos no código.
+- Nada de nome fixo: `test_cases_have_no_fixed_entity_names` reprova qualquer texto de `evals/*.py` que cite hub,
+  loja ou cidade do parquet sintético ou do real (palavra inteira, rótulos de 4+ letras).

@@ -220,13 +220,12 @@ def extract_numbers(text: str) -> list[ParsedNumber]:
 def default_tol(fact: NumberFact) -> float:
     if fact.tol is not None:
         return fact.tol
-    v = abs(fact.value)
     return {
         "pct": 0.15,
         "pp": 0.15,
         "min": 0.15,
-        "brl": max(0.011, 0.005 * v),
-        "count": max(0.5, 0.005 * v),
+        "brl": 0.011,
+        "count": 0.5,
     }[fact.unit]
 
 
@@ -445,7 +444,7 @@ def check_mentions(exp: Expectations, text_norm: str) -> Check | None:
     missing: list[str] = []
     for req in exp.must_mention:
         options = req if isinstance(req, tuple) else (req,)
-        if not any(norm(term) in text_norm for term in options):
+        if not any(re.search(r"(?<![a-z0-9_])" + re.escape(norm(term)), text_norm) for term in options):
             shown = list(dict.fromkeys(norm(t).strip() for t in options))
             missing.append("/".join(shown[:4]) + ("/…" if len(shown) > 4 else ""))
     score = 1 - len(missing) / len(exp.must_mention)

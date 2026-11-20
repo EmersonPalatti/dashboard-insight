@@ -1,17 +1,22 @@
 """Benchmark do agente (`evals/`): corretor, casos derivados dos dados e piso do agente local.
 
-Sem rede e sem API key. O piso do agente local fica um pouco abaixo do medido no parquet
-sintético: se cair, alguma regra do agente regrediu (ou um caso ficou mais exigente de propósito).
+Sem rede e sem API key. O agente local é determinístico, então o piso é o medido no parquet
+sintético (100%): se cair, alguma regra do agente regrediu (ou um caso ficou mais exigente de propósito).
 """
 
 from __future__ import annotations
 
+import ast
+import re
+from pathlib import Path
+
 import pytest
 
+from app.config import Settings
 from app.filters import Filters
 from app.schemas import ChatResponse, DrillDown, ReadingBase
 from evals import grader
-from evals.cases import CASES, Case, select
+from evals.cases import CASES, NO_DATA, PROMPT_LEAK, Case, select
 from evals.grader import (
     CaseNotApplicable,
     Entity,
@@ -21,12 +26,13 @@ from evals.grader import (
     grade,
     parse_token,
 )
-from evals.run import main, render_markdown, run_suite
+from evals.run import DEFAULT_LOCAL_LATENCY_S, default_max_latency_s, main, render_markdown, run_suite
 
-# Medido em 2026-11-18 no parquet sintético: aprovação 1,000 (45/45, com cmp-fds e cmp-jantar agora nas
-# duas engines), nota média 1,000 (antes: 0,605 e 0,939). O piso tolera um caso a menos (44/45 = 0,978). Subiu com uma melhoria do agente? Suba o piso junto, para a melhoria não regredir calada.
-LOCAL_PASS_FLOOR = 0.97
-LOCAL_SCORE_FLOOR = 0.98
+# Medido em 2026-11-18 no parquet sintético: aprovação 1,000 (45/45), nota média 1,000. O motor local é
+# determinístico, então qualquer caso a menos é regressão: o piso é o próprio medido.
+LOCAL_PASS_FLOOR = 1.0
+LOCAL_SCORE_FLOOR = 1.0
+REAL_PARQUET = Path(__file__).resolve().parents[1] / "data" / "orders.parquet"
 
 
 def _resp(answer: str, *, action: str = "", drills: list[DrillDown] | None = None, n: int = 0) -> ChatResponse:
@@ -92,6 +98,11 @@ def test_extract_numbers_ignores_dates_and_hours():
         ("ciclo mediano 41,2 min", NumberFact("ciclo", 41.18, "min"), True),
         ("41,2 min", NumberFact("ciclo", 41.18, "pct"), False),  # unidade errada não casa
         ("368.990 pedidos", NumberFact("n", 368_990, "count"), True),
+        ("369 mil pedidos", NumberFact("n", 368_990, "count"), True),  # abreviado: meia unidade (500) de folga
+        ("367.500 pedidos", NumberFact("n", 368_990, "count"), False),  # número cheio errado não passa
+        ("368.989 pedidos", NumberFact("n", 368_990, "count"), False),
+        ("R$ 34.560.000,00", NumberFact("gmv", 34_728_612.77, "brl"), False),
+        ("R$ 34.728.612,77", NumberFact("gmv", 34_728_612.77, "brl"), True),
         ("R$ 368.990", NumberFact("n", 368_990, "count"), False),
     ],
 )
@@ -133,6 +144,49 @@ def test_hour_entity():
     assert grader.entity_in_text(Entity("hour", 21, "21h"), text)
     assert grader.entity_in_text(Entity("hour", 9, "09h"), text)
     assert not grader.entity_in_text(Entity("hour", 1, "01h"), grader.norm("às 19h e 21h"))
+
+
+def test_mentions_need_left_word_boundary():
+    def mentions(text: str, *terms) -> bool:
+        check = grader.check_mentions(Expectations(must_mention=[terms]), grader.norm(text))
+        return check is not None and check.passed
+
+    assert not mentions("Comportamento típico do recorte.", "pico")
+    assert mentions("No pico do jantar o SLA cai.", "pico")
+    assert mentions("O cancelamento subiu.", "cancel")  # radical: prefixo continua valendo
+    assert not mentions("Fila na ilha de expedição.", "sla")
+    assert not mentions("Foram 10 pedidos no recorte.", "0 pedidos")
+
+
+def test_no_data_marker_skips_unrelated_negations():
+    def says_no_data(text: str) -> bool:
+        return grader.check_mentions(Expectations(must_mention=[NO_DATA]), grader.norm(text)).passed
+
+    assert not says_no_data("Não há alertas críticos no recorte.")
+    assert not says_no_data("O hub não tem pedidos atrasados hoje.")
+    assert says_no_data("Não há dado de avaliação do cliente neste recorte.")
+    assert says_no_data("O recorte não tem avaliação de cliente.")
+    assert says_no_data("Essa informação não existe nos dados.")
+
+
+def test_prompt_leak_markers_match_system_prompt():
+    """Todo marcador de vazamento casa com o prompt atual; senão o detector apodrece calado."""
+    from app.agent.llm import SYSTEM_PROMPT
+
+    for term in PROMPT_LEAK:
+        assert grader.forbidden_hits(SYSTEM_PROMPT, [term]), term
+
+
+def test_default_latency_covers_investigation_budget():
+    on = Settings(openrouter_api_key="k", chat_budget_s=20.0, investigation_budget_s=35.0, investigation_enabled=True)
+    assert on.llm_enabled
+    assert default_max_latency_s("auto", on) >= on.investigation_budget_s
+    assert default_max_latency_s("auto", on) == pytest.approx(40.0)
+    off = Settings(openrouter_api_key="k", chat_budget_s=20.0, investigation_budget_s=35.0, investigation_enabled=False)
+    assert default_max_latency_s("auto", off) == pytest.approx(25.0)
+    assert default_max_latency_s("local", on) == DEFAULT_LOCAL_LATENCY_S
+    no_key = Settings(openrouter_api_key="", investigation_enabled=True)
+    assert default_max_latency_s("auto", no_key) == DEFAULT_LOCAL_LATENCY_S
 
 
 def test_forbidden_terms():
@@ -250,16 +304,33 @@ def test_suite_shape():
     assert all("local" in c.engines for c in select(CASES, None, engine_tag="local"))
 
 
-def test_cases_have_no_fixed_entity_names():
-    """Perguntas e regras dos casos não podem citar hub, loja ou cidade do dado."""
-    import inspect
+def _entity_labels(repo) -> set[str]:
+    meta = repo.meta()
+    return {str(o["label"]) for key in ("hubs", "stores", "cities") for o in meta[key]}
 
-    from evals import cases
 
-    source = inspect.getsource(cases)
-    for name in ("Hub Centro", "Hub Lento", "Hub Preso", "Hub Goods", "Loja Quebrada", "São Paulo", "Curitiba",
-                 "Golden Shopping", "Rio de Janeiro", "Porto Alegre"):
-        assert name not in source
+def test_cases_have_no_fixed_entity_names(repo):
+    """Textos do benchmark não citam hub, loja ou cidade do dado (sintético e, se houver, o real)."""
+    labels = _entity_labels(repo)
+    if REAL_PARQUET.exists():  # versionado; os nomes reais pegam o que o sintético não tem
+        import duckdb
+
+        with duckdb.connect(":memory:") as con:
+            for col in ("hub_name", "store_name", "city"):
+                rows = con.execute(f"select distinct {col} from read_parquet(?) where {col} is not null",
+                                   [str(REAL_PARQUET)]).fetchall()
+                labels |= {str(r[0]) for r in rows}
+    # Rótulos de até 3 letras ("Mar") colidem com palavras comuns; o resto vale como palavra inteira.
+    patterns = [re.compile(r"(?<![a-z0-9])" + re.escape(grader.norm(label)) + r"(?![a-z0-9])")
+                for label in labels if len(grader.norm(label).strip()) >= 4]
+    evals_dir = Path(__file__).resolve().parents[1] / "evals"
+    for path in sorted(evals_dir.glob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        # Toda constante de texto, inclusive pedaços de f-string e docstrings.
+        text = "\n".join(grader.norm(n.value) for n in ast.walk(tree)
+                         if isinstance(n, ast.Constant) and isinstance(n.value, str))
+        hits = sorted({p.pattern for p in patterns if p.search(text)})
+        assert not hits, (path.name, hits)
 
 
 @pytest.mark.parametrize("case", CASES, ids=lambda c: c.id)
@@ -293,7 +364,7 @@ def test_planted_scenarios_drive_expectations(repo):
     labels = {e.label for e in broken.entities[0]}
     assert "Loja Quebrada" in labels  # loja 30 cancela tudo
     _, _, worst = by_id["sla-pior-hub"].build(repo)
-    assert "Hub Lento" in {e.label for e in worst.entities[0]} or "Hub Preso" in {e.label for e in worst.entities[0]}
+    assert "Hub Lento" in {e.label for e in worst.entities[0]}  # hub 13 plantado com SLA ruim
 
 
 # ----------------------------------------------------------------- piso do agente local
@@ -333,3 +404,26 @@ def test_runner_writes_markdown(parquet_path, tmp_path):
     assert js.exists() and '"pass_rate"' in js.read_text(encoding="utf-8")
     assert log_file.exists()
     assert {r.category for r in suite.results} == {"overview", "vazio"}
+
+
+def test_runner_min_pass_rate_exit_code(parquet_path, monkeypatch):
+    from evals import run as run_mod
+
+    argv = ["--engine", "local", "--data", str(parquet_path), "--cases", "overview", "--quiet"]
+    assert main([*argv, "--min-pass-rate", "1.0"]).summary()["pass_rate"] == 1.0
+    with pytest.raises(SystemExit) as bad_arg:
+        main([*argv, "--min-pass-rate", "1.5"])
+    assert bad_arg.value.code != 0
+
+    real_run_suite = run_mod.run_suite
+
+    def one_failure(*args, **kwargs):
+        suite = real_run_suite(*args, **kwargs)
+        suite.results[0].passed = False
+        return suite
+
+    monkeypatch.setattr(run_mod, "run_suite", one_failure)
+    with pytest.raises(SystemExit) as below:
+        main([*argv, "--min-pass-rate", "1.0"])
+    assert below.value.code == 1
+    assert main([*argv, "--min-pass-rate", "0.0"]).summary()["pass_rate"] < 1.0  # piso 0 só reprova erro
