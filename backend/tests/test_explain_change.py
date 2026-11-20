@@ -7,11 +7,14 @@ lojas de 03/03 (33, 38… muito cancelamento) só na anterior. Há movimento rea
 from __future__ import annotations
 
 from datetime import date
+from pathlib import Path
 
+import duckdb
 import pytest
 
-from app.analytics import OTHERS_LABEL, drill_cause, explain_change
+from app.analytics import APPROX_WEIGHTS, OTHERS_LABEL, RATE_DENOMINATORS, drill_cause, explain_change
 from app.filters import Filters
+from app.repository import ADDITIVE_METRICS, QUERY_METRICS, RATE_PARTS, Repository
 
 MARCH_WEEK = Filters(start=date(2021, 3, 8), end=date(2021, 3, 14))
 
@@ -167,3 +170,70 @@ def test_drill_cause_whole_recorte_and_validation(repo):
     assert "anterior" in result["note"]
     with pytest.raises(ValueError, match="drill_cause"):
         drill_cause(repo, MARCH_WEEK, metric="orders")
+
+
+def test_metric_partition_covers_query_metrics_and_rate_parts():
+    rate_keys = set(RATE_DENOMINATORS)
+    add_keys = set(ADDITIVE_METRICS)
+    approx_keys = set(APPROX_WEIGHTS)
+    assert rate_keys == set(RATE_PARTS)
+    assert set(QUERY_METRICS) == rate_keys | add_keys | approx_keys
+    assert rate_keys.isdisjoint(add_keys)
+    assert rate_keys.isdisjoint(approx_keys)
+    assert add_keys.isdisjoint(approx_keys)
+
+
+def test_explain_change_tie_breaker_is_deterministic_and_preserves_winner(tmp_path: Path):
+    path = tmp_path / "explain_ties.parquet"
+    con = duckdb.connect()
+    rows_sql: list[str] = []
+    oid = 1
+
+    def add_orders(day: str, store_id: int, modal: str | None, n: int) -> None:
+        nonlocal oid
+        modal_sql = "cast(null as varchar)" if modal is None else f"'{modal}'"
+        for _ in range(n):
+            rows_sql.append(
+                f"({oid}, timestamp '{day} 12:00:00', date '{day}', 12::tinyint, 0::tinyint, "
+                f"'delivered', 40.0, 5.0, 7.0, {store_id}, 'Loja {store_id}', 'food', 1, 'Hub Centro', "
+                f"'São Paulo', 'SP', 'Food Place', 'marketplace', 'online', false, {modal_sql}, 'freelance', "
+                f"1000::bigint, 1, 10.0, 1.0, 2.0, 4.0, 12.0, 30.0, false, false)"
+            )
+            oid += 1
+
+    # Dia anterior (01/03) e dia atual (02/03):
+    # - Loja 50 ('van'): +5 (ganha pelo tamanho da variação)
+    # - Loja 30 ('express'): 2 -> 3 (+1, orders_current=3 desempata na frente de 1)
+    # - Lojas 10 ('bike'), 20 ('moto'), 40 (None): 0 -> 1 (+1, orders_current=1; chave desempata)
+    add_orders("2021-03-01", 30, "express", 2)
+    add_orders("2021-03-02", 50, "van", 5)
+    add_orders("2021-03-02", 30, "express", 3)
+    add_orders("2021-03-02", 20, "moto", 1)
+    add_orders("2021-03-02", 10, "bike", 1)
+    add_orders("2021-03-02", 40, None, 1)
+
+    con.execute(
+        f"""
+        create table fact as
+        select * from (values {", ".join(rows_sql)})
+        t(order_id, created_at, created_date, hour, weekday, status, amount, delivery_fee,
+          delivery_cost, store_id, store_name, segment, hub_id, hub_name, city, state, channel,
+          channel_type, payment_method, has_chargeback, modal, driver_type, distance_m,
+          delivery_attempts, production_min, collected_min, walking_min, expedition_min,
+          transit_min, cycle_min, cycle_outlier, amount_outlier)
+        """
+    )
+    con.execute(f"copy fact to '{path.as_posix()}' (format parquet)")
+    con.close()
+
+    tie_repo = Repository(path, 60, 120)
+    f = Filters(start=date(2021, 3, 2), end=date(2021, 3, 2))
+    try:
+        for _ in range(5):
+            tie_repo._cache.clear()
+            by_store = explain_change(tie_repo, f, metric="orders", by="store", limit=10, min_orders=0)
+            assert [d["key"] for d in by_store["drivers"]] == [50, 30, 10, 20, 40]
+            by_modal = explain_change(tie_repo, f, metric="orders", by="modal", limit=10, min_orders=0)
+            assert [d["key"] for d in by_modal["drivers"]] == ["van", "express", "bike", "moto", None]
+    finally:
+        tie_repo.close()

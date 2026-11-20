@@ -25,7 +25,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.filters import Filters
-from app.repository import ADDITIVE_METRICS, DIMENSIONS, QUERY_METRICS, RATE_PARTS, Repository
+from app.repository import ADDITIVE_METRICS, DIMENSIONS, QUERY_METRICS, Repository
 
 # Taxa -> base do peso (denominador). As contas usam `<taxa>__num`/`<taxa>__den` de RATE_PARTS,
 # que são esses mesmos denominadores sem os nulos que o avg() ignora.
@@ -46,9 +46,6 @@ APPROX_WEIGHTS: dict[str, str] = {
 OTHERS_LABEL = "Outros"
 _MAX_LIMIT = 50
 _EPS = 1e-12
-
-assert set(RATE_DENOMINATORS) == set(RATE_PARTS)
-assert set(QUERY_METRICS) == set(RATE_DENOMINATORS) | set(ADDITIVE_METRICS) | set(APPROX_WEIGHTS)
 
 
 def method_for(metric: str) -> str:
@@ -180,7 +177,7 @@ def _explain(repo: Repository, f: Filters, f_prev: Filters, head: dict, limit: i
     ranked: list[dict] = []
     for u in units:
         (small if u["orders_current"] < min_orders and u["orders_previous"] < min_orders else ranked).append(u)
-    ranked.sort(key=size, reverse=True)
+    ranked.sort(key=lambda u: (-size(u), -u["orders_current"], u["key"] is None, str(u["key"])))
     drivers = ranked[:limit]
     rest = ranked[limit:] + small
     if rest:

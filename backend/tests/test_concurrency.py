@@ -6,6 +6,7 @@ import concurrent.futures
 import threading
 from pathlib import Path
 
+import duckdb
 import pytest
 
 from app.alerts import detect_alerts
@@ -38,22 +39,29 @@ def test_cached_singleflight_runs_compute_once(repo):
     assert all(r == {"ok": True} for r in results)
 
 
-def test_detect_alerts_concurrent_no_deadlock(repo):
+def test_detect_alerts_concurrent_no_deadlock(repo, parquet_path: Path):
     slices = [
         Filters(),
         Filters(city=["São Paulo"]),
         Filters(city=["Curitiba"]),
         Filters(segment=["food"]),
     ]
+    expected = [tuple(a.id for a in detect_alerts(repo, f)) for f in slices]
+    assert any(expected)
 
-    def worker(i: int):
-        f = slices[i % len(slices)]
-        return len(detect_alerts(repo, f))
+    concurrent_repo = Repository(parquet_path, repo.sla_food_min, repo.sla_good_min)
+    try:
+        def worker(i: int):
+            idx = i % len(slices)
+            return idx, tuple(a.id for a in detect_alerts(concurrent_repo, slices[idx]))
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=16) as ex:
-        counts = [ft.result() for ft in [ex.submit(worker, i) for i in range(32)]]
+        with concurrent.futures.ThreadPoolExecutor(max_workers=16) as ex:
+            results = [ft.result() for ft in [ex.submit(worker, i) for i in range(32)]]
 
-    assert all(isinstance(c, int) for c in counts)
+        assert len(results) == 32
+        assert all(ids == expected[idx] for idx, ids in results)
+    finally:
+        concurrent_repo.close()
 
 
 @pytest.mark.skipif(not REAL_PARQUET.exists(), reason="parquet real fora do checkout")
@@ -96,4 +104,13 @@ def test_real_parquet_concurrent_page_loads_and_invariants():
             if hub["cost_avg"] is not None and hub["fee_avg"] is not None:
                 assert hub["cost_avg"] - hub["fee_avg"] == pytest.approx(hub["subsidy"], abs=1e-9)
     finally:
-        real_repo._con.close()
+        real_repo.close()
+
+
+def test_repository_close_closes_connection(parquet_path: Path):
+    r = Repository(parquet_path, 60, 120)
+    assert r.metrics(Filters())["orders"] > 0
+    r.close()
+    r.close()
+    with pytest.raises(duckdb.ConnectionException):
+        r.metrics(Filters(city=["Curitiba"]))
