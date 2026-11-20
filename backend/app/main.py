@@ -7,9 +7,9 @@ import json
 import math
 import threading
 import time
-from collections import deque
+from collections import OrderedDict, deque
 from collections.abc import Iterator
-from contextlib import asynccontextmanager
+from contextlib import ExitStack, asynccontextmanager
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
@@ -86,8 +86,10 @@ class BodySizeLimitMiddleware:
             await _send_json(send, 413, _BODY_TOO_BIG)
             return
 
-        body, too_big = await _read_body(receive, self.max_bytes)
-        if too_big:
+        body, status = await _read_body(receive, self.max_bytes)
+        if status == "disconnected":
+            return
+        if status == "too_big":
             await _send_json(send, 413, _BODY_TOO_BIG)
             return
 
@@ -96,7 +98,7 @@ class BodySizeLimitMiddleware:
         async def replay():
             nonlocal sent
             if sent:
-                return {"type": "http.request", "body": b"", "more_body": False}
+                return await receive()
             sent = True
             return {"type": "http.request", "body": body, "more_body": False}
 
@@ -113,7 +115,7 @@ def _declared_length(scope) -> int | None | str:
     if not raws:
         return None
     raw = raws[0]
-    if len(raws) != 1 or not raw.isdigit():
+    if len(raws) != 1 or not (raw.isascii() and raw.isdigit()):
         return "bad"
     # Mais de 8 dígitos já passa de 64 KB. Evita int() num header enorme.
     if len(raw) > 8:
@@ -121,22 +123,75 @@ def _declared_length(scope) -> int | None | str:
     return int(raw)
 
 
-async def _read_body(receive, max_bytes: int) -> tuple[bytes, bool]:
+async def _read_body(receive, max_bytes: int) -> tuple[bytes, str]:
     chunks: list[bytes] = []
     total = 0
     while True:
         message = await receive()
+        if message["type"] == "http.disconnect":
+            return b"", "disconnected"
         if message["type"] != "http.request":
-            break
+            continue
         piece = message.get("body", b"") or b""
         total += len(piece)
         if total > max_bytes:
-            return b"", True
+            return b"", "too_big"
         if piece:
             chunks.append(piece)
         if not message.get("more_body", False):
             break
-    return b"".join(chunks), False
+    return b"".join(chunks), "ok"
+
+
+_PUBLIC_CACHE_PATHS = frozenset({
+    "/api/meta",
+    "/api/kpis",
+    "/api/timeseries",
+    "/api/heatmap",
+    "/api/breakdown",
+    "/api/alerts",
+    "/api/orders",
+})
+_PRIVATE_NO_STORE_PATHS = frozenset({
+    "/api/briefing",
+    "/api/alerts/routing",
+})
+
+
+class CacheControlMiddleware:
+    """Middleware ASGI puro para Cache-Control (sem BaseHTTPMiddleware, compatível com streaming)."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http" or scope.get("method") != "GET":
+            await self.app(scope, receive, send)
+            return
+
+        path = scope.get("path", "")
+        if path in _PUBLIC_CACHE_PATHS:
+            header_value = b"public, max-age=600"
+            only_200 = True
+        elif path in _PRIVATE_NO_STORE_PATHS:
+            header_value = b"private, no-store"
+            only_200 = False
+        elif path == "/api/health":
+            header_value = b"no-store"
+            only_200 = False
+        else:
+            await self.app(scope, receive, send)
+            return
+
+        async def send_with_cache(message):
+            if message["type"] == "http.response.start" and (not only_200 or message["status"] == 200):
+                headers = list(message.get("headers", []))
+                if not any(k.lower() == b"cache-control" for k, _ in headers):
+                    headers.append((b"cache-control", header_value))
+                    message = {**message, "headers": headers}
+            await send(message)
+
+        await self.app(scope, receive, send_with_cache)
 
 
 @asynccontextmanager
@@ -155,6 +210,7 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
     app.add_middleware(GZipMiddleware, minimum_size=1024)
+    app.add_middleware(CacheControlMiddleware)
     # Dentro do CORS, para o 413/400 sair com o header de origem.
     app.add_middleware(BodySizeLimitMiddleware, max_bytes=MAX_BODY_BYTES)
     app.add_middleware(
@@ -164,14 +220,6 @@ def create_app() -> FastAPI:
         allow_methods=["GET", "POST"],
         allow_headers=["*"],
     )
-
-    @app.middleware("http")
-    async def cache_headers(request: Request, call_next):
-        response = await call_next(request)
-        # Dados estáticos: GETs analíticos podem ficar 10 min no cache do navegador/CDN.
-        if request.method == "GET" and response.status_code == 200 and request.url.path not in ("/api/health",):
-            response.headers.setdefault("Cache-Control", "public, max-age=600")
-        return response
 
     register_routes(app)
     return app
@@ -184,33 +232,65 @@ class SlidingWindowLimiter:
         self.window_s = window_s
         self.max_clients = max_clients
         self._lock = threading.Lock()
-        self._clients: dict[str, deque[float]] = {}
+        self._clients: OrderedDict[str, deque[float]] = OrderedDict()
 
     def reset(self) -> None:
         with self._lock:
             self._clients.clear()
 
-    def check(self, key: str, limit: int) -> tuple[bool, int]:
-        now = time.monotonic()
+    def _check_unlocked(self, key: str, limit: int, now: float) -> tuple[bool, int]:
         cutoff = now - self.window_s
-        with self._lock:
-            if len(self._clients) > self.max_clients:
-                self._prune_expired(cutoff)
-                if len(self._clients) > self.max_clients:
-                    to_remove = list(self._clients.keys())[:len(self._clients) - self.max_clients]
-                    for k in to_remove:
-                        self._clients.pop(k, None)
-
-            dq = self._clients.setdefault(key, deque())
+        dq = self._clients.get(key)
+        if dq is not None:
+            self._clients.move_to_end(key)
             while dq and dq[0] <= cutoff:
                 dq.popleft()
-
             if len(dq) >= limit:
-                wait_s = max(1, math.ceil(dq[0] + self.window_s - now))
+                wait_s = max(1, math.ceil(dq[0] + self.window_s - now)) if dq else 1
                 return False, int(wait_s)
+        elif limit <= 0:
+            return False, 1
+        return True, 0
 
-            dq.append(now)
+    def _record_unlocked(self, key: str, now: float) -> None:
+        cutoff = now - self.window_s
+        dq = self._clients.get(key)
+        if dq is None:
+            if len(self._clients) >= self.max_clients:
+                self._prune_expired(cutoff)
+                while self._clients and len(self._clients) >= self.max_clients:
+                    self._clients.popitem(last=False)
+            dq = deque()
+            self._clients[key] = dq
+        else:
+            self._clients.move_to_end(key)
+        dq.append(now)
+
+    def check(self, key: str, limit: int) -> tuple[bool, int]:
+        now = time.monotonic()
+        with self._lock:
+            allowed, wait_s = self._check_unlocked(key, limit, now)
+            if not allowed:
+                return False, wait_s
+            self._record_unlocked(key, now)
             return True, 0
+
+    @staticmethod
+    def check_all(checks: list[tuple[SlidingWindowLimiter, str, int]]) -> bool:
+        """Verifica todos os limitadores atomicamente; só registra hit se todos aprovarem."""
+        if not checks:
+            return True
+        now = time.monotonic()
+        unique = sorted({id(lim): lim for lim, _, _ in checks}.values(), key=id)
+        with ExitStack() as stack:
+            for lim in unique:
+                stack.enter_context(lim._lock)
+            for lim, key, limit in checks:
+                if not lim._check_unlocked(key, limit, now)[0]:
+                    return False
+            for lim, key, _ in checks:
+                lim._record_unlocked(key, now)
+            return True
 
     def _prune_expired(self, cutoff: float) -> None:
         empty = [k for k, dq in self._clients.items() if not dq or dq[-1] <= cutoff]
@@ -222,34 +302,102 @@ chat_limiter = SlidingWindowLimiter()
 chat_global_limiter = SlidingWindowLimiter()
 export_limiter = SlidingWindowLimiter()
 _csv_export_sem = threading.BoundedSemaphore(2)
+_MAX_IP_LEN = 64
 
 
-def _guarded_stream(gen: Iterator[str], sem: threading.BoundedSemaphore) -> Iterator[str]:
-    try:
-        yield from gen
-    finally:
-        sem.release()
+class _GuardedStreamingResponse(StreamingResponse):
+    """StreamingResponse que libera semáforo e fecha o cursor mesmo se o cliente desconectar."""
+
+    def __init__(self, raw: Iterator[str], sem: threading.BoundedSemaphore, **kwargs):
+        self._raw = raw
+        self._sem = sem
+        self._lock = threading.Lock()
+        # Só passa a ser dono do semáforo depois do __init__: se ele falhar, quem libera é a rota.
+        self._released = True
+        self._aborted = False
+        super().__init__(self._iter(), **kwargs)
+        self._released = False
+
+    def _release(self) -> None:
+        with self._lock:
+            if not self._released:
+                self._released = True
+                self._sem.release()
+
+    def _close_raw(self) -> bool:
+        """Fecha o gerador; retorna False se ele estiver em execução em outra thread."""
+        close = getattr(self._raw, "close", None)
+        if not callable(close):
+            return True
+        try:
+            close()
+        except ValueError:
+            return False
+        return True
+
+    def _iter(self) -> Iterator[str]:
+        try:
+            for chunk in self._raw:
+                if self._aborted:
+                    break
+                yield chunk
+        finally:
+            try:
+                self._close_raw()
+            finally:
+                self._release()
+
+    async def __call__(self, scope, receive, send) -> None:
+        # Cliente que cai antes dos headers, no meio do corpo ou com o gerador nem iniciado: o finally
+        # fecha o cursor e devolve a vaga. Se um next() ainda roda no threadpool, o finally do _iter
+        # faz isso quando ele voltar.
+        try:
+            await super().__call__(scope, receive, send)
+        finally:
+            self._aborted = True
+            in_flight = False
+            try:
+                in_flight = not self._close_raw()
+            finally:
+                if not in_flight:
+                    self._release()
+
+    def __del__(self) -> None:
+        if getattr(self, "_released", True):
+            return
+        self._aborted = True
+        in_flight = False
+        try:
+            in_flight = not self._close_raw()
+        except Exception:  # noqa: BLE001, S110 — destrutor nunca deve propagar erro
+            pass
+        finally:
+            if not in_flight:
+                self._release()
 
 
 def get_client_ip(request: Request, settings: Settings | None = None) -> str:
     """IP do cliente para a cota.
 
-    Com `client_ip_header` (ex.: true-client-ip), esse header vale quando vem preenchido.
-    Sem ele, o último hop de X-Forwarded-For: é o que o proxy acrescenta. Os anteriores podem ser forjados.
+    Com `client_ip_header` (ex.: `cf-connecting-ip` na borda Cloudflare do Render), esse header vale
+    quando vem preenchido; `x-forwarded-for` é ignorado aqui para manter a leitura pelo último hop.
+    Sem ele, vale o último hop de X-Forwarded-For (o que o proxy acrescenta; os anteriores podem ser forjados).
     """
     settings = settings or get_settings()
     trusted = (settings.client_ip_header or "").strip()
-    if trusted:
+    if trusted and trusted.lower() != "x-forwarded-for":
         raw = request.headers.get(trusted)
-        if raw and raw.split(",")[0].strip():
-            return raw.split(",")[0].strip()
+        if raw:
+            first = raw.split(",")[0].strip()
+            if first:
+                return first[:_MAX_IP_LEN]
     xff = request.headers.get("x-forwarded-for")
     if xff:
         ip = xff.split(",")[-1].strip()
         if ip:
-            return ip
+            return ip[:_MAX_IP_LEN]
     if request.client and request.client.host:
-        return request.client.host
+        return request.client.host[:_MAX_IP_LEN]
     return "127.0.0.1"
 
 
@@ -261,14 +409,21 @@ def llm_allowed(request: Request, settings: Settings) -> bool:
         return True
     ip_limit = settings.chat_rate_limit_per_minute
     global_limit = settings.chat_global_rate_limit_per_minute
-    if ip_limit <= 0 and global_limit <= 0:
-        return True
-    if ip_limit > 0 and not chat_limiter.check(get_client_ip(request, settings), ip_limit)[0]:
-        return False
-    if global_limit <= 0:
-        return True
-    allowed, _ = chat_global_limiter.check("global", global_limit)
-    return allowed
+    checks: list[tuple[SlidingWindowLimiter, str, int]] = []
+    if ip_limit > 0:
+        checks.append((chat_limiter, get_client_ip(request, settings), ip_limit))
+    if global_limit > 0:
+        checks.append((chat_global_limiter, "global", global_limit))
+    return SlidingWindowLimiter.check_all(checks)
+
+
+def _header_bytes(value: str | None) -> bytes:
+    if not value:
+        return b""
+    try:
+        return value.encode("latin-1")
+    except UnicodeEncodeError:
+        return value.encode("utf-8")
 
 
 def require_automation(
@@ -282,8 +437,9 @@ def require_automation(
     expected = settings.automation_token or ""
     if not expected:
         return
-    provided = x_automation_token or ""
-    if not hmac.compare_digest(provided, expected):
+    # Compara bytes: str com acento no compare_digest levanta TypeError (500). O Starlette decodifica
+    # o header em latin-1, então encode("latin-1") devolve os bytes que vieram na rede (UTF-8 do cliente).
+    if not hmac.compare_digest(_header_bytes(x_automation_token), expected.encode("utf-8")):
         raise HTTPException(status_code=401, detail="Token de automação inválido.")
 
 
@@ -414,10 +570,12 @@ def register_routes(app: FastAPI) -> None:
                 status_code=429,
                 content={"detail": "Muitas exportações simultâneas. Tente novamente em instantes."},
             )
+        raw: Iterator[str] | None = None
         try:
-            stream = _guarded_stream(repo.iter_orders_csv(f), _csv_export_sem)
-            return StreamingResponse(
-                stream,
+            raw = repo.iter_orders_csv(f)
+            return _GuardedStreamingResponse(
+                raw,
+                _csv_export_sem,
                 media_type="text/csv",
                 headers={
                     "Content-Disposition": 'attachment; filename="pedidos-recorte.csv"',
@@ -425,6 +583,10 @@ def register_routes(app: FastAPI) -> None:
                 },
             )
         except BaseException:
+            if raw is not None:
+                close = getattr(raw, "close", None)
+                if callable(close):
+                    close()
             _csv_export_sem.release()
             raise
 
@@ -435,9 +597,13 @@ def register_routes(app: FastAPI) -> None:
         settings: Annotated[Settings, Depends(get_settings)],
         request: Request,
     ):
-        # engine=local ou recorte vazio não passam no limitador: a cota é só da chamada ao modelo.
+        # engine=local, recorte vazio ou disjuntor de cota aberto não gastam o limitador.
         has_orders = repo.metrics(req.filters)["orders"] > 0
-        use_llm = req.engine != "local" and has_orders and llm_allowed(request, settings)
+        use_llm = (
+            req.engine != "local"
+            and has_orders
+            and (agent.quota_breaker.is_open() or llm_allowed(request, settings))
+        )
         return agent.chat(req, repo, settings, use_llm=use_llm)
 
 

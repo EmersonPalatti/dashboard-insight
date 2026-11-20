@@ -20,5 +20,7 @@ services:
         sync: false
       - key: OPENROUTER_MODEL
         value: baidu/ernie-5.5-flash-preview:free
+      # A borda do Render roda atrás da Cloudflare, que sobrescreve CF-Connecting-IP.
+      # Limpe se hospedar sem Cloudflare na frente (volta para o último hop de X-Forwarded-For).
       - key: CLIENT_IP_HEADER
         value: cf-connecting-ip
