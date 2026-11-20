@@ -135,6 +135,11 @@ function validDate(value: string): boolean {
   return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d;
 }
 
+/** `?hub=8&hub=8` vira um hub só: repetição na URL não gera chip duplicado. Mantém a ordem. */
+function unique<T>(values: T[]): T[] {
+  return [...new Set(values)];
+}
+
 function capList<T>(values: T[], label: string, ignored: IgnoredValue[]): T[] {
   if (values.length <= LIST_CAP) return values;
   note(ignored, label, String(values.length), `o recorte aceita no máximo ${LIST_CAP} valores`);
@@ -153,7 +158,7 @@ function takeEnums<T extends string>(
     if ((allowed as readonly string[]).includes(value)) out.push(value as T);
     else note(ignored, label, value, reason);
   }
-  return capList(out, label, ignored);
+  return capList(unique(out), label, ignored);
 }
 
 function takeIds(values: string[], label: string, ignored: IgnoredValue[]): number[] {
@@ -163,7 +168,7 @@ function takeIds(values: string[], label: string, ignored: IgnoredValue[]): numb
     if (Number.isInteger(n) && n > 0) out.push(n);
     else note(ignored, label, value, "precisa ser um número inteiro maior que zero");
   }
-  return capList(out, label, ignored);
+  return capList(unique(out), label, ignored);
 }
 
 function takeCities(values: string[], ignored: IgnoredValue[]): string[] {
@@ -173,7 +178,7 @@ function takeCities(values: string[], ignored: IgnoredValue[]): string[] {
     if (value.length > TEXT_CAP) note(ignored, "Cidade", `${value.slice(0, 24)}…`, "passa de 80 caracteres");
     else out.push(value);
   }
-  return capList(out, "Cidade", ignored);
+  return capList(unique(out), "Cidade", ignored);
 }
 
 function takeDate(value: string | null, label: string, ignored: IgnoredValue[]): string | null {
@@ -273,10 +278,6 @@ export function readSearch(search: string): ParsedSearch {
     },
     ignored,
   };
-}
-
-export function parseSearch(search: string): Recorte {
-  return readSearch(search).recorte;
 }
 
 /** Valor que passou no contrato, mas não está nas opções de /api/meta. */
@@ -523,6 +524,13 @@ function publish(mode: "push" | "replace") {
 let started = false;
 let applying = false;
 let preserveUndo = false;
+/** Como a próxima troca de vista entra no histórico. `setView` liga e desliga em volta do `set`. */
+let viewHistory: "push" | "replace" = "push";
+/**
+ * Verdadeiro quando a métrica da Tendência veio explícita no link aberto (`?trend=`)
+ * e o operador ainda não a trocou. A abertura automática da primeira comanda não a sobrescreve.
+ */
+let trendFromUrl = false;
 
 $filters.listen(() => {
   if (!preserveUndo && $drillUndo.get() !== null) {
@@ -546,6 +554,11 @@ function applySearch(search: string) {
   applying = false;
 }
 
+/** A Tendência ainda mostra a métrica que o link compartilhado pediu. */
+export function isTrendFromUrl(): boolean {
+  return trendFromUrl;
+}
+
 /** Segunda passagem, quando as opções do dataset chegam. Reescreve a URL sem empurrar histórico. */
 export function applyDimensionCatalog(next: DimensionCatalog) {
   catalog = next;
@@ -563,6 +576,7 @@ export function initFilters() {
   if (started || typeof window === "undefined") return;
   started = true;
   applySearch(location.search);
+  trendFromUrl = new URLSearchParams(location.search).get("trend") === $view.get().trend;
   $ready.set(true);
   publish("replace");
   // Só a edição do operador passa por aqui com `applying` falso. A leitura da URL
@@ -574,11 +588,13 @@ export function initFilters() {
     publish("push");
   };
   const onViewChange = () => {
-    if (!applying) publish("push");
+    if (!applying) publish(viewHistory);
   };
   $filters.listen(onFiltersChange);
   $view.listen(onViewChange);
   window.addEventListener("popstate", () => {
+    // voltar no histórico já é navegação do operador: a vista dali em diante segue as comandas
+    trendFromUrl = false;
     applySearch(location.search);
     publish("replace");
   });
@@ -605,11 +621,22 @@ export function patchFilters(patch: Partial<Recorte>) {
   $filters.set({ ...$filters.get(), ...patch });
 }
 
-export function setView(patch: Partial<PanelView>) {
+/**
+ * Troca a vista. Clique do operador empurra histórico (Voltar desfaz); mudança
+ * programática, como a comanda aberta escolhendo a métrica, passa `history: "replace"`.
+ */
+export function setView(patch: Partial<PanelView>, opts: { history?: "push" | "replace" } = {}) {
   const prev = $view.get();
   const next = { ...prev, ...patch };
   if (next.rank === prev.rank && next.trend === prev.trend && next.grain === prev.grain) return;
-  $view.set(next);
+  const mode = opts.history ?? "push";
+  if (mode === "push" && next.trend !== prev.trend) trendFromUrl = false;
+  viewHistory = mode;
+  try {
+    $view.set(next);
+  } finally {
+    viewHistory = "push";
+  }
 }
 
 /** O gráfico de lojas manda o foco para o filtro de cada loja no ranking. */

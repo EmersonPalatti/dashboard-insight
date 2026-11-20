@@ -127,9 +127,47 @@ export function useFilterModel() {
     };
   }, [meta]);
 
+  // vínculos pai de /api/meta (hub → cidade, loja → hub), sem nomes fixos no código
+  const parents = useMemo(() => {
+    const hubCity = new Map<number, string>();
+    for (const h of meta?.hubs ?? []) if (h.parent != null) hubCity.set(Number(h.value), String(h.parent));
+    const storeHub = new Map<number, number>();
+    for (const s of meta?.stores ?? []) if (s.parent != null) storeHub.set(Number(s.value), Number(s.parent));
+    return { hubCity, storeHub };
+  }, [meta]);
+
   const set = (patch: Partial<Recorte>) => patchFilters(patch);
 
-  // mesmos cascades dos onChange dos seletores: cidade limpa hub e loja, hub limpa loja
+  /**
+   * Troca as cidades mantendo hub e loja que ainda pertencem a uma cidade escolhida.
+   * Sem cidade, nada sai: tirar a restrição só amplia. Pai desconhecido (meta ainda
+   * carregando) fica, como em `reconcileParents`.
+   */
+  const setCities = (city: string[]) => {
+    if (city.length === 0) return set({ city });
+    const inCities = (c: string | undefined) => c === undefined || city.includes(c);
+    const hub = f.hub.filter((h) => inCities(parents.hubCity.get(h)));
+    const store = f.store.filter((s) => {
+      const h = parents.storeHub.get(s);
+      if (h === undefined) return true;
+      return inCities(parents.hubCity.get(h)) && (hub.length === 0 || hub.includes(h));
+    });
+    set({ city, hub, store });
+  };
+
+  /** Troca os hubs mantendo as lojas desses hubs. Sem hub, as lojas ficam (dentro das cidades escolhidas). */
+  const setHubs = (hub: number[]) => {
+    const store = f.store.filter((s) => {
+      const h = parents.storeHub.get(s);
+      if (h === undefined) return true;
+      if (hub.length > 0) return hub.includes(h);
+      const c = parents.hubCity.get(h);
+      return f.city.length === 0 || c === undefined || f.city.includes(c);
+    });
+    set({ hub, store });
+  };
+
+  // mesmas regras dos seletores: tirar cidade ou hub só leva junto o que pertencia a ele
   const presetName = presets.find((p) => p.id === activePreset)?.label;
   const chips: Chip[] = [
     ...(f.start || f.end
@@ -139,15 +177,15 @@ export function useFilterModel() {
       "Cidade",
       f.city,
       (c) => nameOf(names.city, c),
-      (c) => set({ city: f.city.filter((x) => x !== c), hub: [], store: [] }),
-      () => set({ city: [], hub: [], store: [] }),
+      (c) => setCities(f.city.filter((x) => x !== c)),
+      () => setCities([]),
     ),
     ...chipsOf(
       "Hub",
       f.hub,
       (h) => nameOf(names.hub, h),
-      (h) => set({ hub: f.hub.filter((x) => x !== h), store: [] }),
-      () => set({ hub: [], store: [] }),
+      (h) => setHubs(f.hub.filter((x) => x !== h)),
+      () => setHubs([]),
     ),
     ...chipsOf(
       "Loja",
@@ -196,7 +234,23 @@ export function useFilterModel() {
         ? `desde ${dayMonth(f.start)}`
         : `até ${dayMonth(f.end ?? "")}`;
 
-  return { f, active, min, max, datesReady, presets, activePreset, customDates, datesLabel, extraCount, opts, chips, set };
+  return {
+    f,
+    active,
+    min,
+    max,
+    datesReady,
+    presets,
+    activePreset,
+    customDates,
+    datesLabel,
+    extraCount,
+    opts,
+    chips,
+    set,
+    setCities,
+    setHubs,
+  };
 }
 
 export type FilterModel = ReturnType<typeof useFilterModel>;

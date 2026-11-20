@@ -12,10 +12,29 @@ function DateRange({ m }: { m: FilterModel }) {
   const { f, set, min, max } = m;
   // DatePicker precisa dos limites do dataset (vêm de /api/meta); antes deles não há calendário
   if (!min || !max) return null;
+  // Data da URL fora da base (ex.: ?start=2021-06-01) não vira limite do outro campo:
+  // com min > max o calendário ficaria todo desabilitado. Fora da base, vale o limite do dataset.
+  const inBase = (iso: string | null): iso is string => iso !== null && iso >= min && iso <= max;
+  const startMax = inBase(f.end) ? f.end : max;
+  const endMin = inBase(f.start) ? f.start : min;
   return (
     <div role="group" aria-label="Período personalizado" className="grid gap-1.5">
-      <DatePicker label="Início" min={min} max={f.end ?? max} value={f.start} rangeOther={f.end} onChange={(start) => set({ start })} />
-      <DatePicker label="Fim" min={f.start ?? min} max={max} value={f.end} rangeOther={f.start} onChange={(end) => set({ end })} />
+      <DatePicker
+        label="Início"
+        min={min}
+        max={startMax}
+        value={f.start}
+        rangeOther={f.end}
+        onChange={(start) => set({ start, ...(start && f.end && start > f.end ? { end: null } : {}) })}
+      />
+      <DatePicker
+        label="Fim"
+        min={endMin}
+        max={max}
+        value={f.end}
+        rangeOther={f.start}
+        onChange={(end) => set({ end, ...(end && f.start && end < f.start ? { start: null } : {}) })}
+      />
     </div>
   );
 }
@@ -57,19 +76,18 @@ export function PeriodFields({ m, variant = "bar", labelId }: { m: FilterModel; 
           activeId={activeId}
           labelId={labelId}
           onSelect={pick}
-          extra={({ tabIndex, checked }) => (
+          extra={({ tabIndex, pressed }) => (
             <button
               type="button"
-              role="radio"
               data-preset="dates"
-              aria-checked={checked}
+              aria-pressed={pressed}
               aria-expanded={showDates}
               aria-controls="periodo-datas"
               aria-label={`Datas: ${customDates ? datesLabel : "escolher início e fim"}`}
               tabIndex={tabIndex}
               disabled={!datesReady}
               onClick={() => setSheetDates((v) => !v)}
-              className={`${presetClass(checked)} whitespace-normal!`}
+              className={`${presetClass(pressed)} whitespace-normal!`}
             >
               {datesInner}
             </button>
@@ -101,17 +119,16 @@ export function PeriodFields({ m, variant = "bar", labelId }: { m: FilterModel; 
       presets={presets}
       activeId={activeId}
       onSelect={pick}
-      extra={({ tabIndex, checked }) => (
+      extra={({ tabIndex, pressed }) => (
         <Popover
           id="periodo-datas"
           align="left"
           panelClassName="w-[18rem] p-2"
           rootClassName="max-lg:min-w-0 max-lg:flex-1"
-          triggerClassName={`${presetClass(checked)} h-full w-full`}
+          triggerClassName={`${presetClass(pressed)} h-full w-full`}
           triggerProps={{
             "data-preset": "dates",
-            role: "radio",
-            "aria-checked": checked,
+            "aria-pressed": pressed,
             tabIndex,
             "aria-label": `Datas: ${customDates ? datesLabel : "escolher início e fim"}`,
             disabled: !datesReady,
@@ -125,13 +142,13 @@ export function PeriodFields({ m, variant = "bar", labelId }: { m: FilterModel; 
   );
 }
 
-/** Cidade → Hub → Loja, em cascata: cada escolha limpa os níveis de baixo. */
+/** Cidade → Hub → Loja, em cascata: cada escolha tira dos níveis de baixo só o que deixou de pertencer a ela. */
 export function PlaceFields({ m }: { m: FilterModel }) {
-  const { f, opts, set } = m;
+  const { f, opts, set, setCities, setHubs } = m;
   return (
     <>
-      <MultiSelect label="Cidade" options={opts.cities} value={f.city} onChange={(city) => set({ city, hub: [], store: [] })} />
-      <MultiSelect label="Hub" options={opts.hubs} value={f.hub} searchable onChange={(hub) => set({ hub, store: [] })} />
+      <MultiSelect label="Cidade" options={opts.cities} value={f.city} onChange={setCities} />
+      <MultiSelect label="Hub" options={opts.hubs} value={f.hub} searchable onChange={setHubs} />
       <MultiSelect label="Loja" options={opts.stores} value={f.store} searchable onChange={(store) => set({ store })} />
     </>
   );

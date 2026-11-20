@@ -1,10 +1,9 @@
 import { ChevronDown, Download, RotateCcw } from "lucide-react";
-import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { resetFilters } from "@/lib/filters";
 import { useMediaQuery } from "@/lib/media";
 import { island } from "@/lib/query";
 import { AgentAskButton } from "./agent/AgentLauncher";
-import { CopyLinkButton } from "./filters/CopyLinkButton";
 import { ExtraFields, PeriodFields, PlaceFields } from "./filters/FilterFields";
 import { FiltersPopover } from "./filters/FiltersPopover";
 import { MobileRecorte } from "./filters/MobileRecorte";
@@ -100,19 +99,6 @@ function FilterBarInner() {
     if (desktop) setSheetOpen(false);
   }, [desktop]);
 
-  // A barra é sticky: a folga dos âncoras acompanha a altura real (chips, quebra de linha).
-  useLayoutEffect(() => {
-    const bar = document.querySelector<HTMLElement>("[data-filter-bar]");
-    if (!bar) return;
-    const apply = () => {
-      document.documentElement.style.setProperty("--sticky-bar", `${bar.offsetHeight}px`);
-    };
-    apply();
-    const ro = new ResizeObserver(apply);
-    ro.observe(bar);
-    return () => ro.disconnect();
-  }, [desktop, m.chips.length]);
-
   // O diálogo de exportação abre depois que a folha fecha. O foco volta para o botão que abriu a folha,
   // depois da animação de saída (o close nativo também devolve, este é o reforço).
   useEffect(() => {
@@ -147,7 +133,6 @@ function FilterBarInner() {
               returnFocusRef={triggerRef}
               footer={
                 <>
-                  <CopyLinkButton className="min-h-11 justify-center" />
                   <button
                     type="button"
                     className="btn-ghost min-h-11 justify-center whitespace-nowrap"
