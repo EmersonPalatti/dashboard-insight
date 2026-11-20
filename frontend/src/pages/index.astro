@@ -24,8 +24,8 @@ import TopBarStatus from "@/components/TopBarStatus";
 import TrendChart from "@/components/TrendChart";
 import OpsLogo from "@/components/ui/OpsLogo.astro";
 import Panel from "@/components/ui/Panel.astro";
+import { API_URL } from "@/lib/api/client";
 
-const apiUrl = (import.meta.env.PUBLIC_API_URL ?? "http://localhost:8000").replace(/\/$/, "");
 const repoUrl = "https://github.com/EmersonPalatti/dashboard-insight";
 ---
 
@@ -39,33 +39,33 @@ const repoUrl = "https://github.com/EmersonPalatti/dashboard-insight";
     <a class="skip-link" href="#filtros">Pular para os filtros</a>
     <!-- no escuro o vinho (#26060F) quase some no campo (#111): um fio de wine-raised marca a borda da faixa -->
     <!-- sm+: 64px com a promessa do recorte. Abaixo de sm: 56px; o nome desce um degrau da escala para caber inteiro. -->
-    <header class="h-14 bg-wine text-white sm:h-16 dark:border-b dark:border-wine-raised">
+    <header class="h-14 bg-wine text-on-wine-strong sm:h-16 dark:border-b dark:border-wine-raised">
       <div class="mx-auto flex h-full max-w-[1440px] min-w-0 items-center gap-1.5 px-4 sm:gap-3 sm:px-6">
         <div class="flex min-w-0 flex-1 items-center gap-1.5 sm:gap-2.5">
           <OpsLogo size={28} class="text-on-wine" />
           <div class="min-w-0 flex-1">
-            <h1 class="header-reveal-title font-slab text-lead leading-tight font-bold text-white sm:truncate sm:text-figure">
+            <h1 class="header-reveal-title font-slab text-lead leading-tight font-bold text-on-wine-strong sm:truncate sm:text-figure">
               Central de Operações
             </h1>
             <div class="header-reveal-sub mt-0.5 hidden min-w-0 items-center gap-2 sm:flex">
               <p class="min-w-0 truncate text-meta leading-none text-on-wine/90">
                 KPIs, comandas e o agente respondem sobre o mesmo recorte.
               </p>
-              <span class="hidden shrink-0 items-center gap-1.5 rounded-tick border border-on-wine/20 bg-wine-raised/60 px-2.5 py-1 text-meta leading-none font-medium text-on-wine sm:inline-flex xl:px-3 dark:bg-white/10">
+              <span class="hidden shrink-0 items-center gap-1.5 rounded-tick border border-on-wine/20 bg-wine-raised/60 px-2.5 py-1 text-meta leading-none font-medium text-on-wine sm:inline-flex xl:px-3 dark:bg-wine-raised/80">
                 <span class="xl:hidden">Kaggle · <span class="tabular-nums">2021</span></span>
                 <span class="hidden items-center gap-1.5 xl:inline-flex">
                   <span>Delivery Center</span>
                   <span class="opacity-50">·</span>
                   <span class="tabular-nums">jan–abr 2021</span>
                   <span class="opacity-50">·</span>
-                  <span class="tabular-nums font-semibold text-white">368.990 pedidos</span>
+                  <span class="tabular-nums font-semibold text-on-wine-strong">368.990 pedidos</span>
                 </span>
               </span>
             </div>
           </div>
         </div>
         <div class="no-print flex shrink-0 items-center gap-1">
-          <a class="hit-target relative hidden shrink-0 items-center rounded-card px-2 py-1.5 text-aux text-on-wine transition-colors duration-(--duration-quick) ease-(--ease-smooth-out) hover:bg-wine-raised hover:text-white sm:inline-flex" href={`${apiUrl}/docs`} target="_blank" rel="noopener">API (Swagger)</a>
+          <a class="hit-target relative hidden shrink-0 items-center rounded-card px-2 py-1.5 text-aux text-on-wine transition-colors duration-(--duration-quick) ease-(--ease-smooth-out) hover:bg-wine-raised hover:text-on-wine-strong sm:inline-flex" href={`${API_URL}/docs`} target="_blank" rel="noopener">API (Swagger)</a>
           <TopBarStatus client:load />
         </div>
       </div>
@@ -87,7 +87,7 @@ const repoUrl = "https://github.com/EmersonPalatti/dashboard-insight";
         Trilho de comandas no topo: as comandas penduradas lado a lado e a aberta numa faixa larga.
         KPIs e investigação ganham a largura toda logo abaixo. O agente fica fora da grade (AgentDock).
       -->
-      <div id="comandas" tabindex="-1" aria-labelledby="comandas-title" class="min-w-0">
+      <div id="comandas" tabindex="-1" class="min-w-0">
         <AlertsPanel client:load />
       </div>
 
@@ -133,7 +133,7 @@ const repoUrl = "https://github.com/EmersonPalatti/dashboard-insight";
               collapsible
               title="Onde o tempo vai, por hub"
               hint="Mediana de cada etapa, sem pedidos presos. Clique numa barra para filtrar o hub."
-              summary="Mediana de preparo, coleta, expedição e trânsito nos hubs com 200+ pedidos."
+              summary="Mediana de preparo, expedição e trânsito nos hubs com 200+ pedidos; a coleta, parte da expedição, aparece na dica."
             >
               <StagesChart client:visible />
             </Panel>
@@ -197,7 +197,7 @@ const repoUrl = "https://github.com/EmersonPalatti/dashboard-insight";
           <p class="text-pretty">Astro + ilhas React, ECharts, Nanostores, TanStack Query/Table/Virtual · FastAPI, Pydantic, DuckDB sobre Parquet.</p>
           <p class="text-pretty mt-1">
             <a class="hit-target underline decoration-rule underline-offset-4" href={repoUrl} target="_blank" rel="noopener">Código</a> ·{" "}
-            <a class="hit-target underline decoration-rule underline-offset-4" href={`${apiUrl}/docs`} target="_blank" rel="noopener">API (Swagger)</a>
+            <a class="hit-target underline decoration-rule underline-offset-4" href={`${API_URL}/docs`} target="_blank" rel="noopener">API (Swagger)</a>
           </p>
         </div>
       </div>
@@ -244,8 +244,19 @@ const repoUrl = "https://github.com/EmersonPalatti/dashboard-insight";
           if (section.tabIndex !== next) section.tabIndex = next;
         }
       }
+      // Coalesce num quadro: rolar a tabela virtual ou passar o mouse no gráfico muta o DOM o tempo todo.
+      var queued = false;
+      function schedule() {
+        if (queued) return;
+        queued = true;
+        requestAnimationFrame(function () {
+          queued = false;
+          sync();
+        });
+      }
       sync();
-      new MutationObserver(sync).observe(document.body, {
+      // Os painéis moram em <main>; o agente e o restante da página ficam fora da observação.
+      new MutationObserver(schedule).observe(document.querySelector("main") || document.body, {
         childList: true,
         subtree: true,
         attributes: true,

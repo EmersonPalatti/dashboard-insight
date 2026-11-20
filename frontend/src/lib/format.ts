@@ -32,9 +32,13 @@ export const fmt = {
     const sp = new Intl.DateTimeFormat("pt-BR", { ...opts, timeZone: "America/Sao_Paulo" });
     return (iso: string) => {
       if (!iso) return "—";
-      if (/(?:Z|[+-]\d{2}:?\d{2})$/i.test(iso)) return sp.format(new Date(iso));
+      if (/(?:Z|[+-]\d{2}:?\d{2})$/i.test(iso)) {
+        const d = new Date(iso);
+        return Number.isNaN(d.getTime()) ? "—" : sp.format(d);
+      }
       const normalized = iso.includes("T") ? iso : iso.replace(" ", "T");
-      return utc.format(new Date(`${normalized}Z`));
+      const d = new Date(`${normalized}Z`);
+      return Number.isNaN(d.getTime()) ? "—" : utc.format(d);
     };
   })(),
 };
