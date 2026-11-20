@@ -120,7 +120,7 @@ function Delta({
   return (
     <span
       className={`inline-flex items-center gap-0.5 text-aux font-semibold tabular-nums ${
-        good === null ? "text-muted" : good ? "text-good" : "text-crit"
+        good === null ? "text-muted" : good ? "text-good" : "text-warn"
       }`}
       title="Contra o período anterior de mesmo tamanho"
     >
@@ -404,9 +404,9 @@ function KpiSkeleton({ status }: { status?: string }) {
         )}
         <div className="skeleton h-3.5 w-44 max-w-[30%]" aria-hidden />
       </div>
-      {/* lg+: operação em 3 colunas; abaixo disso uma coluna, para o delta não cair sob o botão do agente */}
-      <div className="grid gap-2.5 lg:grid-cols-[minmax(0,3fr)_minmax(15rem,1fr)]" aria-hidden="true">
-        <div className="grid grid-cols-1 gap-px overflow-hidden rounded-card border border-rule bg-rule lg:grid-cols-3">
+      {/* Mesmas consultas de contêiner da faixa carregada (@min-[38rem] / @min-[52rem]), sem salto ao montar. */}
+      <div className="grid gap-2.5 @min-[52rem]:grid-cols-[minmax(0,3fr)_minmax(15rem,1fr)]" aria-hidden="true">
+        <div className="grid grid-cols-1 gap-px overflow-hidden rounded-card border border-rule bg-rule @min-[38rem]:grid-cols-3">
           {[0, 1, 2].map((i) => (
             <div key={i} className="min-w-0 bg-surface px-4 pt-3.5 pb-3">
               <div className="flex min-w-0 items-center justify-between gap-2">
@@ -421,7 +421,7 @@ function KpiSkeleton({ status }: { status?: string }) {
             </div>
           ))}
         </div>
-        <div className="tile grid grid-cols-1 divide-y divide-rule overflow-hidden lg:auto-rows-fr lg:grid-cols-1 lg:divide-y">
+        <div className="tile grid grid-cols-1 divide-y divide-rule overflow-hidden @min-[52rem]:auto-rows-fr @min-[52rem]:grid-cols-1 @min-[52rem]:divide-y">
           {[0, 1, 2].map((i) => (
             <div key={i} className="flex min-w-0 flex-col justify-center px-4 py-2.5">
               <div className="flex flex-wrap items-baseline gap-2">

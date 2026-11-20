@@ -18,7 +18,7 @@ function inline(text: string): ReactNode[] {
     const [, code, bold, underscore, star] = match;
     if (code !== undefined) {
       out.push(
-        <code key={key} className="rounded-[4px] bg-sunken px-1 text-[0.9em]">
+        <code key={key} className="rounded-tick bg-sunken px-1 text-aux">
           {code}
         </code>,
       );

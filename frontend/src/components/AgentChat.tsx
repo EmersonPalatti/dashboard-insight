@@ -35,22 +35,70 @@ const modelName = (model: string) => model.replace(/:free$/, "").split("/").pop(
 /** Quantas sugestões aparecem de início; o resto fica atrás de "Mais perguntas". */
 const SUGGESTIONS_SHOWN = 3;
 
+const LEITURA_FENCE = /```leitura[\s\S]*?```/gi;
+
 let nextId = 1;
 let nextSeries = 1;
 for (const message of $agentMessages.get()) {
-  nextId = Math.max(nextId, message.id + 1);
-  if (message.comanda) nextSeries = Math.max(nextSeries, message.comanda.series + 1);
+  if (Number.isFinite(message.id)) nextId = Math.max(nextId, message.id + 1);
+  if (message.comanda && Number.isFinite(message.comanda.series)) {
+    nextSeries = Math.max(nextSeries, message.comanda.series + 1);
+  }
+}
+
+function turnContent(message: AgentMessage): string {
+  if (message.role === "assistant") {
+    if (message.comanda) {
+      const title = message.comanda.title.trim();
+      const detail = message.comanda.detail.trim();
+      const action = message.comanda.action.trim();
+      const parts = [
+        ...(title && !detail.startsWith(title) ? [title] : []),
+        ...(detail ? [detail] : []),
+        ...(action ? [`**Ação:** ${action}`] : []),
+      ];
+      if (parts.length) return parts.join("\n\n");
+    }
+    return message.content.replace(LEITURA_FENCE, "").trim();
+  }
+  return message.content;
 }
 
 function historyOf(list: AgentMessage[], scope: string): ChatTurn[] {
   return list
     .filter((message) => !message.error && message.scope === scope)
     .slice(-4)
-    .map((message) => ({ role: message.role, content: message.content.slice(0, 2000) }));
+    .map((message) => ({ role: message.role, content: turnContent(message).slice(0, 2000) }))
+    .filter((turn) => turn.content.length > 0);
 }
 
 function failureDetail(err: unknown): string {
-  if (err instanceof ApiError || err instanceof Error) return err.message;
+  if (err instanceof ApiError) {
+    const raw = (err.message ?? "").trim();
+    if (raw.startsWith("[")) {
+      try {
+        const parsed: unknown = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          const msgs = parsed
+            .map((item) =>
+              item && typeof item === "object" && "msg" in item && typeof item.msg === "string"
+                ? item.msg.trim()
+                : "",
+            )
+            .filter(Boolean);
+          if (msgs.length) return clip(msgs.join("; "), 180);
+        }
+      } catch {
+        /* fallback abaixo */
+      }
+      return err.status === 422 ? "dados inválidos" : `erro HTTP ${err.status}`;
+    }
+    if (!raw || raw === "undefined") {
+      return err.status ? `erro HTTP ${err.status}` : "erro";
+    }
+    return clip(raw, 180);
+  }
+  if (err instanceof Error) return clip(err.message.trim(), 180) || "erro";
   return "erro";
 }
 
@@ -160,18 +208,20 @@ export function AgentConversation({ visible, onClose }: ConversationProps) {
     if (visible && !$agentDraft.get()) inputRef.current?.focus({ preventScroll: true });
   }, [visible]);
 
-  // O botão de abrir mostra a espera e a resposta que chegou com o painel fechado.
-  const answers = messages.filter((message) => message.role === "assistant").length;
-  const seenAnswers = useRef(answers);
+  // O botão de abrir mostra a espera e a resposta que chegou com o painel fechado (inclui upgrade em andamento).
+  const latestSig = latestAnswer
+    ? `${latestAnswer.id}:${latestAnswer.comanda?.status ?? ""}:${latestAnswer.comanda?.fallback ?? ""}:${latestAnswer.content.length}`
+    : "";
+  const seenSigRef = useRef(latestSig);
   useEffect(() => {
     const current = $agentActivity.get();
     let next = current;
     if (phase !== "idle") next = "pending";
-    else if (!visible && answers > seenAnswers.current) next = "unread";
+    else if (!visible && latestSig && latestSig !== seenSigRef.current) next = "unread";
     else if (visible || current === "pending") next = "idle";
     if (next !== current) $agentActivity.set(next);
-    if (visible) seenAnswers.current = answers;
-  }, [phase, answers, visible]);
+    if (visible) seenSigRef.current = latestSig;
+  }, [phase, latestSig, visible]);
 
   // Segundos só na espera da leitura local. A linha do servidor dormindo depende do /api/health.
   useEffect(() => {
@@ -548,7 +598,7 @@ export function AgentConversation({ visible, onClose }: ConversationProps) {
             send(input);
           }}
           placeholder="Pergunte sobre este recorte…"
-          className={`max-h-40 min-h-11 w-full min-w-0 flex-1 resize-none ${input ? "overflow-y-auto" : "overflow-y-hidden"} rounded-card border border-rule bg-surface px-3 py-2 text-body outline-none placeholder:truncate placeholder:text-muted focus:border-ink lg:min-h-10`}
+          className={`max-h-40 min-h-11 w-full min-w-0 flex-1 resize-none ${input ? "overflow-y-auto" : "overflow-y-hidden"} rounded-card border border-rule bg-surface px-3 py-2 text-body placeholder:truncate placeholder:text-muted focus:border-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink lg:min-h-10`}
         />
         <button type="submit" className="btn-ink justify-center max-lg:min-h-11 max-lg:min-w-11 lg:h-10 lg:px-3.5" disabled={!input.trim() || phase === "local"} aria-label="Enviar">
           <SendHorizontal className="size-4" aria-hidden />
