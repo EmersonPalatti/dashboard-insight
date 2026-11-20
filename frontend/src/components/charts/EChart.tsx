@@ -25,7 +25,20 @@ export type Tokens = ReturnType<typeof tokens>;
 export type ECOption = echarts.EChartsCoreOption;
 export type ECInstance = echarts.ECharts;
 
-type Handler = (params: any, chart: ECInstance) => void;
+type Handler = (params: unknown, chart: ECInstance) => void;
+
+const HTML_ESCAPE: Record<string, string> = {
+  "&": "&amp;",
+  "<": "&lt;",
+  ">": "&gt;",
+  '"': "&quot;",
+  "'": "&#39;",
+};
+
+/** Escapa texto de dados antes de interpolar em tooltips HTML do ECharts. */
+export function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (ch) => HTML_ESCAPE[ch] ?? ch);
+}
 
 interface Props {
   /** Recebe os tokens resolvidos do tema para montar a opção. */

@@ -261,15 +261,17 @@ function OrdersTableInner() {
               <div className="flex flex-wrap items-center gap-2">
                 <span className="font-semibold text-ink tabular-nums">Pedido #{selectedOrder.order_id}</span>
                 <span className="text-muted">{fmt.dateTime(selectedOrder.created_at)}</span>
+                {/* Fora do SLA em tinta com peso e seta, como na célula: o vermelho fica com as comandas. */}
                 <span
-                  className={`rounded-tick px-1.5 py-0.5 text-meta font-semibold ${
+                  className={`inline-flex items-center gap-1 rounded-tick px-1.5 py-0.5 text-meta font-semibold ${
                     selectedOrder.on_time === false
-                      ? "bg-crit-soft text-crit"
+                      ? "border border-ink bg-surface text-ink"
                       : selectedOrder.status === "canceled"
                         ? "bg-sunken-strong text-ink"
                         : "bg-surface text-ink"
                   }`}
                 >
+                  {selectedOrder.on_time === false && <ArrowUp className="size-3 shrink-0" aria-hidden />}
                   {selectedOrder.on_time === false
                     ? "Fora do SLA"
                     : selectedOrder.on_time === true
@@ -364,7 +366,7 @@ function OrdersTableInner() {
           </div>
         )}
         <div ref={scroller} className="content-reveal relative h-[460px] min-w-0 overflow-auto rounded-tick border border-rule" role="region" aria-label="Tabela de pedidos" tabIndex={0}>
-          <div style={{ width, minWidth: "100%" }} className="text-aux tabular-nums" role="table" aria-rowcount={total}>
+          <div style={{ width, minWidth: "100%" }} className="text-aux tabular-nums" role="grid" aria-label="Pedidos do recorte" aria-rowcount={total + 1}>
             <div className="sticky top-0 z-20 flex border-b border-rule bg-sunken" role="row">
               {table.getFlatHeaders().map((h) => {
                 const active = sort.id === h.id;
@@ -413,8 +415,6 @@ function OrdersTableInner() {
                     tabIndex={0}
                     data-order-id={row.original.order_id}
                     aria-selected={isSelected}
-                    aria-expanded={isSelected}
-                    aria-controls={isSelected ? detailId : undefined}
                     aria-rowindex={item.index + 2}
                     onClick={toggleRow}
                     onKeyDown={(e) => {
@@ -434,7 +434,7 @@ function OrdersTableInner() {
                       return (
                         <div
                           key={cell.id}
-                          role="cell"
+                          role="gridcell"
                           style={{ width: cell.column.getSize() }}
                           className={`flex shrink-0 items-center px-2 ${
                             isNumeric ? "justify-end text-right tabular-nums" : ""
@@ -476,4 +476,4 @@ function OrdersTableInner() {
   );
 }
 
-export default island(OrdersTableInner, panelFallback(460, { hint: true }));
+export default island(OrdersTableInner, panelFallback(460, { hint: 2, hintMobile: 5 }));

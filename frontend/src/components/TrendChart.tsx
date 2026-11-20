@@ -1,9 +1,10 @@
 import { useStore } from "@nanostores/react";
 import { CalendarCheck, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { GetResponse } from "@/lib/api/client";
 import { $filters, $view, patchFilters, setView, type TrendGrain, type TrendView } from "@/lib/filters";
 import { fmt } from "@/lib/format";
-import { island, useRecorteQuery } from "@/lib/query";
+import { island, useMeta, useRecorteQuery } from "@/lib/query";
 import { BarChart, LineChart } from "echarts/charts";
 import { DataZoomComponent, LegendComponent } from "echarts/components";
 import * as echarts from "echarts/core";
@@ -27,6 +28,20 @@ const ASK_TAIL: Record<TrendView, string> = {
   cancel: "onde estão os picos e o que fazer?",
 };
 
+type Point = GetResponse<"/api/timeseries">[number];
+// Lista vazia estável: sem dados, `points` não muda de referência a cada render.
+const EMPTY: Point[] = [];
+
+/** Domingo da semana ISO (seg a dom) que contém `iso`, sem passar de `cap`. */
+function endOfIsoWeek(iso: string, cap: string | null): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  const isoDay = (dt.getUTCDay() + 6) % 7; // seg = 0 ... dom = 6
+  dt.setUTCDate(dt.getUTCDate() + (6 - isoDay));
+  const sunday = dt.toISOString().slice(0, 10);
+  return cap && sunday > cap ? cap : sunday;
+}
+
 function TrendChartInner() {
   const grain = useStore($view).grain;
   const view = useStore($view).trend;
@@ -34,7 +49,8 @@ function TrendChartInner() {
   const filters = useStore($filters);
   const chart = useRef<ECInstance | null>(null);
   const { data, error, isPending, refetch, isPlaceholderData, waking, down } = useRecorteQuery("/api/timeseries", { grain });
-  const points = data ?? [];
+  const { data: meta } = useMeta();
+  const points = data ?? EMPTY;
 
   const summary = useMemo(() => {
     if (points.length === 0) return "";
@@ -77,12 +93,14 @@ function TrendChartInner() {
 
   const option = useCallback(
     (t: Tokens) => {
-      const x = points.map((p) => p.t);
+      // Rótulos já em pt-BR: o cabeçalho do tooltip e as alças da barra de zoom mostram o valor da categoria.
+      // O zoom lê points[i].t, nunca estes rótulos.
+      const x = points.map((p) => (grain === "hour" ? fmt.dateTime(p.t) : fmt.date(p.t)));
       const common = {
         grid: { left: 52, right: 52, top: 56, bottom: 64 },
         tooltip: { trigger: "axis" },
         legend: { top: 0, left: 0, itemWidth: 14, itemHeight: 8 },
-        xAxis: { type: "category", data: x, axisLabel: { formatter: (v: string) => (grain === "hour" ? fmt.dateTime(v) : fmt.date(v)) } },
+        xAxis: { type: "category", data: x },
         dataZoom: [
           { type: "inside", throttle: 50 },
           {
@@ -95,7 +113,6 @@ function TrendChartInner() {
             moveHandleStyle: { color: t.series },
             dataBackground: { lineStyle: { color: t.muted }, areaStyle: { color: t.sunken } },
             textStyle: { color: t.muted },
-            labelFormatter: (_: number, v: string) => fmt.date(v),
           },
         ],
       };
@@ -181,11 +198,15 @@ function TrendChartInner() {
       const z = opt.dataZoom?.[0];
       if (!z || z.startValue === undefined || z.endValue === undefined || points.length === 0) return;
       const s = points[z.startValue]?.t.slice(0, 10);
-      const e = points[z.endValue]?.t.slice(0, 10);
+      const rawEnd = points[z.endValue]?.t.slice(0, 10);
+      // Na semana, o ponto é a segunda-feira; o fim do zoom vai até o domingo, sem passar do recorte nem da base.
+      const limits = [filters.end, meta?.max_date].filter((v): v is string => Boolean(v));
+      const cap = limits.length > 0 ? limits.reduce((a, b) => (a < b ? a : b)) : null;
+      const e = rawEnd && grain === "week" ? endOfIsoWeek(rawEnd, cap) : rawEnd;
       const full = z.startValue === 0 && z.endValue === points.length - 1;
       setZoom(!full && s && e ? { start: s, end: e } : null);
     },
-    [points],
+    [points, grain, filters.end, meta?.max_date],
   );
 
   const applyZoom = () => {

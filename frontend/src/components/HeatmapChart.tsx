@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import type { GetResponse } from "@/lib/api/client";
 import { EVIDENCE_DIM } from "@/lib/evidence";
 import { fmt, WEEKDAYS } from "@/lib/format";
 import { island, useRecorteQuery } from "@/lib/query";
@@ -34,6 +35,8 @@ const ASK_BY_METRIC: Record<Metric, string> = {
 const HOURS = Array.from({ length: 24 }, (_, h) => `${String(h).padStart(2, "0")}h`);
 const MIN_ORDERS = 20; // células com pouco pedido viram ruído em taxas
 const CHART_H = 300;
+// Lista vazia estável: sem dados, `cells` não muda de referência a cada render.
+const EMPTY: GetResponse<"/api/heatmap"> = [];
 
 
 function HeatmapChartInner() {
@@ -47,7 +50,7 @@ function HeatmapChartInner() {
     if (focusMetric) setMetric(focusMetric);
   }, [focusId, focusMetric]);
   const peak = useMemo(() => new Set(focus?.evidence.hours ?? []), [focus]);
-  const cells = data ?? [];
+  const cells = data ?? EMPTY;
   // Células que entram no mapa para a métrica atual: taxas só com MIN_ORDERS pedidos e valor presente.
   const usable = useMemo(
     () => cells.filter((c) => (metric === "orders" || c.orders >= MIN_ORDERS) && c[metric] !== null),

@@ -11,7 +11,7 @@ import { useStore } from "@nanostores/react";
 import { ArrowDown, ArrowUp, Filter } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { BreakdownRow, Dimension } from "@/lib/api/client";
-import { $focusRank, $view, applyDrilldown, patchFilters, setView } from "@/lib/filters";
+import { $focusRank, $view, applyDrilldown, setView } from "@/lib/filters";
 import { fmt, label, WEEKDAYS } from "@/lib/format";
 import { GLOSS, STORE_NAMES_HINT } from "@/lib/glossary";
 import { island, useRecorteQuery } from "@/lib/query";
@@ -207,7 +207,7 @@ function BreakdownTableInner() {
     if (tab === "hub") applyDrilldown({ hub: [Number(r.key)] });
     else if (tab === "store") applyDrilldown({ store: [Number(r.key)] });
     else if (tab === "city") applyDrilldown({ city: [String(r.key)] });
-    else if (tab === "modal" && (r.key === "moto" || r.key === "bike")) patchFilters({ modal: [r.key] });
+    else if (tab === "modal" && (r.key === "moto" || r.key === "bike")) applyDrilldown({ modal: [r.key] });
   };
 
   return (
@@ -314,4 +314,4 @@ function BreakdownTableInner() {
   );
 }
 
-export default island(BreakdownTableInner, panelFallback(420, { hint: true }));
+export default island(BreakdownTableInner, panelFallback(420, { hint: 2, hintMobile: 4 }));
