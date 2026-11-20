@@ -15,6 +15,8 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
+from app.config import Settings, get_settings
+
 SOURCE = Path(__file__).with_name("semantic.toml")
 
 UNITS = {"pct": "%", "brl": "R$", "min": "min", "km": "km", "count": "nº"}
@@ -23,6 +25,8 @@ BETTER = {"up": "↑", "down": "↓"}
 BASES = ("orders", "delivered", "measured", "valid", "priced", "sale")
 WEEKDAY_SHORT = ("seg", "ter", "qua", "qui", "sex", "sáb", "dom")
 PROMPT_LIMIT = 6000
+# Prazos de SLA saem de Settings (SLA_FOOD_MIN / SLA_GOOD_MIN): o TOML escreve `{sla_food_min}`.
+SLA_PLACEHOLDERS = ("sla_food_min", "sla_good_min")
 
 
 class SemanticError(ValueError):
@@ -215,10 +219,6 @@ class SemanticLayer:
             drivers = ", ".join(link.drivers) or "—"
             lines.append(f"- `{link.effect}` ← {drivers} | {', '.join(link.dimensions)}: {link.note}")
         return "\n".join(lines)
-
-    def examples_block(self) -> str:
-        """Exemplos 'pergunta -> plano' (opcional no prompt; ficam fora de `prompt_block` pelo tamanho)."""
-        return "\n".join(f"- {e.question} → {e.plan}" for e in self.examples)
 
 
 def _values_text(dim: Dimension) -> str:
@@ -473,11 +473,23 @@ def _build(data: dict[str, Any]) -> SemanticLayer:
     return layer
 
 
-def parse(text: str) -> SemanticLayer:
-    """TOML em texto -> camada validada. Erro de sintaxe também sai como ValueError."""
+def parse(text: str, *, sla_food_min: int | None = None, sla_good_min: int | None = None) -> SemanticLayer:
+    """TOML em texto -> camada validada. Erro de sintaxe também sai como ValueError.
+
+    `{sla_food_min}` / `{sla_good_min}` viram os prazos recebidos (padrão: os de Settings).
+    """
+    given = {"sla_food_min": sla_food_min, "sla_good_min": sla_good_min}
+    for name in SLA_PLACEHOLDERS:
+        value = given[name] if given[name] is not None else Settings.model_fields[name].default
+        text = text.replace("{" + name + "}", str(int(value)))
     return _build(tomllib.loads(text))
 
 
 @lru_cache
 def load() -> SemanticLayer:
-    return parse(SOURCE.read_text(encoding="utf-8"))
+    settings = get_settings()
+    return parse(
+        SOURCE.read_text(encoding="utf-8"),
+        sla_food_min=settings.sla_food_min,
+        sla_good_min=settings.sla_good_min,
+    )

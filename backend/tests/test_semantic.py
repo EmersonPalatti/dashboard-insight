@@ -12,7 +12,7 @@ import pytest
 
 from app import fmt, repository, semantic
 from app.alerts import CANCEL_HIGH, CANCEL_WARN, SLA_HIGH, SLA_WARN, STUCK_WARN, SUBSIDY_WARN
-from app.config import Settings
+from app.config import Settings, get_settings
 from app.filters import ChannelType, Modal, Segment
 from scripts.build_parquet import AMOUNT_OUTLIER, STUCK_CYCLE_MIN
 
@@ -86,6 +86,8 @@ def test_causal_links_point_to_known_keys(layer):
         assert all(d in layer.metrics and d != link.effect for d in link.drivers)
         assert link.dimensions and all(d in layer.dimensions for d in link.dimensions)
     assert layer.causal["sla_rate"].drivers[0] == "stuck_rate"
+    assert "modal" not in layer.causal["cancel_rate"].dimensions
+    assert layer.causal["cancel_rate"].dimensions[:2] == ("store", "hub")
 
 
 def test_business_numbers_follow_the_code(layer):
@@ -93,17 +95,49 @@ def test_business_numbers_follow_the_code(layer):
     settings = Settings()
     sla = layer.metrics["sla_rate"].definition
     assert f"{settings.sla_food_min} min" in sla and f"{settings.sla_good_min} min" in sla
+    segment = layer.dimensions["segment"].definition
+    assert f"{settings.sla_food_min} min" in segment and f"{settings.sla_good_min} min" in segment
+    block = layer.prompt_block()
+    assert "{sla_food_min}" not in block and "{sla_good_min}" not in block
     assert f"{STUCK_CYCLE_MIN // 60}h" in layer.concepts["pedido_preso"].definition
     assert f"R$ {AMOUNT_OUTLIER // 1000} mil" in layer.metrics["gmv"].definition
     assert str(repository.MIN_MEASURED) in layer.concepts["amostra_pequena"].definition
     reguas = layer.concepts["reguas"].definition
     for value in (SLA_HIGH, SLA_WARN, CANCEL_HIGH, CANCEL_WARN, STUCK_WARN):
         assert fmt.pct(value, 0) in reguas
+    assert f"presos ≥ {fmt.pct(STUCK_WARN, 0)}" in reguas
     assert f"R$ {SUBSIDY_WARN:g}" in reguas
     desvio = layer.concepts["desvio"].definition
     assert f"{repository.SLA_BELOW_GAP * 100:g} p.p." in desvio
     assert fmt.decimal(repository.CANCEL_ABOVE_RATIO, 1) + "×" in desvio
     assert fmt.pct(repository.CANCEL_ABOVE_FLOOR, 0) in desvio
+
+
+def test_parse_substitutes_sla_placeholders():
+    parsed = semantic.parse(semantic.SOURCE.read_text(encoding="utf-8"), sla_food_min=45, sla_good_min=90)
+    sla = parsed.metrics["sla_rate"].definition
+    segment = parsed.dimensions["segment"].definition
+    assert "45 min" in sla and "90 min" in sla
+    assert "45 min" in segment and "90 min" in segment
+    assert "60 min" not in sla and "120 min" not in sla
+    assert "60 min" not in segment and "120 min" not in segment
+
+
+def test_load_uses_sla_minutes_from_settings(monkeypatch):
+    try:
+        with monkeypatch.context() as mp:
+            mp.setenv("SLA_FOOD_MIN", "45")
+            mp.setenv("SLA_GOOD_MIN", "90")
+            get_settings.cache_clear()
+            semantic.load.cache_clear()
+            loaded = semantic.load()
+            assert "45 min" in loaded.metrics["sla_rate"].definition
+            assert "90 min" in loaded.metrics["sla_rate"].definition
+            assert "45 min" in loaded.dimensions["segment"].definition
+            assert "90 min" in loaded.dimensions["segment"].definition
+    finally:
+        get_settings.cache_clear()
+        semantic.load.cache_clear()
 
 
 def test_examples_cover_the_core_questions(layer):

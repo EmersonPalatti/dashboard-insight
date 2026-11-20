@@ -50,6 +50,10 @@ _STR_LIMIT = 120
 _NESTED = {"store": {"hub", "city"}, "hub": {"city"}}
 # Etapa ou percentil de ciclo: a etapa que explica sai do drill do ciclo.
 _CYCLE_LIKE = {*STAGE_METRICS, "cycle_p90"}
+# Toda base além de "orders" só tem pedidos entregues: sob status=canceled fica vazia.
+_DELIVERY_BASES = frozenset(semantic.BASES) - {"orders"}
+# Cancelamento por modal é seleção (cancela antes de alocar entregador), não causa.
+_CANCEL_METRICS = ("cancel_rate", "canceled")
 
 
 class InvestigationState(TypedDict, total=False):
@@ -76,16 +80,33 @@ class InvestigationState(TypedDict, total=False):
 # ------------------------------------------------------------------ roteamento
 
 
+def _blocked_by_status(metric: str, f: Filters) -> bool:
+    """Métrica sem base ou tautológica (0% / 100% fixos) quando o filtro fixa um único status."""
+    statuses = set(f.status)
+    if statuses == {"canceled"}:
+        return SEM.metrics[metric].base in _DELIVERY_BASES or metric in ("cancel_rate", "delivered")
+    if statuses == {"delivered"}:
+        return metric in _CANCEL_METRICS
+    return False
+
+
+def _causal_dim(metric: str, dim: str) -> bool:
+    return not (metric in _CANCEL_METRICS and dim == "modal")
+
+
 def should_investigate(question: str, history: list[ChatTurn], repo: Repository, f: Filters) -> bool:
     """Pergunta de mudança, sem entidade citada e com período anterior de mesmo tamanho na base.
 
     Entidade citada ("por que o hub X piorou?") fica com o loop de tools: o grafo decompõe o recorte
-    inteiro e o modelo, lá, filtra a entidade pelo id.
+    inteiro e o modelo, lá, filtra a entidade pelo id. Recorte com status único que zera ou torna
+    a métrica tautológica também fica fora do grafo.
     """
     intent = local_intent.parse(question, repo)
     if not intent.change or intent.out_of_scope or intent.entity is not None:
         return False
-    return repo.previous_period(f) is not None
+    if repo.previous_period(f) is None:
+        return False
+    return not _blocked_by_status(_metric_for(question, history), f)
 
 
 def _metric_for(question: str, history: list[ChatTurn]) -> str:
@@ -109,7 +130,10 @@ def _dims_for(metric: str, f: Filters) -> list[str]:
     link = SEM.causal.get(metric)
     candidates = list(link.dimensions) if link else list(_DEFAULT_DIMS)
     candidates += [d for d in _DEFAULT_DIMS if d not in candidates]
-    free = [d for d in candidates if d in DIMENSIONS and len(getattr(f, d, None) or []) != 1]
+    free = [
+        d for d in candidates
+        if d in DIMENSIONS and len(getattr(f, d, None) or []) != 1 and _causal_dim(metric, d)
+    ]
     free.sort(key=lambda d: d in TIME_DIMENSIONS)
     return free[:2]
 
@@ -253,7 +277,12 @@ def _secondary_dim(metric: str, by: str, dims: list[str], f: Filters) -> str:
     causal = [*(link.dimensions if link else ()), "hour"]
 
     def usable(dim: str) -> bool:
-        return dim != by and dim not in _NESTED.get(by, set()) and len(getattr(f, dim, None) or []) != 1
+        return (
+            dim != by
+            and dim not in _NESTED.get(by, set())
+            and len(getattr(f, dim, None) or []) != 1
+            and _causal_dim(metric, dim)
+        )
 
     fresh = [d for d in causal if d not in dims and usable(d)]
     done = [d for d in dims if usable(d)]
@@ -402,12 +431,21 @@ def probe(state: InvestigationState) -> dict[str, Any]:
         return {**base, "trace": [*state.get("trace", []), "Consulta extra inválida; ignorada"]}
     if tool == "explain_change":
         args = {"limit": _EXPLAIN_LIMIT, **args}  # mesmo padrão da decomposição, para a repetida casar
-    if _signature(tool, args) in state.get("seen", []):
+    sig = _signature(tool, args)
+    if sig in state.get("seen", []):
         return {**base, "trace": [*state.get("trace", []), f"Consulta extra repetida ({tool}); ignorada"]}
-    entry, result, label = _run(state, "probe", tool, args)
+    try:
+        entry, result, label = _run(state, "probe", tool, args)
+    except Exception as exc:  # noqa: BLE001 — consulta extra não derruba as evidências já colhidas
+        log.warning("Consulta extra %s falhou: %s", tool, exc)
+        return {
+            **base,
+            "seen": [*state.get("seen", []), sig],
+            "trace": [*state.get("trace", []), f"Consulta extra {tool} falhou; ignorada"],
+        }
     if isinstance(result, dict) and "erro" in result:
         trace = [*state.get("trace", []), f"Consulta extra {tool} voltou erro: {llm._sanitize(str(result['erro']), 120)}"]
-        return {**base, "seen": [*state.get("seen", []), _signature(tool, args)], "trace": trace}
+        return {**base, "seen": [*state.get("seen", []), sig], "trace": trace}
     return {**base, **_add(state, [(entry, label)], [f"Consulta extra: {tool}"])}
 
 
@@ -426,6 +464,8 @@ def synthesize(state: InvestigationState) -> dict[str, Any]:
     remaining = _left(state)
     if remaining <= 0.5:
         return {"answer": None, "trace": [*state.get("trace", []), "Síntese sem prazo"]}
+    if not state.get("evidence"):
+        return {"answer": None, "trace": [*state.get("trace", []), "Síntese pulada: sem evidência"]}
     repo, f = state["repo"], state["filters"]
     messages = llm._messages(
         state["question"], state.get("history", []), repo.describe(f),
