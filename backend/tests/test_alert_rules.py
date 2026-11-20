@@ -1,6 +1,6 @@
 """Uma fatia plantada por regra de alerta, com o contraponto saudável, mais os casos de auditoria.
 
-As fatias estão descritas na tabela do conftest.py. Lojas 13..46 são as plantadas em março.
+As fatias estão descritas na tabela do conftest.py. Lojas 13..49 são as plantadas em março.
 """
 
 from __future__ import annotations
@@ -9,7 +9,19 @@ from datetime import date
 
 import pytest
 
-from app.alerts import BROKEN_CANCEL, THIN_SLA_ACTION, _hours_label, _stage_action, _weighted_sla, detect_alerts
+from app.alerts import (
+    BROKEN_CANCEL,
+    STORE_MIN,
+    STUCK_HUB_MAX,
+    THIN_FREIGHT_ACTION,
+    THIN_SLA_ACTION,
+    _biggest_drop,
+    _hours_label,
+    _stage_action,
+    _volume_action,
+    _weighted_sla,
+    detect_alerts,
+)
 from app.filters import Filters
 from app.repository import MIN_MEASURED
 
@@ -419,3 +431,77 @@ def test_stage_action_production_without_eligible_stores_has_clean_punctuation(r
 def test_volume_queda_clamps_end_date_to_max_date(repo):
     alerts = _by_id(repo, Filters(start=date(2021, 3, 18), end=date(2021, 5, 10), store=[18]))
     assert "volume-queda" not in alerts
+
+
+# Auditoria do backend (B-07, B-08, B-09, B-26, Q-06) ---------------------------------------
+
+
+@pytest.mark.parametrize("stores", [[33, 29], [48, 29]])
+def test_freight_action_skips_store_without_subsidy(repo, stores):
+    # 33 não tem entrega (subsídio nulo) e 48 tem frete que se paga: nenhuma das duas tem frete para subir.
+    # Quem puxa o subsídio é a 29, abaixo de STORE_MIN: a ação volta para o recorte.
+    f = Filters(store=stores)
+    named = repo.breakdown(f, "store", sort="subsidy", limit=1, min_orders=STORE_MIN)
+    assert named and (named[0]["subsidy"] is None or named[0]["subsidy"] <= 0)
+    alert = _by_id(repo, f)["custo-frete"]
+    assert "custa —" not in alert.action and "cobra —" not in alert.action
+    assert named[0]["label"] not in alert.action
+    assert alert.action.startswith("Ligar esta semana para o responsável comercial do recorte")
+
+
+def test_thin_freight_slice_asks_to_widen_before_calling(repo):
+    # Loja 45 num dia só: 6 entregas com R$ 10 de subsídio. Mesmo piso do SLA e do cancelamento.
+    f = Filters(store=[45], start=date(2021, 3, 2), end=date(2021, 3, 2))
+    base = repo.metrics(f)
+    assert 0 < base["delivered"] < MIN_MEASURED
+    alert = _by_id(repo, f)["custo-frete"]
+    assert alert.severity == "low"
+    assert f"amostra pequena ({base['delivered']} entregas)" in alert.detail
+    assert alert.action == THIN_FREIGHT_ACTION
+    assert "Loja 45" not in alert.action
+    # Com base, a mesma loja continua nomeada.
+    assert "Loja 45" in _by_id(repo, Filters(store=[45]))["custo-frete"].action
+
+
+class _DropRepo:
+    """Breakdown fixo por período, para isolar a escolha da maior queda."""
+
+    def __init__(self, prev_f: Filters, prev: dict, now: dict):
+        self.prev_f, self.prev, self.now = prev_f, prev, now
+
+    def breakdown(self, f, by, limit=100, **_):
+        rows = self.prev if f is self.prev_f else self.now
+        return [{"key": k, "label": f"{by} {k}", "orders": n} for k, n in rows[by].items()]
+
+
+def test_biggest_drop_ignores_lines_that_grew():
+    # O total caiu porque as linhas pequenas (< DROP_MIN_ORDERS) sumiram; a única com base cresceu 5%.
+    last_f, prev_f = Filters(start=date(2021, 3, 25)), Filters(start=date(2021, 3, 18))
+    repo = _DropRepo(prev_f, prev={"hub": {1: 100, 2: 20}, "channel": {1: 100, 2: 20}},
+                     now={"hub": {1: 105}, "channel": {1: 100}})
+    assert _biggest_drop(repo, last_f, prev_f, "hub") is None
+    assert _biggest_drop(repo, last_f, prev_f, "channel") is None
+    action = _volume_action(repo, last_f, prev_f)
+    assert action == "Ligar hoje para o líder da operação do recorte: a queda não se concentra em hub nem em canal."
+    assert "maior queda" not in action
+
+
+def test_broken_store_does_not_hide_a_small_operating_store(repo):
+    # 33: 160 cancelados (quebrada). 36: 50 pedidos em operação, abaixo de STORE_MIN.
+    both = _by_id(repo, Filters(store=[33, 36]))
+    assert "cancel-store-33" in both
+    assert "cancel-recorte" in both
+    assert "cancel-recorte" not in _by_id(repo, Filters(store=[33]))
+
+
+def test_hub_exactly_at_the_stuck_ceiling_is_still_a_slow_hub(repo):
+    # Hub 2 (loja 23) tem 30% preso, exatamente STUCK_HUB_MAX: o mesmo "dentro" de stuck_blocks_sla.
+    f = Filters(store=[23, 14])
+    hubs = {int(h["key"]): h for h in repo.breakdown(f, "hub", min_orders=300)}
+    assert hubs[2]["stuck_rate"] == pytest.approx(STUCK_HUB_MAX)
+    assert hubs[2]["low_sample"] is False
+    assert repo.metrics(f)["stuck_rate"] <= STUCK_HUB_MAX
+    alerts = _by_id(repo, f)
+    assert "sla-recorte" in alerts  # SLA do recorte não foi bloqueado pelo preso
+    assert "sla-hub-2" in alerts
+    assert "Hub Lento" in alerts["sla-hub-2"].action

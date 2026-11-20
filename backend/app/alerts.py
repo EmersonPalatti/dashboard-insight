@@ -7,6 +7,8 @@ frontend aplica como filtro.
 Amostra pequena: SLA e ciclo sustentam-se na base medida (`low_sample`, entregues sem
 preso). Cancelamento se sustenta no total de pedidos. Abaixo de MIN_MEASURED, o alerta de
 recorte cai para severidade "low" e a ação manda ampliar o período antes de cobrar alguém.
+Subsídio de frete se sustenta nas entregas: abaixo de MIN_MEASURED, a comanda continua "low",
+avisa a amostra e a ação manda ampliar o período antes de ligar para o comercial.
 Taxa extrema (nenhuma entrega, ou cancelamento de 90% ou mais) não rebaixa. Sem dia do
 dataset fora do filtro, a ação não pede para ampliar o período.
 """
@@ -90,6 +92,14 @@ THIN_SLA_ACTION_CLOSED = (
 THIN_CANCEL_ACTION_CLOSED = (
     f"Não ligar para as lojas com esta base: o recorte já cobre todo o período dos dados "
     f"e não chega a {MIN_MEASURED} pedidos."
+)
+THIN_FREIGHT_ACTION = (
+    f"Não ligar para o comercial com esta base: ampliar o período até {MIN_MEASURED} entregas "
+    "e só então rever o frete mínimo."
+)
+THIN_FREIGHT_ACTION_CLOSED = (
+    f"Não ligar para o comercial com esta base: o recorte já cobre todo o período dos dados "
+    f"e não chega a {MIN_MEASURED} entregas."
 )
 
 
@@ -245,13 +255,18 @@ def _cancel_action(
 
 
 def _biggest_drop(repo: Repository, last_f: Filters, prev_f: Filters, by: str) -> tuple[float, str] | None:
-    """Maior queda de pedidos entre o período anterior e o último, por hub ou canal: (variação, rótulo)."""
+    """Maior queda de pedidos entre o período anterior e o último, por hub ou canal: (variação, rótulo).
+
+    Linha que cresceu ou ficou igual não é queda: sem nenhuma que caiu, devolve None.
+    """
     now = {r["key"]: r["orders"] for r in repo.breakdown(last_f, by, limit=100)}
     worst: tuple[float, str] | None = None
     for row in repo.breakdown(prev_f, by, limit=100):
         if row["orders"] < DROP_MIN_ORDERS:
             continue
         change = now.get(row["key"], 0) / row["orders"] - 1
+        if change >= 0:
+            continue
         if worst is None or change < worst[0]:
             worst = (change, row["label"])
     return worst
@@ -276,9 +291,13 @@ def _volume_action(repo: Repository, last_f: Filters, prev_f: Filters) -> str:
 
 
 def _freight_action(repo: Repository, f: Filters, base: dict) -> str:
-    """Loja de maior subsídio entre as que têm base (STORE_MIN): o responsável comercial sobe o frete mínimo dela."""
+    """Loja de maior subsídio entre as que têm base (STORE_MIN): o responsável comercial sobe o frete mínimo dela.
+
+    Loja sem entrega com frete (subsídio nulo) ou com frete que se paga não tem frete para subir:
+    a ação volta para o recorte.
+    """
     stores = repo.breakdown(f, "store", sort="subsidy", limit=1, min_orders=STORE_MIN)
-    if stores:
+    if stores and (stores[0].get("subsidy") or 0) > 0:
         store = stores[0]
         return (
             f"Ligar esta semana para o responsável comercial da loja {store['label']} (hub {store['parent']}) "
@@ -382,7 +401,7 @@ def _detect(repo: Repository, f: Filters) -> list[Alert]:
     slow_hubs = [
         h for h in hubs
         if h["sla_rate"] is not None and sla is not None and h["sla_rate"] < sla - SLA_BELOW_GAP
-        and (h["stuck_rate"] or 0) < STUCK_HUB_MAX and not h["low_sample"]
+        and (h["stuck_rate"] or 0) <= STUCK_HUB_MAX and not h["low_sample"]
     ]
     if slow_hubs and len(hubs) > 1:
         hub = min(slow_hubs, key=lambda h: h["sla_rate"])
@@ -415,8 +434,9 @@ def _detect(repo: Repository, f: Filters) -> list[Alert]:
         stores = repo.breakdown(f, "store", sort="cancel_rate", limit=500, min_orders=STORE_MIN)
         broken_stores = [s for s in stores if (s["cancel_rate"] or 0) >= BROKEN_CANCEL]
         # Recorte feito só de lojas quebradas: o cancel-recorte mandaria checar ruptura
-        # na mesma loja que tem de sair do ar.
-        recorte_is_broken = bool(broken_stores) and len(broken_stores) == len(stores)
+        # na mesma loja que tem de sair do ar. Conta pedidos, não lojas: loja em operação
+        # abaixo de STORE_MIN fica fora de `stores`, mas continua no recorte.
+        recorte_is_broken = bool(broken_stores) and sum(s["orders"] for s in broken_stores) == base["orders"]
         cancel_level = cancel_band(cancel)
         if cancel_level != "within" and not recorte_is_broken:
             segments = repo.breakdown(f, "segment", sort="cancel_rate", limit=5)
@@ -488,7 +508,7 @@ def _detect(repo: Repository, f: Filters) -> list[Alert]:
                 store_figure_ref = f"recorte {fmt.pct(cancel)}" if cancel > 0 else None
             alerts.append(Alert(
                 id=f"cancel-store-{store['key']}",
-                severity="high" if store["cancel_rate"] >= 0.15 else "medium",
+                severity="high" if store_cancel >= 0.15 else "medium",
                 category="loja",
                 title=f"{'Loja sem entregas' if broken else 'Loja crítica'}: {store['label']}",
                 figure=store_figure,
@@ -537,7 +557,8 @@ def _detect(repo: Repository, f: Filters) -> list[Alert]:
 
     # 5. Pedidos presos no fluxo -------------------------------------------
     if stuck is not None and stuck >= STUCK_WARN:
-        all_hubs = repo.breakdown(f, "hub", sort="stuck_rate", limit=10, min_orders=100)
+        # Mesmo teto da lista de hubs: o filtro de 100 entregas vem depois da ordenação por taxa.
+        all_hubs = repo.breakdown(f, "hub", sort="stuck_rate", limit=100, min_orders=100)
         hub = next((h for h in all_hubs if h["delivered"] >= 100 and h["stuck_rate"] is not None), None)
         stuck_n = round(stuck * base["delivered"])
         # SLA do recorte entra aqui: com tanto pedido preso, cobrar prazo ou frota contradiz o dado.
@@ -603,6 +624,9 @@ def _detect(repo: Repository, f: Filters) -> list[Alert]:
     # 7. Subsídio de frete --------------------------------------------------
     subsidy = base["subsidy"]
     if subsidy is not None and subsidy >= SUBSIDY_WARN:
+        # Mesmo piso do SLA e do cancelamento, sobre as entregas (o subsídio só existe nelas).
+        thin_freight = base["delivered"] < MIN_MEASURED
+        thin_freight_action = THIN_FREIGHT_ACTION if can_widen else THIN_FREIGHT_ACTION_CLOSED
         alerts.append(Alert(
             id="custo-frete",
             severity="low",
@@ -613,8 +637,9 @@ def _detect(repo: Repository, f: Filters) -> list[Alert]:
             detail=(
                 f"Cada entrega custa {fmt.brl(base['cost_avg'])} e cobra {fmt.brl(base['fee_avg'])} de frete: "
                 f"{fmt.brl(subsidy)} de subsídio por pedido."
+                + (f" Recorte com amostra pequena ({base['delivered']} entregas)." if thin_freight else "")
             ),
-            action=_freight_action(repo, f, base),
+            action=thin_freight_action if thin_freight else _freight_action(repo, f, base),
             evidence=Evidence(view="kpi", kpi="ticket"),
         ))
 
@@ -729,8 +754,13 @@ def hero_readings(repo: Repository, f: Filters) -> list[dict]:
         start, end = repo.period(f)
         network = repo.metrics(Filters(start=start, end=end))
         hubs = []
+    # Um status só fixa o cancelamento (100% ou 0%) por definição: não há leitura a fazer.
+    fixed_status = len(set(f.status)) == 1
     readings: list[dict] = []
     for key in ("sla_rate", "cycle_p50", "cancel_rate"):
+        if key == "cancel_rate" and fixed_status:
+            readings.append({"key": key, "verdict": None, "reference": None, "network_value": None})
+            continue
         reference, network_value = _hero_reference(key, base, network, hubs, full_network)
         readings.append({
             "key": key,
