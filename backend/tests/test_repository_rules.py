@@ -14,7 +14,7 @@ from app.alerts import hero_readings
 from app.config import get_settings
 from app.filters import Filters
 from app.main import create_app
-from app.repository import MIN_MEASURED, Repository, _csv_cell, _flag_outliers
+from app.repository import HEATMAP_MIN_SAMPLE, MIN_MEASURED, Repository, _csv_cell, _flag_outliers
 
 
 # ----------------------------------------------------------------- filtro de status
@@ -404,3 +404,114 @@ def test_orders_page_reuses_metrics_and_skips_query_past_total(repo, monkeypatch
     assert len(first_page["rows"]) == min(50, total)
     assert len(calls) == 1
     assert "select count(*)" not in calls[0].lower()
+
+
+def test_orders_page_exposes_exact_ids_and_amount_outlier(tmp_path: Path):
+    path = tmp_path / "homonyms.parquet"
+    con = duckdb.connect()
+    con.execute(
+        """
+        create table fact as
+        select * from (values
+            (1, timestamp '2021-01-06 12:00:00', date '2021-01-06', 12::tinyint, 2::tinyint,
+             'delivered', 5000.00, 5.0, 7.0, 101, 'Loja Homonima', 'food', 10, 'Hub A',
+             'São Paulo', 'SP', 'Food Place', 'marketplace', 'online', false, 'moto', 'freelance',
+             1000::bigint, 1, 10.0, 1.0, 2.0, 4.0, 12.0, 30.0, false, false),
+            (2, timestamp '2021-01-06 13:00:00', date '2021-01-06', 13::tinyint, 2::tinyint,
+             'delivered', 5000.01, 5.0, 7.0, 202, 'Loja Homonima', 'food', 20, 'Hub B',
+             'São Paulo', 'SP', 'Food Place', 'marketplace', 'online', false, 'moto', 'freelance',
+             1000::bigint, 1, 10.0, 1.0, 2.0, 4.0, 12.0, 30.0, false, true)
+        ) t(order_id, created_at, created_date, hour, weekday, status, amount, delivery_fee,
+            delivery_cost, store_id, store_name, segment, hub_id, hub_name, city, state, channel,
+            channel_type, payment_method, has_chargeback, modal, driver_type, distance_m,
+            delivery_attempts, production_min, collected_min, walking_min, expedition_min,
+            transit_min, cycle_min, cycle_outlier, amount_outlier)
+        """
+    )
+    con.execute(f"copy fact to '{path.as_posix()}' (format parquet)")
+    con.close()
+
+    r = Repository(path, 60, 120)
+    try:
+        rows = r.orders_page(Filters(), 0, 10, "order_id", False)["rows"]
+        # Mesma loja em hubs diferentes: a API entrega ids próprios e o flag de outlier do ETL.
+        assert [(row["order_id"], row["hub_id"], row["store_id"], row["amount_outlier"]) for row in rows] == [
+            (1, 10, 101, False),
+            (2, 20, 202, True),
+        ]
+    finally:
+        r.close()
+
+
+def test_heatmap_flags_measured_below_threshold_independently_of_orders(tmp_path: Path):
+    path = tmp_path / "heat_sample.parquet"
+    con = duckdb.connect()
+    rows_sql = []
+    # Célula (segunda 12h): 20 pedidos, sendo 19 cancelados e só 1 entregue medido (orders >= 20, measured = 1).
+    for oid in range(1, HEATMAP_MIN_SAMPLE + 1):
+        status = "'delivered'" if oid == 1 else "'canceled'"
+        rows_sql.append(
+            f"({oid}, timestamp '2021-01-04 12:00:00', date '2021-01-04', 12::tinyint, 0::tinyint, "
+            f"{status}, 40.0, 5.0, 7.0, 11, 'Loja 11', 'food', 1, 'Hub Centro', 'São Paulo', 'SP', "
+            f"'Food Place', 'marketplace', 'online', false, 'moto', 'freelance', 1000::bigint, 1, "
+            f"10.0, 1.0, 2.0, 4.0, 12.0, 30.0, false, false)"
+        )
+    # Célula (terça 12h): 20 entregas medidas (orders >= 20, measured == 20).
+    for offset in range(1, HEATMAP_MIN_SAMPLE + 1):
+        oid = HEATMAP_MIN_SAMPLE + offset
+        rows_sql.append(
+            f"({oid}, timestamp '2021-01-05 12:00:00', date '2021-01-05', 12::tinyint, 1::tinyint, "
+            f"'delivered', 40.0, 5.0, 7.0, 11, 'Loja 11', 'food', 1, 'Hub Centro', 'São Paulo', 'SP', "
+            f"'Food Place', 'marketplace', 'online', false, 'moto', 'freelance', 1000::bigint, 1, "
+            f"10.0, 1.0, 2.0, 4.0, 12.0, 30.0, false, false)"
+        )
+    con.execute(
+        f"""
+        create table fact as
+        select * from (values {", ".join(rows_sql)})
+        t(order_id, created_at, created_date, hour, weekday, status, amount, delivery_fee,
+          delivery_cost, store_id, store_name, segment, hub_id, hub_name, city, state, channel,
+          channel_type, payment_method, has_chargeback, modal, driver_type, distance_m,
+          delivery_attempts, production_min, collected_min, walking_min, expedition_min,
+          transit_min, cycle_min, cycle_outlier, amount_outlier)
+        """
+    )
+    con.execute(f"copy fact to '{path.as_posix()}' (format parquet)")
+    con.close()
+
+    r = Repository(path, 60, 120)
+    try:
+        cells = {c["weekday"]: c for c in r.heatmap(Filters())}
+        assert cells[0]["orders"] == HEATMAP_MIN_SAMPLE
+        assert cells[0]["measured"] == 1
+        assert cells[0]["volume_low_sample"] is False
+        assert cells[0]["low_sample"] is True
+
+        assert cells[1]["orders"] == HEATMAP_MIN_SAMPLE
+        assert cells[1]["measured"] == HEATMAP_MIN_SAMPLE
+        assert cells[1]["volume_low_sample"] is False
+        assert cells[1]["low_sample"] is False
+    finally:
+        r.close()
+
+
+def test_eval_run_main_closes_repository(parquet_path: Path, monkeypatch):
+    from evals import run as eval_run
+
+    opened: list[Repository] = []
+    real_repo_cls = eval_run.Repository
+
+    def tracking_repo(*args, **kwargs):
+        instance = real_repo_cls(*args, **kwargs)
+        opened.append(instance)
+        return instance
+
+    monkeypatch.setattr(eval_run, "Repository", tracking_repo)
+    eval_run.main(["--engine", "local", "--data", str(parquet_path), "--cases", "ov-geral", "--quiet"])
+    with pytest.raises(SystemExit):
+        eval_run.main(["--engine", "local", "--data", str(parquet_path), "--cases", "nao-existe", "--quiet"])
+
+    assert len(opened) == 2
+    for instance in opened:
+        with pytest.raises(duckdb.ConnectionException):
+            instance.metrics(Filters(store=[999999]))

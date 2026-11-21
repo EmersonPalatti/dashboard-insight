@@ -310,7 +310,7 @@ related = ["cycle_p50", "production_p50", "collected_p50", "walking_p50", "exped
 
 [concepts.amostra_pequena]
 label = "Amostra pequena"
-definition = "low_sample: < 100 medidas (SLA, ciclo); volume_low_sample: < 100 pedidos (cancelamento). Vira indício; cite a base."
+definition = "low_sample: < 100 medidas (SLA, ciclo); volume_low_sample: < 100 pedidos (cancelamento); mapa dia × hora usa piso de 20. Vira indício; cite a base."
 synonyms = ["amostra pequena", "pouca amostra", "poucos pedidos", "base pequena", "low sample", "significativo", "confiável"]
 related = ["measured", "orders"]
 

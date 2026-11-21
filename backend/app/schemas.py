@@ -20,6 +20,10 @@ SortKey = Literal[
     "fee_avg", "cost_avg", "subsidy",
 ]
 Grain = Literal["hour", "day", "week"]
+OrderSort = Literal[
+    "created_at", "amount", "delivery_fee", "cycle_min", "production_min",
+    "transit_min", "distance_m", "store_name", "hub_name", "city", "status",
+]
 
 
 class Option(BaseModel):
@@ -35,6 +39,9 @@ class Meta(BaseModel):
     total_orders: int
     sla_food_min: int
     sla_good_min: int
+    heatmap_min_sample: int = Field(
+        description="Piso de amostra por célula no mapa dia × hora (entregas medidas no SLA/ciclo; pedidos no cancelamento).",
+    )
     cities: list[Option]
     hubs: list[Option]
     stores: list[Option]
@@ -125,9 +132,18 @@ class KpiResponse(BaseModel):
 
 
 class TimePoint(BaseModel):
-    t: datetime
+    t: datetime = Field(
+        description="Início do intervalo em horário de Brasília (UTC−3), sem offset (naive wall-clock).",
+    )
     orders: int
     delivered: int
+    measured: int = Field(description="Entregues com ciclo e sem presos no intervalo: base do SLA e do ciclo.")
+    low_sample: bool = Field(
+        description="Base medida abaixo do mínimo do painel (MIN_MEASURED): SLA e ciclo mediano não são firmes.",
+    )
+    volume_low_sample: bool = Field(
+        description="Menos de MIN_MEASURED pedidos no intervalo: cancelamento não é firme.",
+    )
     gmv: float
     cancel_rate: float | None
     cycle_p50: float | None
@@ -138,6 +154,13 @@ class HeatCell(BaseModel):
     weekday: int = Field(description="0 = segunda")
     hour: int
     orders: int
+    measured: int = Field(description="Entregues com ciclo e sem presos na faixa: base do SLA e do ciclo.")
+    low_sample: bool = Field(
+        description="Base medida abaixo do piso do mapa de calor (HEATMAP_MIN_SAMPLE): SLA e ciclo fora da escala.",
+    )
+    volume_low_sample: bool = Field(
+        description="Pedidos abaixo do piso do mapa de calor (HEATMAP_MIN_SAMPLE): cancelamento fora da escala.",
+    )
     cancel_rate: float | None
     cycle_p50: float | None
     sla_rate: float | None
@@ -164,16 +187,23 @@ class BreakdownResponse(BaseModel):
 
 class OrderRow(BaseModel):
     order_id: int
-    created_at: datetime
+    created_at: datetime = Field(
+        description="Momento de criação do pedido em horário de Brasília (UTC−3), sem offset (naive wall-clock).",
+    )
     status: Literal["delivered", "canceled"]
     city: str
+    hub_id: int
     hub_name: str
+    store_id: int
     store_name: str
     segment: str
     channel: str
     modal: str | None
     payment_method: str | None
     amount: float
+    amount_outlier: bool = Field(
+        description="Valor acima do teto de outlier (R$ 5 mil): fica fora do GMV e do ticket médio.",
+    )
     delivery_fee: float
     cycle_min: float | None
     production_min: float | None
@@ -226,6 +256,13 @@ class Alert(BaseModel):
 class AlertsResponse(BaseModel):
     alerts: list[Alert]
     orders: int = Field(description="Pedidos no recorte; 0 significa que não há base para afirmar SLA ou cancelamento.")
+    empty_reason: str | None = Field(
+        default=None,
+        description=(
+            "Motivo curto em pt-BR quando o recorte tem 0 pedidos "
+            "(período fora da base ou combinação incompatível de cidade/hub/loja). Null quando há pedidos."
+        ),
+    )
 
 
 class BriefingResponse(BaseModel):

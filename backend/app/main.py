@@ -19,7 +19,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 from app.agent import service as agent
 from app.agent.local import briefing as briefing_text
-from app.alerts import detect_alerts, hero_readings
+from app.alerts import detect_alerts, empty_reason, hero_readings
 from app.config import Settings, get_settings
 from app.filters import Filters
 from app.repository import Repository
@@ -37,6 +37,7 @@ from app.schemas import (
     HeatCell,
     KpiResponse,
     Meta,
+    OrderSort,
     OrdersPage,
     SortKey,
     TimePoint,
@@ -197,8 +198,12 @@ class CacheControlMiddleware:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = get_settings()
-    app.state.repo = Repository(settings.data_path, settings.sla_food_min, settings.sla_good_min)
-    yield
+    repo = Repository(settings.data_path, settings.sla_food_min, settings.sla_good_min)
+    app.state.repo = repo
+    try:
+        yield
+    finally:
+        repo.close()
 
 
 def create_app() -> FastAPI:
@@ -496,7 +501,12 @@ def register_routes(app: FastAPI) -> None:
 
     @app.get("/api/alerts", response_model=AlertsResponse, tags=["insights"])
     def alerts(repo: Repo, f: F):
-        return {"alerts": detect_alerts(repo, f), "orders": repo.metrics(f)["orders"]}
+        orders = repo.metrics(f)["orders"]
+        return {
+            "alerts": detect_alerts(repo, f),
+            "orders": orders,
+            "empty_reason": empty_reason(repo, f, orders=orders),
+        }
 
     @app.get("/api/briefing", response_model=BriefingResponse, tags=["automacao"])
     def briefing(repo: Repo, f: F, _: Annotated[None, Depends(require_automation)]):
@@ -523,14 +533,8 @@ def register_routes(app: FastAPI) -> None:
         offset: Annotated[int, Query(ge=0, le=1_000_000)] = 0,
         limit: Annotated[int, Query(ge=1, le=500)] = 100,
         sort: Annotated[
-            str,
-            Query(
-                description=(
-                    "Coluna de ordenação (fora da lista cai em created_at): "
-                    "created_at, amount, delivery_fee, cycle_min, production_min, "
-                    "transit_min, distance_m, store_name, hub_name, city, status"
-                )
-            ),
+            OrderSort,
+            Query(description="Coluna de ordenação dos pedidos."),
         ] = "created_at",
         desc: bool = True,
     ):

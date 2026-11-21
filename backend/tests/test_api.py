@@ -3,15 +3,20 @@ from __future__ import annotations
 import contextlib
 import gc
 import inspect
+import re
 import threading
+from typing import get_args
 
 import anyio
+import duckdb
 import pytest
 
 from app import main as main_mod
 from app.config import Settings, get_settings
 from app.filters import Filters
-from app.main import BodySizeLimitMiddleware, export_limiter
+from app.main import BodySizeLimitMiddleware, create_app, export_limiter
+from app.repository import HEATMAP_MIN_SAMPLE, MIN_MEASURED, ORDER_SORTS
+from app.schemas import OrderSort
 
 
 def test_health(client):
@@ -26,6 +31,7 @@ def test_meta_lists_dynamic_options(client):
     assert len(meta["hubs"]) == 4
     assert meta["llm_enabled"] is False
     assert meta["csv_max_rows"] == 50_000
+    assert meta["heatmap_min_sample"] == HEATMAP_MIN_SAMPLE
 
 
 def test_filters_change_every_kpi(client):
@@ -102,13 +108,26 @@ def test_flag_outliers_treats_null_rates_as_not_flagged():
     assert rows[0]["sla_below"] is False and rows[0]["cancel_above"] is False
 
 
-def test_orders_page_and_sort_whitelist(client):
+_NAIVE_DATETIME_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$")
+
+
+def test_orders_page_and_sort_whitelist(client, repo):
+    assert set(get_args(OrderSort)) == ORDER_SORTS
     page = client.get("/api/orders", params={"limit": 5, "sort": "amount", "desc": "true"}).json()
     amounts = [r["amount"] for r in page["rows"]]
     assert amounts == sorted(amounts, reverse=True)
     assert page["total"] == 12000
-    # coluna fora da lista cai para created_at em vez de virar SQL
-    fallback = client.get("/api/orders", params={"sort": "amount; drop table orders", "limit": 5}).json()
+    for row in page["rows"]:
+        assert isinstance(row["hub_id"], int)
+        assert isinstance(row["store_id"], int)
+        assert isinstance(row["amount_outlier"], bool)
+        assert row["amount_outlier"] is (row["amount"] > 5000)
+        assert _NAIVE_DATETIME_RE.match(row["created_at"])
+
+    # Contrato HTTP rejeita sort inválido com 422; a proteção defensiva no repositório continua.
+    invalid = client.get("/api/orders", params={"sort": "amount; drop table orders", "limit": 5})
+    assert invalid.status_code == 422
+    fallback = repo.orders_page(Filters(), 0, 5, "amount; drop table orders", True)
     created = client.get("/api/orders", params={"sort": "created_at", "limit": 5}).json()
     assert [row["order_id"] for row in fallback["rows"]] == [row["order_id"] for row in created["rows"]]
 
@@ -123,8 +142,38 @@ def test_csv_export_respects_filter(client):
 def test_timeseries_and_heatmap(client):
     ts = client.get("/api/timeseries", params={"grain": "week"}).json()
     assert len(ts) >= 8  # fixture cobre jan–mar (~90 dias)
+    assert all(
+        _NAIVE_DATETIME_RE.match(p["t"])
+        and isinstance(p["measured"], int)
+        and p["measured"] >= 0
+        and p["low_sample"] == (p["measured"] < MIN_MEASURED)
+        and p["volume_low_sample"] == (p["orders"] < MIN_MEASURED)
+        for p in ts
+    )
     heat = client.get("/api/heatmap").json()
-    assert all(0 <= c["weekday"] <= 6 and 0 <= c["hour"] <= 23 for c in heat)
+    assert all(
+        0 <= c["weekday"] <= 6
+        and 0 <= c["hour"] <= 23
+        and isinstance(c["measured"], int)
+        and c["measured"] >= 0
+        and c["low_sample"] == (c["measured"] < HEATMAP_MIN_SAMPLE)
+        and c["volume_low_sample"] == (c["orders"] < HEATMAP_MIN_SAMPLE)
+        for c in heat
+    )
+
+    thin_ts = client.get(
+        "/api/timeseries",
+        params={"grain": "day", "start": "2021-03-02", "end": "2021-03-02", "store": 15},
+    ).json()
+    assert len(thin_ts) == 1
+    assert thin_ts[0]["low_sample"] is True
+    assert thin_ts[0]["volume_low_sample"] is True
+
+    thin_heat = client.get(
+        "/api/heatmap",
+        params={"start": "2021-03-02", "end": "2021-03-02", "store": 15},
+    ).json()
+    assert thin_heat and all(c["low_sample"] is True and c["volume_low_sample"] is True for c in thin_heat)
 
 
 def test_week_bucket_starts_at_the_filter_not_the_previous_monday(client):
@@ -274,11 +323,41 @@ def test_alerts_response_serializes(client):
     assert response.status_code == 200
     body = response.json()
     assert isinstance(body["orders"], int) and body["orders"] > 0
+    assert body["empty_reason"] is None
     assert body["alerts"]
     for alert in body["alerts"]:
         assert alert["severity"] in {"high", "medium", "low"}
         assert alert["id"] and alert["title"] and alert["detail"] and alert["action"]
         assert alert["category"]
+
+
+def test_alerts_empty_reason_over_http(client):
+    bad_place = client.get("/api/alerts", params={"city": "Curitiba", "hub": 1}).json()
+    assert bad_place == {
+        "alerts": [],
+        "orders": 0,
+        "empty_reason": "O hub Hub Centro fica em São Paulo, fora de Curitiba. Tire um dos filtros.",
+    }
+
+    bad_period = client.get("/api/alerts", params={"start": "2021-05-01"}).json()
+    assert bad_period["orders"] == 0
+    assert bad_period["alerts"] == []
+    assert "fora dela" in bad_period["empty_reason"]
+
+
+def test_lifespan_closes_repository_on_shutdown(parquet_path, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    monkeypatch.setenv("DATA_PATH", str(parquet_path))
+    get_settings.cache_clear()
+    try:
+        with TestClient(create_app()) as local_client:
+            app_repo = local_client.app.state.repo
+            assert app_repo.metrics(Filters())["orders"] > 0
+        with pytest.raises(duckdb.ConnectionException):
+            app_repo.metrics(Filters(city=["Curitiba"]))
+    finally:
+        get_settings.cache_clear()
 
 
 # ------------------------------------------------------------ corpo do POST (BodySizeLimitMiddleware)

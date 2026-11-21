@@ -356,6 +356,57 @@ def detect_alerts(repo: Repository, f: Filters) -> list[Alert]:
     return repo.cached("alerts:" + f.cache_key(), lambda: _detect(repo, f))
 
 
+def empty_reason(repo: Repository, f: Filters, *, orders: int | None = None) -> str | None:
+    """Motivo curto em pt-BR quando o recorte tem 0 pedidos; None quando há pedidos."""
+    if orders is None:
+        orders = repo.metrics(f)["orders"]
+    if orders > 0:
+        return None
+    if (f.start is not None and f.start > repo.max_date) or (f.end is not None and f.end < repo.min_date):
+        return (
+            f"A base vai de {repo.min_date:%d/%m/%Y} a {repo.max_date:%d/%m/%Y}; "
+            "o período escolhido fica fora dela."
+        )
+    meta = repo.meta()
+    hub_by_id = {int(h["value"]): h for h in meta["hubs"]}
+    store_by_id = {int(s["value"]): s for s in meta["stores"]}
+    city_label = {str(c["value"]).lower(): str(c["label"]) for c in meta["cities"]}
+    cities_text = ", ".join(dict.fromkeys(city_label.get(c.lower(), c) for c in f.city))
+    city_set = {c.lower() for c in f.city}
+
+    if f.hub and f.city:
+        selected_hubs = [hub_by_id[hid] for hid in f.hub if hid in hub_by_id]
+        if selected_hubs and all(
+            h.get("parent") is not None and str(h["parent"]).lower() not in city_set for h in selected_hubs
+        ):
+            mismatch = selected_hubs[0]
+            return f"O hub {mismatch['label']} fica em {mismatch['parent']}, fora de {cities_text}. Tire um dos filtros."
+
+    if f.store and f.hub:
+        hub_set = set(f.hub)
+        selected_stores = [store_by_id[sid] for sid in f.store if sid in store_by_id]
+        if selected_stores and all(
+            s.get("parent") is not None and int(s["parent"]) not in hub_set for s in selected_stores
+        ):
+            mismatch = selected_stores[0]
+            return f"A loja {mismatch['label']} pertence a outro hub fora do filtro atual. Tire um dos filtros."
+
+    if f.store and f.city:
+        selected_stores = [store_by_id[sid] for sid in f.store if sid in store_by_id]
+        pairs = [
+            (s, hub_by_id.get(int(s["parent"])) if s.get("parent") is not None else None)
+            for s in selected_stores
+        ]
+        if pairs and all(
+            h is not None and h.get("parent") is not None and str(h["parent"]).lower() not in city_set
+            for _, h in pairs
+        ):
+            store, hub = pairs[0]
+            return f"A loja {store['label']} fica em {hub['parent']}, fora de {cities_text}. Tire um dos filtros."
+
+    return "Amplie o período ou tire um filtro."
+
+
 def _detect(repo: Repository, f: Filters) -> list[Alert]:
     base = repo.metrics(f)
     if base["orders"] == 0:

@@ -109,7 +109,7 @@ O ETL (`backend/scripts/build_parquet.py`) junta os 7 CSVs num parquet desnormal
 - **Pedidos presos:** ciclo > 4h (4,9% das entregas, concentradas em goods) fica fora das medianas e do SLA e gera um alerta de dados próprio.
 - **Outliers:** pedidos acima de R$ 5 mil (63, como um de R$ 100.000,11) ficam fora do GMV e do ticket médio. Distâncias acima de 50 km e métricas negativas viram nulo.
 - **Várias entregas/pagamentos por pedido:** vale a última entrega concluída e o meio de pagamento de maior valor.
-- **Amostra pequena:** SLA e ciclo com menos de 100 entregas medidas não geram alerta forte, veredito nem comparação (com a rede ou com o período anterior). Cancelamento usa o total de pedidos com o mesmo piso, salvo taxa extrema (nenhuma entrega ou 90% ou mais). Pedidos, GMV e ticket só comparam período com 100 pedidos ou mais em cada lado.
+- **Amostra pequena:** SLA e ciclo com menos de 100 entregas medidas não geram alerta forte, veredito nem comparação (com a rede ou com o período anterior). Cancelamento usa o total de pedidos com o mesmo piso, salvo taxa extrema (nenhuma entrega ou 90% ou mais). Pedidos, GMV e ticket só comparam período com 100 pedidos ou mais em cada lado. No mapa dia × hora, taxas e ciclo entram na escala a partir de 20 entregas medidas (ou 20 pedidos no cancelamento).
 - **Referência dos KPIs:** recorte menor que a rede compara com a rede no mesmo período. Sem filtro além do período, a referência é a faixa entre os hubs. O veredito (dentro, atenção, crítico) usa a régua das comandas: atenção abaixo de 85% no prazo (crítico abaixo de 80%) e cancelamento a partir de 6% (crítico a partir de 9%). Não há meta de SLA em percentual: 60 e 120 min são o prazo de cada pedido, não um alvo da mediana de ciclo.
 
 ## Rodar localmente

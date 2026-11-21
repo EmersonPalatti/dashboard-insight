@@ -339,42 +339,44 @@ def main(argv: list[str] | None = None) -> SuiteResult:
     settings = get_settings()
     data_path = args.data or settings.data_path
     repo = Repository(Path(data_path), settings.sla_food_min, settings.sla_good_min)
-
-    if args.engine == "auto" and not settings.llm_enabled:
-        print("Aviso: OPENROUTER_API_KEY ausente; a cadeia auto vai responder com as regras locais.", file=sys.stderr)
-    tag = None if args.all_cases else ("llm" if args.engine == "auto" and settings.llm_enabled else "local")
-    cases = select(CASES, args.cases, engine_tag=tag)
-    if not cases:
-        raise SystemExit(f"Nenhum caso casa com --cases {args.cases!r}")
-
-    max_latency = args.max_latency if args.max_latency is not None else default_max_latency_s(args.engine, settings)
-
-    print(f"Rodando {len(cases)} casos · motor {args.engine} · dados {data_path}", flush=True)
-    agent_logger = logging.getLogger("app.agent")
-    prev_level = agent_logger.level
-    log_handler: logging.Handler | None = None
-    if args.log is not None:
-        args.log.parent.mkdir(parents=True, exist_ok=True)
-        log_handler = logging.FileHandler(args.log, mode="w", encoding="utf-8")
-        log_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s %(message)s"))
-        agent_logger.setLevel(logging.INFO)
-        agent_logger.addHandler(log_handler)
     try:
-        suite = run_suite(
-            repo, settings, cases,
-            engine=args.engine,
-            repeat=max(1, args.repeat),
-            sleep_s=max(0.0, args.sleep),
-            max_latency_s=max_latency,
-            data_path=str(data_path),
-            progress=not args.quiet,
-        )
+        if args.engine == "auto" and not settings.llm_enabled:
+            print("Aviso: OPENROUTER_API_KEY ausente; a cadeia auto vai responder com as regras locais.", file=sys.stderr)
+        tag = None if args.all_cases else ("llm" if args.engine == "auto" and settings.llm_enabled else "local")
+        cases = select(CASES, args.cases, engine_tag=tag)
+        if not cases:
+            raise SystemExit(f"Nenhum caso casa com --cases {args.cases!r}")
+
+        max_latency = args.max_latency if args.max_latency is not None else default_max_latency_s(args.engine, settings)
+
+        print(f"Rodando {len(cases)} casos · motor {args.engine} · dados {data_path}", flush=True)
+        agent_logger = logging.getLogger("app.agent")
+        prev_level = agent_logger.level
+        log_handler: logging.Handler | None = None
+        if args.log is not None:
+            args.log.parent.mkdir(parents=True, exist_ok=True)
+            log_handler = logging.FileHandler(args.log, mode="w", encoding="utf-8")
+            log_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s %(message)s"))
+            agent_logger.setLevel(logging.INFO)
+            agent_logger.addHandler(log_handler)
+        try:
+            suite = run_suite(
+                repo, settings, cases,
+                engine=args.engine,
+                repeat=max(1, args.repeat),
+                sleep_s=max(0.0, args.sleep),
+                max_latency_s=max_latency,
+                data_path=str(data_path),
+                progress=not args.quiet,
+            )
+        finally:
+            if log_handler is not None:
+                log_handler.flush()
+                agent_logger.removeHandler(log_handler)
+                log_handler.close()
+                agent_logger.setLevel(prev_level)
     finally:
-        if log_handler is not None:
-            log_handler.flush()
-            agent_logger.removeHandler(log_handler)
-            log_handler.close()
-            agent_logger.setLevel(prev_level)
+        repo.close()
     print_summary(suite)
     if args.out:
         args.out.parent.mkdir(parents=True, exist_ok=True)

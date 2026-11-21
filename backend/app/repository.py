@@ -35,6 +35,9 @@ _MEASURED = f"{_VALID} and cycle_min is not null"
 # (SLA_BELOW_GAP) que o painel usa para marcar uma linha. Abaixo de 100, a figura oscila mais que a
 # diferença que o painel quer apontar.
 MIN_MEASURED = 100
+# O mapa dia × hora divide o recorte em 168 células: o piso de 100 esconderia recortes de 1 hub ou 7 dias.
+# Abaixo de 20, taxas e medianas da célula ficam marcadas como amostra pequena (fora da escala de cor).
+HEATMAP_MIN_SAMPLE = 20
 
 # Desvio de uma linha do ranking em relação ao recorte (marcado pelo servidor).
 SLA_BELOW_GAP = 0.05  # no prazo abaixo de SLA do recorte menos 5 pontos
@@ -88,9 +91,9 @@ SORTS: dict[str, str] = {
     "fee_avg": "fee_avg", "cost_avg": "cost_avg", "subsidy": "subsidy",
 }
 ORDER_COLUMNS = (
-    "order_id, created_at, status, city, hub_name, store_name, segment, channel, modal, payment_method, "
-    "amount, delivery_fee, cycle_min, production_min, transit_min, distance_m::int as distance_m, "
-    f"case when {_MEASURED} then on_time(segment, cycle_min) end as on_time"
+    "order_id, created_at, status, city, hub_id, hub_name, store_id, store_name, segment, channel, "
+    "modal, payment_method, amount, amount_outlier, delivery_fee, cycle_min, production_min, transit_min, "
+    f"distance_m::int as distance_m, case when {_MEASURED} then on_time(segment, cycle_min) end as on_time"
 )
 ORDER_SORTS = {
     "created_at", "amount", "delivery_fee", "cycle_min", "production_min", "transit_min",
@@ -424,6 +427,7 @@ class Repository:
                 "total_orders": self.total_orders,
                 "sla_food_min": self.sla_food_min,
                 "sla_good_min": self.sla_good_min,
+                "heatmap_min_sample": HEATMAP_MIN_SAMPLE,
                 "cities": self.options("city", "city", "state"),
                 "hubs": self.options("hub_id", "hub_name", "city"),
                 "stores": self.options("store_id", "store_name", "hub_id"),
@@ -530,11 +534,13 @@ class Repository:
                 f"""select {bucket} as t,
                        count(*)::int as orders,
                        count(*) filter (where status = 'delivered')::int as delivered,
+                       count(*) filter (where {_MEASURED})::int as measured,
+                       count(*) filter (where {_MEASURED}) < {MIN_MEASURED} as low_sample,
+                       count(*) < {MIN_MEASURED} as volume_low_sample,
                        coalesce(sum(amount) filter (where {_SALE}), 0)::double as gmv,
                        avg((status = 'canceled')::int) as cancel_rate,
                        median(cycle_min) filter (where {_VALID}) as cycle_p50,
-                       avg(on_time(segment, cycle_min)::int)
-                           filter (where {_VALID} and cycle_min is not null) as sla_rate
+                       avg(on_time(segment, cycle_min)::int) filter (where {_MEASURED}) as sla_rate
                     from orders where {where} group by 1 order by 1""",
                 [*bucket_params, *params],
             )
@@ -545,12 +551,14 @@ class Repository:
         def build() -> list[dict]:
             where, params = f.where()
             return self._rows(
-                f"""select weekday::int as weekday, hour::int as hour, count(*)::int as orders,
+                f"""select weekday::int as weekday, hour::int as hour,
+                       count(*)::int as orders,
                        count(*) filter (where {_MEASURED})::int as measured,
+                       count(*) filter (where {_MEASURED}) < {HEATMAP_MIN_SAMPLE} as low_sample,
+                       count(*) < {HEATMAP_MIN_SAMPLE} as volume_low_sample,
                        avg((status = 'canceled')::int) as cancel_rate,
                        median(cycle_min) filter (where {_VALID}) as cycle_p50,
-                       avg(on_time(segment, cycle_min)::int)
-                           filter (where {_VALID} and cycle_min is not null) as sla_rate
+                       avg(on_time(segment, cycle_min)::int) filter (where {_MEASURED}) as sla_rate
                     from orders where {where} group by all order by 1, 2""",
                 params,
             )

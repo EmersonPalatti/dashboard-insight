@@ -14,8 +14,7 @@ import { $evidence, EVIDENCE_ANCHOR, showEvidence } from "@/lib/evidence";
 import { $filters, applyDrilldown, resetFilters } from "@/lib/filters";
 import { $nextComandaRequest, $recorteEmpty } from "@/lib/investigation";
 import { prefersReducedMotion } from "@/lib/media";
-import { island, useMeta, useRecorteQuery } from "@/lib/query";
-import { outsideBaseNote } from "@/lib/format";
+import { island, useRecorteQuery } from "@/lib/query";
 import { STORE_NAMES_HINT } from "@/lib/glossary";
 import { SEVERITY } from "./ui/EvidenceTag";
 import { ErrorState } from "./ui/Panel";
@@ -413,7 +412,6 @@ function AlertsPanelInner() {
   const alerts = data?.alerts ?? [];
   const railAgents = useStore($railAgentComandas);
   const filters = useStore($filters);
-  const { data: meta } = useMeta();
   const scope = scopeKey(filters);
   // undefined = o operador ainda não escolheu (abre a primeira); null = recolheu todas
   const [openId, setOpenId] = useState<string | null | undefined>(undefined);
@@ -703,7 +701,7 @@ function AlertsPanelInner() {
         <p className="text-pretty">
           <span className="font-semibold">Sem pedidos neste recorte.</span>{" "}
           <span className="text-muted">
-            Não dá para afirmar SLA nem cancelamento sem pedidos. {outsideBaseNote(filters, meta) ?? "Amplie o período ou tire um filtro."}
+            Não dá para afirmar SLA nem cancelamento sem pedidos. {data?.empty_reason ?? "Amplie o período ou tire um filtro."}
           </span>
         </p>
       </div>

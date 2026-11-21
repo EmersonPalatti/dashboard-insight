@@ -21,6 +21,7 @@ from app.alerts import (
     _volume_action,
     _weighted_sla,
     detect_alerts,
+    empty_reason,
 )
 from app.filters import Filters
 from app.repository import MIN_MEASURED
@@ -505,3 +506,26 @@ def test_hub_exactly_at_the_stuck_ceiling_is_still_a_slow_hub(repo):
     assert "sla-recorte" in alerts  # SLA do recorte não foi bloqueado pelo preso
     assert "sla-hub-2" in alerts
     assert "Hub Lento" in alerts["sla-hub-2"].action
+
+
+def test_empty_reason_explains_zero_order_slices(repo):
+    assert empty_reason(repo, Filters()) is None
+    assert empty_reason(repo, Filters(store=[18])) is None
+
+    after = empty_reason(repo, Filters(start=date(2021, 5, 1)))
+    assert after is not None and "01/01/2021" in after and "fora dela" in after
+
+    before = empty_reason(repo, Filters(end=date(2020, 12, 31)))
+    assert before is not None and "fora dela" in before
+
+    bad_hub = empty_reason(repo, Filters(city=["curitiba"], hub=[1]))
+    assert bad_hub == "O hub Hub Centro fica em São Paulo, fora de Curitiba. Tire um dos filtros."
+
+    bad_store_hub = empty_reason(repo, Filters(hub=[2], store=[18]))
+    assert bad_store_hub == "A loja Loja 18 pertence a outro hub fora do filtro atual. Tire um dos filtros."
+
+    bad_store_city = empty_reason(repo, Filters(city=["Curitiba"], store=[18]))
+    assert bad_store_city == "A loja Loja 18 fica em São Paulo, fora de Curitiba. Tire um dos filtros."
+
+    valid_empty = empty_reason(repo, Filters(store=[16], start=date(2021, 1, 1), end=date(2021, 1, 2)))
+    assert valid_empty == "Amplie o período ou tire um filtro."

@@ -10,17 +10,20 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { ArrowDown, ArrowUp, ChevronRight, Filter, X } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { apiGet, type OrderRow } from "@/lib/api/client";
+import type { operations } from "@/lib/api/schema";
 import { askAgentAbout } from "@/lib/agentBridge";
 import { $filters, $ready, applyDrilldown, toQuery } from "@/lib/filters";
 import { fmt, label } from "@/lib/format";
 import { STORE_NAMES_HINT } from "@/lib/glossary";
 import { prefersReducedMotion, useMediaQuery } from "@/lib/media";
-import { gated, island, useApiGate, useMeta } from "@/lib/query";
+import { gated, island, useApiGate } from "@/lib/query";
 import { AskAgentButton } from "./ui/AskAgentButton";
 import { AsyncBody, Empty, PanelContent, panelFallback } from "./ui/Panel";
 
-// Pergunta pela coluna de ordenação atual (ids de SORTABLE); "Resumo" é o fallback do agente.
-const ASK_BY_SORT: Record<string, string> = {
+type OrderSort = NonNullable<NonNullable<operations["orders_api_orders_get"]["parameters"]["query"]>["sort"]>;
+
+// Pergunta pela coluna de ordenação atual (chaves de OrderSort vindas do OpenAPI).
+const ASK_BY_SORT: Record<OrderSort, string> = {
   created_at: "Onde estão os picos de horário dos pedidos do recorte e o que fazer?",
   amount: "Explique a receita dos pedidos do recorte e o que fazer?",
   delivery_fee: "Explique o frete dos pedidos do recorte e o que fazer?",
@@ -37,9 +40,9 @@ const ASK_BY_SORT: Record<string, string> = {
 const PAGE = 200;
 const ROW_H_DESKTOP = 34;
 const ROW_H_MOBILE = 44;
-const GMV_OUTLIER = 5000;
 const col = createColumnHelper<OrderRow>();
-const SORTABLE = new Set(["created_at", "amount", "delivery_fee", "cycle_min", "production_min", "transit_min", "distance_m", "store_name", "hub_name", "city", "status"]);
+const SORTABLE = new Set<string>(Object.keys(ASK_BY_SORT));
+const isOrderSort = (id: string): id is OrderSort => SORTABLE.has(id);
 const NUMERIC_COLS = new Set(["amount", "cycle_min", "production_min", "transit_min", "distance_m"]);
 
 const columns = [
@@ -67,7 +70,7 @@ const columns = [
     size: 108,
     cell: (c) => {
       const v = c.getValue();
-      return v > GMV_OUTLIER ? (
+      return c.row.original.amount_outlier ? (
         <span
           className="inline-flex items-center gap-1 font-semibold text-ink"
           title="Acima de R$ 5 mil: fora do GMV e do ticket médio"
@@ -104,10 +107,9 @@ function OrdersTableInner() {
   const filters = useStore($filters);
   const ready = useStore($ready);
   const gate = useApiGate();
-  const meta = useMeta().data;
   const desktop = useMediaQuery("(min-width: 1024px)");
   const rowH = desktop ? ROW_H_DESKTOP : ROW_H_MOBILE;
-  const [sort, setSort] = useState<{ id: string; desc: boolean }>({ id: "created_at", desc: true });
+  const [sort, setSort] = useState<{ id: OrderSort; desc: boolean }>({ id: "created_at", desc: true });
   const [selectedOrder, setSelectedOrder] = useState<OrderRow | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
   const detailId = useId();
@@ -203,17 +205,6 @@ function OrdersTableInner() {
     }
   }, [selectedOrder?.order_id]);
 
-  const selectedHubId = selectedOrder
-    ? meta?.hubs.find((h) => h.label === selectedOrder.hub_name)?.value
-    : undefined;
-  const selectedStoreId = selectedOrder
-    ? meta?.stores.find(
-        (s) =>
-          s.label === selectedOrder.store_name &&
-          (selectedHubId === undefined || Number(s.parent) === Number(selectedHubId)),
-      )?.value ?? meta?.stores.find((s) => s.label === selectedOrder.store_name)?.value
-    : undefined;
-
   const width = table.getTotalSize();
 
   return (
@@ -227,7 +218,7 @@ function OrdersTableInner() {
       actions={
         <AskAgentButton
           subject="os pedidos do recorte"
-          question={ASK_BY_SORT[sort.id] ?? "Resumo dos pedidos do recorte e o que fazer?"}
+          question={ASK_BY_SORT[sort.id]}
         />
       }
     >
@@ -327,30 +318,26 @@ function OrdersTableInner() {
               </div>
             </dl>
             <div className="mt-3 flex flex-wrap items-center gap-2">
-              {selectedHubId !== undefined && (
-                <button
-                  type="button"
-                  className="btn-ink min-h-8 gap-1.5 px-2.5 py-1 text-meta max-lg:min-h-11"
-                  onClick={() => applyDrilldown({ city: [selectedOrder.city], hub: [Number(selectedHubId)] })}
-                >
-                  <Filter className="size-3" aria-hidden /> Filtrar hub {selectedOrder.hub_name}
-                </button>
-              )}
-              {selectedStoreId !== undefined && (
-                <button
-                  type="button"
-                  className="btn-ghost min-h-8 gap-1.5 px-2.5 py-1 text-meta max-lg:min-h-11"
-                  onClick={() =>
-                    applyDrilldown({
-                      city: [selectedOrder.city],
-                      ...(selectedHubId !== undefined ? { hub: [Number(selectedHubId)] } : {}),
-                      store: [Number(selectedStoreId)],
-                    })
-                  }
-                >
-                  <Filter className="size-3" aria-hidden /> Filtrar loja {selectedOrder.store_name}
-                </button>
-              )}
+              <button
+                type="button"
+                className="btn-ink min-h-8 gap-1.5 px-2.5 py-1 text-meta max-lg:min-h-11"
+                onClick={() => applyDrilldown({ city: [selectedOrder.city], hub: [selectedOrder.hub_id] })}
+              >
+                <Filter className="size-3" aria-hidden /> Filtrar hub {selectedOrder.hub_name}
+              </button>
+              <button
+                type="button"
+                className="btn-ghost min-h-8 gap-1.5 px-2.5 py-1 text-meta max-lg:min-h-11"
+                onClick={() =>
+                  applyDrilldown({
+                    city: [selectedOrder.city],
+                    hub: [selectedOrder.hub_id],
+                    store: [selectedOrder.store_id],
+                  })
+                }
+              >
+                <Filter className="size-3" aria-hidden /> Filtrar loja {selectedOrder.store_name}
+              </button>
               <button
                 type="button"
                 className="btn-ghost min-h-8 px-2.5 py-1 text-meta max-lg:min-h-11"
@@ -369,8 +356,8 @@ function OrdersTableInner() {
           <div style={{ width, minWidth: "100%" }} className="text-aux tabular-nums" role="grid" aria-label="Pedidos do recorte" aria-rowcount={total + 1}>
             <div className="sticky top-0 z-20 flex border-b border-rule bg-sunken" role="row">
               {table.getFlatHeaders().map((h) => {
+                const sortCol = isOrderSort(h.id) ? h.id : null;
                 const active = sort.id === h.id;
-                const sortable = SORTABLE.has(h.id);
                 const isNumeric = NUMERIC_COLS.has(h.id);
                 const isPinned = h.id === "created_at";
 
@@ -379,16 +366,16 @@ function OrdersTableInner() {
                   <div
                     key={h.id}
                     role="columnheader"
-                    aria-sort={sortable ? (active ? (sort.desc ? "descending" : "ascending") : "none") : undefined}
+                    aria-sort={sortCol ? (active ? (sort.desc ? "descending" : "ascending") : "none") : undefined}
                     style={{ width: h.getSize() }}
                     className={`flex shrink-0 items-center gap-1 px-2 py-2 text-aux font-semibold ${
                       isNumeric ? "justify-end text-right tabular-nums" : "justify-start"
                     } ${isPinned ? "sticky left-0 z-10 border-r border-rule bg-sunken" : ""}`}
                   >
-                    {sortable ? (
+                    {sortCol ? (
                       <button
                         type="button"
-                        onClick={() => setSort((s) => ({ id: h.id, desc: s.id === h.id ? !s.desc : true }))}
+                        onClick={() => setSort((s) => ({ id: sortCol, desc: s.id === sortCol ? !s.desc : true }))}
                         className={`hit-target inline-flex min-w-0 items-center gap-1 ${active ? "text-ink" : "text-muted hover:text-ink"}`}
                       >
                         <span className="truncate">{flexRender(h.column.columnDef.header, h.getContext())}</span>

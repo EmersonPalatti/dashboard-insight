@@ -1664,12 +1664,25 @@
             "in": "query",
             "required": false,
             "schema": {
+              "enum": [
+                "created_at",
+                "amount",
+                "delivery_fee",
+                "cycle_min",
+                "production_min",
+                "transit_min",
+                "distance_m",
+                "store_name",
+                "hub_name",
+                "city",
+                "status"
+              ],
               "type": "string",
-              "description": "Coluna de ordenação (fora da lista cai em created_at): created_at, amount, delivery_fee, cycle_min, production_min, transit_min, distance_m, store_name, hub_name, city, status",
+              "description": "Coluna de ordenação dos pedidos.",
               "default": "created_at",
               "title": "Sort"
             },
-            "description": "Coluna de ordenação (fora da lista cai em created_at): created_at, amount, delivery_fee, cycle_min, production_min, transit_min, distance_m, store_name, hub_name, city, status"
+            "description": "Coluna de ordenação dos pedidos."
           },
           {
             "name": "desc",
@@ -2066,6 +2079,18 @@
             "type": "integer",
             "title": "Orders",
             "description": "Pedidos no recorte; 0 significa que não há base para afirmar SLA ou cancelamento."
+          },
+          "empty_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Empty Reason",
+            "description": "Motivo curto em pt-BR quando o recorte tem 0 pedidos (período fora da base ou combinação incompatível de cidade/hub/loja). Null quando há pedidos."
           }
         },
         "type": "object",
@@ -2865,6 +2890,21 @@
             "type": "integer",
             "title": "Orders"
           },
+          "measured": {
+            "type": "integer",
+            "title": "Measured",
+            "description": "Entregues com ciclo e sem presos na faixa: base do SLA e do ciclo."
+          },
+          "low_sample": {
+            "type": "boolean",
+            "title": "Low Sample",
+            "description": "Base medida abaixo do piso do mapa de calor (HEATMAP_MIN_SAMPLE): SLA e ciclo fora da escala."
+          },
+          "volume_low_sample": {
+            "type": "boolean",
+            "title": "Volume Low Sample",
+            "description": "Pedidos abaixo do piso do mapa de calor (HEATMAP_MIN_SAMPLE): cancelamento fora da escala."
+          },
           "cancel_rate": {
             "anyOf": [
               {
@@ -2904,6 +2944,9 @@
           "weekday",
           "hour",
           "orders",
+          "measured",
+          "low_sample",
+          "volume_low_sample",
           "cancel_rate",
           "cycle_p50",
           "sla_rate"
@@ -3041,6 +3084,11 @@
             "type": "integer",
             "title": "Sla Good Min"
           },
+          "heatmap_min_sample": {
+            "type": "integer",
+            "title": "Heatmap Min Sample",
+            "description": "Piso de amostra por célula no mapa dia × hora (entregas medidas no SLA/ciclo; pedidos no cancelamento)."
+          },
           "cities": {
             "items": {
               "$ref": "#/components/schemas/Option"
@@ -3111,6 +3159,7 @@
           "total_orders",
           "sla_food_min",
           "sla_good_min",
+          "heatmap_min_sample",
           "cities",
           "hubs",
           "stores",
@@ -3395,7 +3444,8 @@
           "created_at": {
             "type": "string",
             "format": "date-time",
-            "title": "Created At"
+            "title": "Created At",
+            "description": "Momento de criação do pedido em horário de Brasília (UTC−3), sem offset (naive wall-clock)."
           },
           "status": {
             "type": "string",
@@ -3409,9 +3459,17 @@
             "type": "string",
             "title": "City"
           },
+          "hub_id": {
+            "type": "integer",
+            "title": "Hub Id"
+          },
           "hub_name": {
             "type": "string",
             "title": "Hub Name"
+          },
+          "store_id": {
+            "type": "integer",
+            "title": "Store Id"
           },
           "store_name": {
             "type": "string",
@@ -3450,6 +3508,11 @@
           "amount": {
             "type": "number",
             "title": "Amount"
+          },
+          "amount_outlier": {
+            "type": "boolean",
+            "title": "Amount Outlier",
+            "description": "Valor acima do teto de outlier (R$ 5 mil): fica fora do GMV e do ticket médio."
           },
           "delivery_fee": {
             "type": "number",
@@ -3517,13 +3580,16 @@
           "created_at",
           "status",
           "city",
+          "hub_id",
           "hub_name",
+          "store_id",
           "store_name",
           "segment",
           "channel",
           "modal",
           "payment_method",
           "amount",
+          "amount_outlier",
           "delivery_fee",
           "cycle_min",
           "production_min",
@@ -3613,7 +3679,8 @@
           "t": {
             "type": "string",
             "format": "date-time",
-            "title": "T"
+            "title": "T",
+            "description": "Início do intervalo em horário de Brasília (UTC−3), sem offset (naive wall-clock)."
           },
           "orders": {
             "type": "integer",
@@ -3622,6 +3689,21 @@
           "delivered": {
             "type": "integer",
             "title": "Delivered"
+          },
+          "measured": {
+            "type": "integer",
+            "title": "Measured",
+            "description": "Entregues com ciclo e sem presos no intervalo: base do SLA e do ciclo."
+          },
+          "low_sample": {
+            "type": "boolean",
+            "title": "Low Sample",
+            "description": "Base medida abaixo do mínimo do painel (MIN_MEASURED): SLA e ciclo mediano não são firmes."
+          },
+          "volume_low_sample": {
+            "type": "boolean",
+            "title": "Volume Low Sample",
+            "description": "Menos de MIN_MEASURED pedidos no intervalo: cancelamento não é firme."
           },
           "gmv": {
             "type": "number",
@@ -3666,6 +3748,9 @@
           "t",
           "orders",
           "delivered",
+          "measured",
+          "low_sample",
+          "volume_low_sample",
           "gmv",
           "cancel_rate",
           "cycle_p50",
