@@ -13,7 +13,7 @@ from datetime import date, timedelta
 
 from app import fmt, semantic
 from app.agent.local_intent import Entity, Intent, Window
-from app.alerts import BROKEN_CANCEL, HUB_MIN, STAGES, STORE_MIN, detect_alerts
+from app.alerts import BROKEN_CANCEL, HUB_MIN, STAGES, STORE_MIN, _period_can_widen, detect_alerts
 from app.analytics import OTHERS_LABEL, drill_cause, explain_change
 from app.filters import Filters
 from app.repository import (
@@ -149,6 +149,11 @@ def _measured_based(metric: str) -> bool:
     return _layer().metrics[metric].base in ("measured", "valid")
 
 
+def with_parent(row: dict) -> str:
+    """'Loja 25 (Hub Lento)'; sem o pai quando a linha não tem um (nunca '(None)')."""
+    return f"{row['label']} ({row['parent']})" if row.get("parent") else str(row["label"])
+
+
 def drill(dim: str, key, label: str) -> DrillDown | None:
     if dim not in FILTER_KEYS or key is None:
         return None
@@ -212,9 +217,11 @@ def stage_action(repo: Repository, f: Filters, stage: str | None, gap: float | N
 
 
 def plain_label(dim: str, label: str) -> str:
-    """Nome pt-BR sem o código cru, para frase de ação ("operador logístico", não "operator")."""
+    """Nome pt-BR sem o código cru, para frase de ação ("operador logístico", não "operator"; "goods", não "good")."""
     if dim in ("payment_method", "driver_type"):
         return _layer().dimensions[dim].values.get(label, label)
+    if dim in ("channel_type", "segment", "modal"):
+        return VALUE_LABELS.get(label, label)
     return label
 
 
@@ -337,17 +344,31 @@ def out_of_scope(repo: Repository, f: Filters, topic: str) -> Answer:
 
 def _oos_cancel(repo: Repository, f: Filters):
     m = repo.metrics(f)
-    lines = [(f"O mais perto disso no recorte: cancelamento de {fmt.pct(m['cancel_rate'])} "
-              f"({fmt.integer(m['canceled'])} pedidos).")]
+    canceled_only = only_canceled(f)
+    if canceled_only:
+        lines = [(f"O mais perto disso no recorte: {fmt.integer(m['canceled'])} pedidos cancelados "
+                  "(filtro status = cancelado; a taxa seria 100% por definição).")]
+    else:
+        lines = [(f"O mais perto disso no recorte: cancelamento de {fmt.pct(m['cancel_rate'])} "
+                  f"({fmt.integer(m['canceled'])} pedidos).")]
     modal = {r["key"]: r for r in repo.breakdown(f, "modal", sort="orders", limit=10)}
     if None in modal and m["canceled"]:
         share = (modal[None]["canceled"] or 0) / m["canceled"]
         lines.append(f"- {fmt.pct(share)} dos cancelados caíram antes de alocar entregador (sem modal registrado).")
-    stores = [s for s in repo.breakdown(f, "store", sort="cancel_rate", limit=3, min_orders=STORE_MIN) if s["key"] is not None]
+    # Só cancelados no filtro: a taxa é 100% em toda loja; o que separa as lojas é o volume.
+    sort = "orders" if canceled_only else "cancel_rate"
+    stores = [s for s in repo.breakdown(f, "store", sort=sort, limit=3, min_orders=STORE_MIN) if s["key"] is not None]
     for s in stores:
-        lines.append(f"- Loja {s['label']} ({s['parent']}): {fmt.pct(s['cancel_rate'])} de cancelamento em "
-                     f"{fmt.integer(s['orders'])} pedidos")
-    if stores and is_broken(stores[0]):
+        if canceled_only:
+            lines.append(f"- Loja {with_parent(s)}: {fmt.integer(s['orders'])} cancelados")
+        else:
+            lines.append(f"- Loja {with_parent(s)}: {fmt.pct(s['cancel_rate'])} de cancelamento em "
+                         f"{fmt.integer(s['orders'])} pedidos")
+    if stores and canceled_only:
+        s = stores[0]
+        action = (f"Gerente de contas deve ligar hoje para a loja {s['label']} ({fmt.integer(s['orders'])} cancelados) "
+                  "e perguntar a causa, ou o operador deve remover o filtro de status cancelado para comparar taxas.")
+    elif stores and is_broken(stores[0]):
         action = broken_store_action(repo, f, stores[0]["key"], stores[0]["label"])
     elif stores:
         s = stores[0]
@@ -362,14 +383,14 @@ def _oos_cancel(repo: Repository, f: Filters):
 def _oos_menu(repo: Repository, f: Filters):
     stores = [s for s in repo.breakdown(f, "store", sort="gmv", limit=3) if s["key"] is not None]
     lines = ["O mais perto disso no recorte: lojas por GMV e ticket médio."]
-    lines += [f"- {s['label']} ({s['parent']}): GMV {fmt.brl(s['gmv'])} · ticket {fmt.brl(s['ticket'])} · "
+    lines += [f"- {with_parent(s)}: GMV {fmt.brl(s['gmv'])} · ticket {fmt.brl(s['ticket'])} · "
               f"{fmt.integer(s['orders'])} pedidos" for s in stores]
     if stores:
         s = stores[0]
         action = (f"Time comercial deve pedir hoje à loja {s['label']} (maior GMV do recorte) o relatório de vendas "
                   f"por item, que não chega a este painel.")
     else:
-        action = "Time comercial deve pedir às lojas o relatório de vendas por item, que não chega a este painel."
+        action = "Time comercial deve pedir ainda nesta semana às lojas o relatório de vendas por item, que não chega a este painel."
     drills = [d for d in (drill("store", s["key"], s["label"]) for s in stores[:1]) if d]
     return "\n".join(lines), action, ["get_breakdown(store)"], drills
 
@@ -391,7 +412,7 @@ def _oos_experience(repo: Repository, f: Filters):
         action = (f"Líder do hub {h['label']} deve atacar hoje os atrasos (SLA {fmt.pct(h['sla_rate'])}), o indicador "
                   "deste dataset mais ligado à satisfação do cliente.")
     else:
-        action = "Time de operações deve acompanhar SLA e cancelamento do recorte como sinal da experiência do cliente."
+        action = "Time de operações deve acompanhar hoje SLA e cancelamento do recorte como sinal da experiência do cliente."
     drills = [d for d in (drill("hub", h["key"], h["label"]) for h in hubs[:1]) if d]
     return "\n".join(lines), action, ["get_kpis", "get_breakdown(hub)"], drills
 
@@ -433,7 +454,7 @@ def _oos_courier(repo: Repository, f: Filters):
         action = (f"Time de frota deve revisar hoje a escala e o raio dos entregadores {shown} (SLA "
                   f"{fmt.pct(r['sla_rate'])}), o grupo de pior prazo do recorte.")
     else:
-        action = "Time de frota deve pedir ao operador logístico o relatório por entregador, que não chega a este painel."
+        action = "Time de frota deve pedir ainda nesta semana ao operador logístico o relatório por entregador, que não chega a este painel."
     return "\n".join(lines), action, ["get_breakdown(modal)", "get_breakdown(driver_type)"], []
 
 
@@ -521,13 +542,21 @@ def _hub_of_store(repo: Repository, key) -> str | None:
 
 
 def _cancel_group_action(repo: Repository, f: Filters, dim: str, key, label: str, value: str) -> str:
-    """Cancelamento alto num grupo (cidade, hub, hora...): a ação desce para a loja que mais cancela nele."""
-    qm = repo.query_metrics(f, metrics=["cancel_rate"], group_by=["store"], where={dim: [key]}, sort="cancel_rate",
-                            limit=1, min_orders=STORE_MIN)
+    """Cancelamento alto num grupo (cidade, hub, hora...): a ação desce para a loja que mais cancela nele.
+
+    Só cancelados no filtro: toda loja tem 100% e a taxa não separa ninguém; desce para a de mais cancelados.
+    """
+    canceled_only = only_canceled(f)
+    qm = repo.query_metrics(f, metrics=["cancel_rate"], group_by=["store"], where={dim: [key]},
+                            sort="orders" if canceled_only else "cancel_rate", limit=1, min_orders=STORE_MIN)
     row = next((r for r in qm["rows"] if r["keys"]["store"]["key"] is not None and r["cancel_rate"]), None)
     if row is None:
         return f"{owner_for(dim, label, 'cancel_rate')} deve {metric_verb('cancel_rate', value)} {_when(dim, key)}."
     store_key, store = row["keys"]["store"]["key"], row["keys"]["store"]["label"]
+    if canceled_only:
+        return (f"{owner_for(dim, label, 'cancel_rate')} deve auditar {_when(dim, key)} os {value} cancelados, começando "
+                f"pela loja {store} ({fmt.integer(row['orders'])} cancelados), ou remover o filtro de status "
+                "cancelado para comparar taxas.")
     if is_broken(row):
         return broken_store_action(repo, f, store_key, store)
     return (f"{owner_for(dim, label, 'cancel_rate')} deve apurar os cancelamentos ({value}) {_when(dim, key)}, começando pela loja "
@@ -544,6 +573,14 @@ def by_dimension(repo: Repository, f: Filters, metric: str, dim: str, intent: In
                 f"{short(metric)}.\n\n**Ação:** Operador deve remover o filtro de status cancelado para comparar "
                 f"{short(metric)} por {dim_label(dim).lower()}.")
         return Answer(text, title, tools)
+    canceled_note = ""
+    if only_canceled(f) and metric == "cancel_rate":
+        # Só cancelados no filtro: a taxa é 100% em todo grupo e não separa ninguém. O ranking vira volume.
+        metric = "canceled"
+        canceled_note = (" O recorte filtra só o status cancelado: a taxa seria 100% em todo grupo, então o "
+                         "ranking usa o volume de cancelados.")
+        title = f"{cap(short(metric))} por {dim_label(dim).lower()}"
+        tools = ["get_kpis", f"query_metrics({metric}:{dim})"]
     desc = _worst_first(metric, intent)
     min_orders, min_measured = _thresholds(metric, dim)
     qm = repo.query_metrics(f, metrics=[metric], group_by=[dim], sort=metric, desc=desc, limit=15,
@@ -560,18 +597,19 @@ def by_dimension(repo: Repository, f: Filters, metric: str, dim: str, intent: In
     floor = ""
     if min_orders or min_measured:
         floor = f" (mín. {fmt.integer(min_measured or min_orders)} {'entregas medidas' if min_measured else 'pedidos'})"
-    lines = [f"{title} no recorte{floor}: recorte em {show(metric, total)}.{note}"]
+    lines = [f"{title} no recorte{floor}: recorte em {show(metric, total)}.{note}{canceled_note}"]
     for r in named[:5]:
         k = r["keys"][dim]
         tail = f" · {fmt.integer(r['measured'])} medidas" if _measured_based(metric) else ""
-        volume = "" if metric == "orders" else f" · {fmt.integer(r['orders'])} pedidos"
+        # Só cancelados no filtro: pedidos = cancelados, repetir o número não diz nada.
+        volume = "" if metric == "orders" or canceled_note else f" · {fmt.integer(r['orders'])} pedidos"
         lines.append(f"- {_row_label(repo, dim, k)}: {show(metric, r[metric])}{volume}{tail}")
     if nulls:
         k = nulls[0]["keys"][dim]
         lines.append(f"Fora do ranking: {k['label']} ({fmt.integer(nulls[0]['orders'])} pedidos sem {dim_label(dim).lower()} "
                      "registrado), que não é alguém para acionar.")
     if not named:
-        lines += ["", (f"**Ação:** Operador deve ampliar o período para comparar {short(metric)} por "
+        lines += ["", (f"**Ação:** Operador deve ampliar hoje o período para comparar {short(metric)} por "
                        f"{dim_label(dim).lower()} com base suficiente.")]
         return Answer("\n".join(lines), title, tools)
 
@@ -589,6 +627,14 @@ def by_dimension(repo: Repository, f: Filters, metric: str, dim: str, intent: In
         # Pergunta pelo melhor: a ação é levar a rotina dele para quem está pior, não "corrigir" o melhor.
         action = (f"{owner_for(dim, raw_label, metric)} deve registrar hoje a rotina que sustenta {short(metric)} de "
                   f"{value} para o time de operações levar aos grupos de pior resultado.")
+    elif only_canceled(f) and metric in ("cancel_rate", "canceled"):
+        # 100% cancelado é o filtro, não a loja: nada de "tirar do ar" com base nessa taxa.
+        if dim == "store":
+            action = (f"{owner_for(dim, raw_label)} deve checar hoje os {value} pedidos cancelados neste recorte "
+                      "(ruptura de itens e loja fechada com cardápio aberto), ou o operador deve remover o filtro "
+                      "de status cancelado para comparar taxas.")
+        else:
+            action = _cancel_group_action(repo, f, dim, key, label, value)
     elif metric in ("cancel_rate", "canceled") and dim == "store" and is_broken(lead):
         action = broken_store_action(repo, f, key, raw_label)
     elif metric in ("cancel_rate", "canceled") and dim != "store":
@@ -608,12 +654,18 @@ def by_dimension(repo: Repository, f: Filters, metric: str, dim: str, intent: In
 # ------------------------------------------------------------------ entidade
 
 
+def _fold(value):
+    return value.casefold() if isinstance(value, str) else value
+
+
 def narrow(f: Filters, entity: Entity) -> Filters | None:
     """Recorte restrito à entidade, sem sair do recorte: se o filtro já exclui a entidade, None."""
     current = list(getattr(f, entity.dimension))
     wanted = list(entity.ids)
     if current:
-        keep = [v for v in wanted if v in current]
+        # Cidade casa sem diferenciar maiúsculas, como no filtro do SQL ("curitiba" = "Curitiba").
+        seen = {_fold(v) for v in current}
+        keep = [v for v in wanted if _fold(v) in seen]
         if not keep:
             return None
     else:
@@ -652,24 +704,40 @@ def entity_answer(repo: Repository, f: Filters, intent: Intent) -> Answer:
     me = repo.metrics(fe) if fe is not None else None
     if fe is None or not me["orders"]:
         text = (f"{title} não tem pedidos no recorte atual ({repo.describe(f)}).\n\n"
-                f"**Ação:** Operador deve ajustar os filtros do recorte para incluir {entity.label} antes de avaliar.")
+                f"**Ação:** Operador deve ajustar hoje os filtros do recorte para incluir {entity.label} antes de avaliar.")
         return Answer(text, title, tools)
+    units: list[dict] = []
+    if entity.dimension == "store" and len(entity.ids) > 1:
+        # Loja homônima: contam só as unidades com pedido no recorte (Regra 1), não as do cadastro inteiro.
+        tools.append("query_metrics(sla_rate,cancel_rate,gmv:store)")
+        qm = repo.query_metrics(fe, metrics=["sla_rate", "cancel_rate", "gmv", "cycle_p50"], group_by=["store"],
+                                sort="orders", limit=50)
+        units = [r for r in qm["rows"] if r["keys"]["store"]["key"] is not None]
+        active = tuple(int(r["keys"]["store"]["key"]) for r in units)
+        if active and active != tuple(entity.ids):
+            entity = Entity(entity.dimension, active, entity.label, entity.term)
+            fe = narrow(f, entity) or fe
     m = repo.metrics(f)
     same = fe.cache_key() == f.cache_key()
     parent = _parent(repo, entity)
-    lines = [f"**{named(kind, entity.label)}**" + (f" ({parent})" if parent else "") + f" no recorte ({repo.describe(f)}):",
-             _kpi_line(entity.label, me)]
+    head = f"**{named(kind, entity.label)}**" + (f" ({parent})" if parent else "") + f" no recorte ({repo.describe(f)})"
+    drills = [] if same else [DrillDown(label=f"Ver só {entity.label}"[:80], filters={entity.dimension: list(entity.ids)[:50]})]
+    if only_canceled(f):
+        # Só cancelados no filtro: a taxa é 100% por definição e não há entrega para medir SLA. Nada de "tirar do ar".
+        of = {"hub": f"do {named('hub', entity.label)}", "store": f"da {named('loja', entity.label)}",
+              "city": f"de {entity.label}"}[entity.dimension]
+        text = (f"{head}: {fmt.integer(me['orders'])} pedidos cancelados (filtro status = cancelado; sem entregas "
+                "para medir SLA nem taxa de cancelamento).\n\n"
+                f"**Ação:** Operador deve remover o filtro de status cancelado hoje para avaliar o SLA e a taxa de "
+                f"cancelamento {of}.")
+        return Answer(text, title, ["get_kpis"], drills)
+    lines = [f"{head}:", _kpi_line(entity.label, me)]
     if not same:
         lines.append(f"- Recorte inteiro: SLA {fmt.pct(m['sla_rate'])} · cancelamento {fmt.pct(m['cancel_rate'])} · "
                      f"ciclo mediano {fmt.minutes(m['cycle_p50'])}")
     group = {entity.dimension: list(entity.ids)[:50]}
-    units: list[dict] = []
-    if entity.dimension == "store" and len(entity.ids) > 1:
-        tools.append("query_metrics(sla_rate,cancel_rate,gmv:store)")
-        qm = repo.query_metrics(fe, metrics=["sla_rate", "cancel_rate", "gmv", "cycle_p50"], group_by=["store"],
-                                sort="orders", limit=5)
-        units = qm["rows"]
-        lines.append(f"{entity.label} tem {fmt.integer(len(entity.ids))} unidades com esse nome; as maiores no recorte:")
+    if len(entity.ids) > 1 and units:
+        lines.append(f"{entity.label} tem {fmt.integer(len(entity.ids))} unidades com esse nome no recorte; as maiores:")
         for r in units[:3]:
             key = r["keys"]["store"]["key"]
             hub = _hub_of_store(repo, key)
@@ -778,12 +846,14 @@ def entity_answer(repo: Repository, f: Filters, intent: Intent) -> Answer:
             action = lead.action
     if thin:
         findings.append(f"amostra pequena ({fmt.integer(me['measured'])} entregas medidas)")
-        action = (f"Operador deve ampliar o período antes de cobrar {entity.label}: só "
-                  f"{fmt.integer(me['measured'])} entregas medidas neste recorte.")
+        if _period_can_widen(repo, fe):
+            action = (f"Operador deve ampliar o período antes de cobrar {entity.label}: só "
+                      f"{fmt.integer(me['measured'])} entregas medidas neste recorte.")
+        else:
+            # Mesma régua dos alertas: sem data fora do filtro, não há período para ampliar.
+            action = (f"Operador não deve cobrar {entity.label} com esta base hoje: o recorte já cobre todo o período "
+                      f"dos dados e só tem {fmt.integer(me['measured'])} entregas medidas.")
     lines += ["", "Leitura: " + "; ".join(findings) + ".", "", f"**Ação:** {action}"]
-    drills = []
-    if not same:
-        drills.append(DrillDown(label=f"Ver só {entity.label}"[:80], filters={entity.dimension: list(entity.ids)[:50]}))
     return Answer("\n".join(lines), title, tools, drills)
 
 
@@ -965,7 +1035,7 @@ def _change_action(repo: Repository, f: Filters, metric: str, dim: str, x: dict,
         detail = f" {cap(STAGES[stage])} {signed(stage, gap)} {versus}." if stage and gap else ""
         return f"{base.rstrip('.')} ({short(metric)} {change}).{detail}"
     if metric in ("cancel_rate", "canceled"):
-        if dim == "store" and is_broken({"cancel_rate": x["current"], "orders": x["orders_current"]}):
+        if dim == "store" and not only_canceled(f) and is_broken({"cancel_rate": x["current"], "orders": x["orders_current"]}):
             return broken_store_action(repo, f, x["key"], x["label"])
         if dim == "store":
             return (f"Gerente de contas deve ligar hoje para a loja {label} (cancelamento {change}) e checar "
@@ -1075,6 +1145,13 @@ def windows(repo: Repository, f: Filters, intent: Intent) -> Answer:
     b = second if second is not None and not _complement(a, second) else None
     layer = _layer()
     focus = intent.metric if intent.metric and layer.metrics[intent.metric].kind not in ("count", "sum") else "sla_rate"
+    if only_canceled(f) and (_measured_based(focus) or focus == "cancel_rate"):
+        # Só cancelados no filtro: não há entrega para medir prazo e a taxa de cancelamento é 100% nas duas janelas.
+        m = repo.metrics(f)
+        text = (f"O recorte filtra só pedidos com status cancelado ({fmt.integer(m['canceled'])}), sem entregas para "
+                f"comparar {short(focus)} {in_window(a.label)} com o resto.\n\n**Ação:** Operador deve remover o filtro "
+                f"de status cancelado hoje para comparar {short(focus)} {in_window(a.label)}.")
+        return Answer(text, f"{cap(a.label)} sem base"[:80], ["get_kpis"])
     metrics = list(dict.fromkeys([focus, *_WINDOW_METRICS]))
     tools = [f"query_metrics({','.join(metrics[:3])})", "get_breakdown(hour)" if a.hours else "get_breakdown(weekday)"]
     if b is None:
