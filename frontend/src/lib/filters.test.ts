@@ -77,13 +77,22 @@ function installBrowserStub(initialSearch: string) {
       updateUrl(url);
     },
   };
+  // guarda os listeners para o teste disparar popstate (Voltar do navegador) à mão
+  const listeners = new Map<string, ((event: unknown) => void)[]>();
   const win = {
-    addEventListener: () => {},
+    addEventListener: (type: string, fn: (event: unknown) => void) => {
+      listeners.set(type, [...(listeners.get(type) ?? []), fn]);
+    },
   };
   vi.stubGlobal("window", win);
   vi.stubGlobal("location", loc);
   vi.stubGlobal("history", hist);
-  return { loc, pushCalls, replaceCalls };
+  /** Simula o Voltar: o navegador já trocou a URL quando o popstate chega. */
+  const back = (url: string) => {
+    updateUrl(url);
+    for (const fn of listeners.get("popstate") ?? []) fn({ type: "popstate" });
+  };
+  return { loc, pushCalls, replaceCalls, back, listeners };
 }
 
 afterEach(() => {
@@ -349,6 +358,63 @@ describe("estado reativo e drill-down", () => {
     mod.setView({ trend: "volume" });
     expect(browser.pushCalls).toEqual(["/?utm=1&hub=8"]);
     expect(mod.isTrendFromUrl()).toBe(false);
+  });
+
+  it("popstate restaura recorte e vista da URL, sem empurrar histórico, e solta o trend do link", async () => {
+    const browser = installBrowserStub("?hub=101&trend=cancel");
+    const mod = await import("./filters");
+
+    mod.initFilters();
+    expect(browser.listeners.get("popstate")).toHaveLength(1);
+    expect(mod.isTrendFromUrl()).toBe(true);
+
+    mod.patchFilters({ hub: [102] });
+    expect(browser.pushCalls).toEqual(["/?hub=102&trend=cancel"]);
+
+    // entrada de histórico com hub repetido: volta canônica, por replace
+    browser.back("/?hub=101&hub=101&trend=cancel");
+    expect(mod.$filters.get()).toEqual({ ...mod.EMPTY, hub: [101] });
+    expect(mod.$view.get()).toEqual({ ...mod.DEFAULT_VIEW, trend: "cancel" });
+    // Voltar já é navegação do operador: a Tendência deixa de seguir o link
+    expect(mod.isTrendFromUrl()).toBe(false);
+    // aplicar a URL não vira um novo push (senão o Voltar entra em laço)
+    expect(browser.pushCalls).toEqual(["/?hub=102&trend=cancel"]);
+    expect(browser.replaceCalls.at(-1)).toBe("/?hub=101&trend=cancel");
+  });
+
+  it("popstate depois do catálogo descarta ids que não existem e avisa", async () => {
+    const browser = installBrowserStub("");
+    const mod = await import("./filters");
+
+    mod.initFilters();
+    mod.applyDimensionCatalog(mod.catalogFromMeta(SAMPLE_META));
+    browser.back("/?hub=101&hub=999");
+    expect(mod.$filters.get().hub).toEqual([101]);
+    expect(mod.$ignored.get()).toEqual([{ label: "Hub", value: "999", reason: "não existe nesta base" }]);
+    expect(browser.replaceCalls.at(-1)).toBe("/?hub=101");
+  });
+
+  it("applyDimensionCatalog poda ids desconhecidos da URL com replace e mantém o aviso", async () => {
+    const browser = installBrowserStub("?city=Cidade+A&hub=101&hub=999&store=888&segment=food");
+    const mod = await import("./filters");
+
+    mod.initFilters();
+    // antes do catálogo a URL já é canônica: nada a reescrever
+    expect(browser.replaceCalls).toEqual([]);
+
+    mod.applyDimensionCatalog(mod.catalogFromMeta(SAMPLE_META));
+    expect(mod.$filters.get()).toEqual({ ...mod.EMPTY, city: ["Cidade A"], hub: [101], segment: ["food"] });
+    expect(browser.replaceCalls.at(-1)).toBe("/?city=Cidade+A&hub=101&segment=food");
+    expect(browser.pushCalls).toEqual([]);
+    expect(mod.$ignored.get()).toEqual([
+      { label: "Hub", value: "999", reason: "não existe nesta base" },
+      { label: "Loja", value: "888", reason: "não existe nesta base" },
+    ]);
+
+    // catálogo sem nada a podar: não reescreve a URL de novo
+    const before = browser.replaceCalls.length;
+    mod.applyDimensionCatalog(mod.catalogFromMeta(SAMPLE_META));
+    expect(browser.replaceCalls).toHaveLength(before);
   });
 
   it("reconcilia cidade/hub incompatíveis no applyDrilldown após carregar catálogo", async () => {

@@ -69,7 +69,7 @@ export function IslandErrorFallback({
         <button
           type="button"
           onClick={onReset}
-          className="rounded-card border border-on-wine/30 px-2 py-1 text-meta font-medium text-on-wine transition-colors duration-(--duration-quick) hover:bg-wine-raised"
+          className="rounded-card border border-on-wine/30 px-2 py-1 text-meta max-lg:min-h-11 font-medium text-on-wine transition-colors duration-(--duration-quick) hover:bg-wine-raised"
         >
           Tentar de novo
         </button>
@@ -88,7 +88,7 @@ export function IslandErrorFallback({
           <TriangleAlert className="size-4 shrink-0 text-ink" aria-hidden />
           <span>Algo falhou ao exibir este bloco.</span>
         </span>
-        <button type="button" className="btn-ghost h-8 px-2.5 text-aux" onClick={onReset}>
+        <button type="button" className="btn-ghost h-8 px-2.5 text-aux max-lg:h-auto max-lg:min-h-11" onClick={onReset}>
           Tentar de novo
         </button>
       </div>
@@ -105,7 +105,7 @@ export function IslandErrorFallback({
     <div role="alert" className={wrapperClass} style={minHeight > 0 ? { minHeight } : undefined}>
       <TriangleAlert className="size-5 text-ink" aria-hidden />
       <p className="max-w-md text-pretty text-aux text-ink">Algo falhou ao exibir este bloco.</p>
-      <button type="button" className="btn-ghost" onClick={onReset}>
+      <button type="button" className="btn-ghost max-lg:min-h-11" onClick={onReset}>
         Tentar de novo
       </button>
       {detail && (

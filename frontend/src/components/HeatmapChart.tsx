@@ -15,7 +15,7 @@ import { AsyncBody, Empty, panelFallback, PanelContent, Segmented } from "./ui/P
 // Módulos deste gráfico: mapa de calor e visualMap (escala de cor). O resto fica em charts/EChart.tsx.
 echarts.use([HeatmapChart, VisualMapComponent]);
 
-type Metric = "orders" | "sla_rate" | "cancel_rate" | "cycle_p50";
+export type Metric = "orders" | "sla_rate" | "cancel_rate" | "cycle_p50";
 
 const METRICS: Record<Metric, { label: string; format: (v: number) => string; worseIsHigh: boolean }> = {
   orders: { label: "Pedidos", format: fmt.int, worseIsHigh: true },
@@ -34,13 +34,123 @@ const ASK_BY_METRIC: Record<Metric, string> = {
 
 const HOURS = Array.from({ length: 24 }, (_, h) => `${String(h).padStart(2, "0")}h`);
 const CHART_H = 300;
-type Cell = GetResponse<"/api/heatmap">[number];
+export type Cell = GetResponse<"/api/heatmap">[number];
 // Lista vazia estável: sem dados, `cells` não muda de referência a cada render.
 const EMPTY: Cell[] = [];
 
 function isThinCell(cell: Cell, metric: Metric): boolean {
   if (metric === "orders") return false;
   return metric === "cancel_rate" ? cell.volume_low_sample : cell.low_sample;
+}
+
+/**
+ * Opção do ECharts para o mapa. Pura (exportada para teste): células firmes puxam a escala;
+ * as de amostra pequena entram na mesma série, cinzas e com a nota no tooltip.
+ */
+export function heatmapOption(
+  t: Tokens,
+  { firm, thin, metric, peak }: { firm: Cell[]; thin: Cell[]; metric: Metric; peak: ReadonlySet<number> },
+) {
+  const m = METRICS[metric];
+  const toTuple = (c: Cell, thinFlag: 0 | 1) =>
+    [c.hour, c.weekday, c[metric] as number, c.orders, c.measured, thinFlag] as const;
+  const values = firm.map((c) => toTuple(c, 0));
+  const thinValues = thin.map((c) => toTuple(c, 1));
+  const nums = values.map((v) => v[2]);
+  const lo = nums.length > 0 ? Math.min(...nums) : 0;
+  const hi = nums.length > 0 ? Math.max(...nums) : 1;
+  const scale = [t.sunken, t.seriesSoft, t.series, t.seriesDeep];
+  return {
+    grid: { left: 44, right: 12, top: 8, bottom: 56 },
+    tooltip: {
+      formatter: (p: { value?: unknown }) => {
+        const v = Array.isArray(p.value) ? (p.value as [number, number, number, number, number, number]) : null;
+        if (!v) return "";
+        const [hour, weekday, val, orders, measured, isThin] = v;
+        const baseText =
+          metric === "sla_rate" || metric === "cycle_p50"
+            ? `${fmt.int(orders)} pedidos (${fmt.int(measured)} entregas medidas)`
+            : `${fmt.int(orders)} pedidos`;
+        const thinNote =
+          isThin === 1 ? `<br/><span style="color:${t.muted}">Amostra pequena (fora da escala)</span>` : "";
+        return `${escapeHtml(WEEKDAYS[weekday])} ${escapeHtml(HOURS[hour])}<br/>${escapeHtml(m.label)}: <b>${escapeHtml(m.format(val))}</b><br/>${escapeHtml(baseText)}${thinNote}`;
+      },
+    },
+    xAxis: {
+      type: "category",
+      data: HOURS,
+      splitArea: { show: false },
+      axisLabel: peak.size
+        ? {
+            interval: 0,
+            hideOverlap: true,
+            // com horas marcadas, todas aparecem: as da comanda em tinta, as outras só nas pares
+            formatter: (v: string, i: number) => (peak.has(i) ? `{hl|${v}}` : i % 2 === 0 ? v : ""),
+            rich: { hl: { color: t.ink, fontWeight: "bold" } },
+          }
+        : { interval: 1, hideOverlap: true },
+    },
+    yAxis: { type: "category", data: WEEKDAYS, inverse: true, splitLine: { show: false }, axisLine: { show: false } },
+    visualMap: {
+      // A cor vem da métrica (coluna 2) e a escala só das células firmes (lo/hi). As cinzas ficam na
+      // mesma série com cor própria no item: o itemStyle do item vence o visualMap no heatmap.
+      // Uma segunda série heatmap sem visualMap quebra o ECharts ("Heatmap must use with visualMap").
+      seriesIndex: 0,
+      dimension: 2,
+      min: lo,
+      max: hi === lo ? lo + 1 : hi,
+      calculable: false,
+      orient: "horizontal",
+      left: "center",
+      bottom: 4,
+      itemHeight: 110,
+      itemWidth: 10,
+      text:
+        nums.length > 0
+          ? m.worseIsHigh
+            ? [`alto (${m.format(hi)})`, `baixo (${m.format(lo)})`]
+            : [`melhor (${m.format(hi)})`, `pior (${m.format(lo)})`]
+          : m.worseIsHigh
+            ? ["alto", "baixo"]
+            : ["melhor", "pior"],
+      textStyle: { color: t.muted },
+      formatter: (v: number) => m.format(v),
+      inRange: { color: m.worseIsHigh ? scale : [...scale].reverse() },
+    },
+    series: [
+      {
+        id: "cells",
+        type: "heatmap",
+        data: [
+          ...values.map((v) =>
+            peak.size
+              ? {
+                  value: v,
+                  itemStyle: {
+                    opacity: peak.has(v[0]) ? 1 : EVIDENCE_DIM,
+                    borderWidth: peak.has(v[0]) ? 2 : 1,
+                    borderColor: peak.has(v[0]) ? t.ink : t.surface,
+                  },
+                }
+              : v,
+          ),
+          ...thinValues.map((v) => ({
+            value: v,
+            itemStyle: peak.size
+              ? {
+                  color: t.rule,
+                  opacity: peak.has(v[0]) ? 0.85 : EVIDENCE_DIM * 0.7,
+                  borderWidth: peak.has(v[0]) ? 2 : 1,
+                  borderColor: peak.has(v[0]) ? t.ink : t.surface,
+                }
+              : { color: t.rule, opacity: 0.6 },
+          })),
+        ],
+        itemStyle: { borderColor: t.surface, borderWidth: 1 },
+        emphasis: { itemStyle: { borderColor: t.ink, borderWidth: 1 } },
+      },
+    ],
+  };
 }
 
 function HeatmapChartInner() {
@@ -83,111 +193,7 @@ function HeatmapChartInner() {
     return `Maior ${m.label.toLowerCase()}: ${WEEKDAYS[hi.weekday]} às ${HOURS[hi.hour]} (${m.format(hi[metric] as number)}, ${fmt.int(hi.orders)} pedidos). Menor: ${WEEKDAYS[lo.weekday]} às ${HOURS[lo.hour]} (${m.format(lo[metric] as number)}).`;
   }, [firm, metric]);
 
-  const option = useCallback(
-    (t: Tokens) => {
-      const m = METRICS[metric];
-      const toTuple = (c: Cell, thinFlag: 0 | 1) =>
-        [c.hour, c.weekday, c[metric] as number, c.orders, c.measured, thinFlag] as const;
-      const values = firm.map((c) => toTuple(c, 0));
-      const thinValues = thin.map((c) => toTuple(c, 1));
-      const nums = values.map((v) => v[2]);
-      const lo = nums.length > 0 ? Math.min(...nums) : 0;
-      const hi = nums.length > 0 ? Math.max(...nums) : 1;
-      const scale = [t.sunken, t.seriesSoft, t.series, t.seriesDeep];
-      return {
-        grid: { left: 44, right: 12, top: 8, bottom: 56 },
-        tooltip: {
-          formatter: (p: { value?: unknown }) => {
-            const v = Array.isArray(p.value) ? (p.value as [number, number, number, number, number, number]) : null;
-            if (!v) return "";
-            const [hour, weekday, val, orders, measured, isThin] = v;
-            const baseText =
-              metric === "sla_rate" || metric === "cycle_p50"
-                ? `${fmt.int(orders)} pedidos (${fmt.int(measured)} entregas medidas)`
-                : `${fmt.int(orders)} pedidos`;
-            const thinNote =
-              isThin === 1 ? `<br/><span style="color:${t.muted}">Amostra pequena (fora da escala)</span>` : "";
-            return `${escapeHtml(WEEKDAYS[weekday])} ${escapeHtml(HOURS[hour])}<br/>${escapeHtml(m.label)}: <b>${escapeHtml(m.format(val))}</b><br/>${escapeHtml(baseText)}${thinNote}`;
-          },
-        },
-        xAxis: {
-          type: "category",
-          data: HOURS,
-          splitArea: { show: false },
-          axisLabel: peak.size
-            ? {
-                interval: 0,
-                hideOverlap: true,
-                // com horas marcadas, todas aparecem: as da comanda em tinta, as outras só nas pares
-                formatter: (v: string, i: number) => (peak.has(i) ? `{hl|${v}}` : i % 2 === 0 ? v : ""),
-                rich: { hl: { color: t.ink, fontWeight: "bold" } },
-              }
-            : { interval: 1, hideOverlap: true },
-        },
-        yAxis: { type: "category", data: WEEKDAYS, inverse: true, splitLine: { show: false }, axisLine: { show: false } },
-        visualMap: {
-          // a cor vem da métrica (coluna 2) só da série firme; células cinzas ficam fora da escala
-          seriesIndex: 0,
-          dimension: 2,
-          min: lo,
-          max: hi === lo ? lo + 1 : hi,
-          calculable: false,
-          orient: "horizontal",
-          left: "center",
-          bottom: 4,
-          itemHeight: 110,
-          itemWidth: 10,
-          text:
-            nums.length > 0
-              ? m.worseIsHigh
-                ? [`alto (${m.format(hi)})`, `baixo (${m.format(lo)})`]
-                : [`melhor (${m.format(hi)})`, `pior (${m.format(lo)})`]
-              : m.worseIsHigh
-                ? ["alto", "baixo"]
-                : ["melhor", "pior"],
-          textStyle: { color: t.muted },
-          formatter: (v: number) => m.format(v),
-          inRange: { color: m.worseIsHigh ? scale : [...scale].reverse() },
-        },
-        series: [
-          {
-            id: "firm",
-            type: "heatmap",
-            data: peak.size
-              ? values.map((v) => ({
-                  value: v,
-                  itemStyle: {
-                    opacity: peak.has(v[0]) ? 1 : EVIDENCE_DIM,
-                    borderWidth: peak.has(v[0]) ? 2 : 1,
-                    borderColor: peak.has(v[0]) ? t.ink : t.surface,
-                  },
-                }))
-              : values,
-            itemStyle: { borderColor: t.surface, borderWidth: 1 },
-            emphasis: { itemStyle: { borderColor: t.ink, borderWidth: 1 } },
-          },
-          {
-            id: "thin",
-            type: "heatmap",
-            data: peak.size
-              ? thinValues.map((v) => ({
-                  value: v,
-                  itemStyle: {
-                    color: t.rule,
-                    opacity: peak.has(v[0]) ? 0.85 : EVIDENCE_DIM * 0.7,
-                    borderWidth: peak.has(v[0]) ? 2 : 1,
-                    borderColor: peak.has(v[0]) ? t.ink : t.surface,
-                  },
-                }))
-              : thinValues,
-            itemStyle: { color: t.rule, opacity: 0.6, borderColor: t.surface, borderWidth: 1 },
-            emphasis: { itemStyle: { borderColor: t.ink, borderWidth: 1 } },
-          },
-        ],
-      };
-    },
-    [firm, thin, metric, peak],
-  );
+  const option = useCallback((t: Tokens) => heatmapOption(t, { firm, thin, metric, peak }), [firm, thin, metric, peak]);
 
   const hint =
     metric === "orders"

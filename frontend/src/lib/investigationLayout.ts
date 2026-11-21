@@ -125,6 +125,8 @@ export function initInvestigationLayout() {
   /**
    * Mover um nó com o foco dentro tira o foco dele (vai para o body). Depois da troca,
    * devolve ao mesmo elemento se ele segue visível; se o painel recolheu, ao botão do painel.
+   * Se o painel subiu para a investigação com o foco no botão (que some), o foco vai para o
+   * próprio painel (`tabindex="-1"`, rotulado pelo título), nunca para o body.
    */
   function restoreFocus(active: HTMLElement | null, slot: HTMLElement | null) {
     if (!active || !slot || document.activeElement === active) return;
@@ -134,6 +136,7 @@ export function initInvestigationLayout() {
     }
     const toggle = slot.querySelector<HTMLButtonElement>("[data-panel-toggle]");
     if (toggle && !toggle.closest("[hidden]")) toggle.focus({ preventScroll: true });
+    else slot.focus({ preventScroll: true });
   }
 
   function syncEvidence(focused: FocusedEvidence | null) {

@@ -8,7 +8,7 @@ import { keepPreviousData, useInfiniteQuery } from "@tanstack/react-query";
 import { flexRender, getCoreRowModel, useReactTable, createColumnHelper } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { ArrowDown, ArrowUp, ChevronRight, Filter, X } from "lucide-react";
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { apiGet, type OrderRow } from "@/lib/api/client";
 import type { operations } from "@/lib/api/schema";
 import { askAgentAbout } from "@/lib/agentBridge";
@@ -112,7 +112,8 @@ function OrdersTableInner() {
   const [sort, setSort] = useState<{ id: OrderSort; desc: boolean }>({ id: "created_at", desc: true });
   const [selectedOrder, setSelectedOrder] = useState<OrderRow | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
-  const detailId = useId();
+  // tabindex móvel: só uma linha da grade entra no Tab; as setas andam entre as linhas
+  const [activeIndex, setActiveIndex] = useState(0);
   const detailRef = useRef<HTMLDivElement>(null);
   const originOrderIdRef = useRef<number | null>(null);
   const shouldReturnFocusRef = useRef(false);
@@ -162,6 +163,46 @@ function OrdersTableInner() {
     originOrderIdRef.current = null;
     setSelectedOrder(null);
   }, [filters]);
+
+  useEffect(() => {
+    setActiveIndex(0);
+  }, [filters, sort]);
+
+  // A linha ativa pode ter saído da janela virtual: aí a primeira linha montada fica com o Tab.
+  const tabIndexRow = items.some((i) => i.index === activeIndex) ? activeIndex : (items[0]?.index ?? 0);
+
+  const focusRow = (index: number) => {
+    const next = Math.max(0, Math.min(rows.length - 1, index));
+    setActiveIndex(next);
+    const find = () => scroller.current?.querySelector<HTMLElement>(`[data-row-index="${next}"]`);
+    const el = find();
+    if (el) {
+      el.scrollIntoView({ block: "nearest" });
+      el.focus({ preventScroll: true });
+      return;
+    }
+    virtual.scrollToIndex(next, { align: "auto" });
+    requestAnimationFrame(() => find()?.focus({ preventScroll: true }));
+  };
+
+  const pageRows = () => Math.max(1, Math.floor((scroller.current?.clientHeight ?? 460) / rowH) - 1);
+  const onRowKeyDown = (e: KeyboardEvent<HTMLDivElement>, index: number, toggle: () => void) => {
+    const moves: Record<string, number> = {
+      ArrowDown: index + 1,
+      ArrowUp: index - 1,
+      PageDown: index + pageRows(),
+      PageUp: index - pageRows(),
+      Home: 0,
+      End: rows.length - 1,
+    };
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      toggle();
+    } else if (e.key in moves) {
+      e.preventDefault();
+      focusRow(moves[e.key]);
+    }
+  };
 
   const openOrder = (order: OrderRow) => {
     originOrderIdRef.current = order.order_id;
@@ -235,7 +276,6 @@ function OrdersTableInner() {
         {selectedOrder && (
           <div
             ref={detailRef}
-            id={detailId}
             role="region"
             tabIndex={-1}
             aria-label={`Detalhes do pedido ${selectedOrder.order_id}`}
@@ -354,7 +394,7 @@ function OrdersTableInner() {
         )}
         <div ref={scroller} className="content-reveal relative h-[460px] min-w-0 overflow-auto rounded-tick border border-rule" role="region" aria-label="Tabela de pedidos" tabIndex={0}>
           <div style={{ width, minWidth: "100%" }} className="text-aux tabular-nums" role="grid" aria-label="Pedidos do recorte" aria-rowcount={total + 1}>
-            <div className="sticky top-0 z-20 flex border-b border-rule bg-sunken" role="row">
+            <div className="sticky top-0 z-20 flex border-b border-rule bg-sunken" role="row" aria-rowindex={1}>
               {table.getFlatHeaders().map((h) => {
                 const sortCol = isOrderSort(h.id) ? h.id : null;
                 const active = sort.id === h.id;
@@ -399,17 +439,14 @@ function OrdersTableInner() {
                   <div
                     key={row.id}
                     role="row"
-                    tabIndex={0}
+                    tabIndex={item.index === tabIndexRow ? 0 : -1}
                     data-order-id={row.original.order_id}
+                    data-row-index={item.index}
                     aria-selected={isSelected}
                     aria-rowindex={item.index + 2}
                     onClick={toggleRow}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        toggleRow();
-                      }
-                    }}
+                    onFocus={() => setActiveIndex(item.index)}
+                    onKeyDown={(e) => onRowKeyDown(e, item.index, toggleRow)}
                     className={`group/row absolute left-0 flex w-full cursor-pointer border-b border-rule/50 transition-colors duration-(--duration-quick) ${
                       isSelected ? "bg-sunken" : "hover:bg-sunken/60"
                     }`}
@@ -447,16 +484,17 @@ function OrdersTableInner() {
                 );
               })}
             </div>
-            {query.isFetchingNextPage && <p className="label px-2 py-2">Carregando mais pedidos…</p>}
-            {query.isFetchNextPageError && (
-              <div className="flex items-center gap-2 px-2 py-2 text-aux text-muted">
-                <span>Falha ao carregar mais pedidos.</span>
-                <button type="button" className="btn-ghost min-h-8 px-2 py-1 text-meta max-lg:min-h-11" onClick={() => query.fetchNextPage()}>
-                  Tentar de novo
-                </button>
-              </div>
-            )}
           </div>
+          {/* status da paginação fora da grade: role="grid" só aceita linhas e grupos de linhas */}
+          {query.isFetchingNextPage && <p className="label sticky left-0 px-2 py-2">Carregando mais pedidos…</p>}
+          {query.isFetchNextPageError && (
+            <div className="sticky left-0 flex items-center gap-2 px-2 py-2 text-aux text-muted">
+              <span>Falha ao carregar mais pedidos.</span>
+              <button type="button" className="btn-ghost min-h-8 px-2 py-1 text-meta max-lg:min-h-11" onClick={() => query.fetchNextPage()}>
+                Tentar de novo
+              </button>
+            </div>
+          )}
         </div>
       </AsyncBody>
     </PanelContent>
