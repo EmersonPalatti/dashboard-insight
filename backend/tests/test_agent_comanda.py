@@ -114,16 +114,28 @@ def test_chat_local_engine_returns_the_comanda(client):
     assert "SLA do recorte" in body["answer"]
 
 
+def _tool_call(name: str = "get_kpis", arguments: str = "{}", call_id: str = "c1"):
+    return SimpleNamespace(id=call_id, function=SimpleNamespace(name=name, arguments=arguments))
+
+
+def _has_tool_result(kwargs: dict) -> bool:
+    return any(m.get("role") == "tool" for m in kwargs.get("messages", ()))
+
+
 def test_local_engine_does_not_burn_the_llm_quota(client, monkeypatch):
     calls: list[int] = []
 
     class Completions:
         def create(self, *args, **kwargs):
-            calls.append(1)
-            msg = SimpleNamespace(
-                content="Resposta do modelo.\n\n**Ação:** Líder do hub deve revisar o SLA hoje.",
-                tool_calls=None,
-            )
+            if not _has_tool_result(kwargs):
+                calls.append(1)
+            if kwargs.get("tools") and not _has_tool_result(kwargs):
+                msg = SimpleNamespace(content=None, tool_calls=[_tool_call()])
+            else:
+                msg = SimpleNamespace(
+                    content="Resposta do modelo.\n\n**Ação:** Líder do hub deve revisar o SLA hoje.",
+                    tool_calls=None,
+                )
             return SimpleNamespace(choices=[SimpleNamespace(message=msg)])
 
     monkeypatch.setattr(
@@ -157,7 +169,10 @@ def test_local_engine_does_not_burn_the_llm_quota(client, monkeypatch):
 
 def _install(monkeypatch, content: str):
     def create(*_args, **kwargs):
-        msg = SimpleNamespace(content=content, tool_calls=None)
+        if kwargs.get("tools") and not _has_tool_result(kwargs):
+            msg = SimpleNamespace(content=None, tool_calls=[_tool_call()])
+        else:
+            msg = SimpleNamespace(content=content, tool_calls=None)
         return SimpleNamespace(choices=[SimpleNamespace(message=msg)])
 
     monkeypatch.setattr(
@@ -564,13 +579,13 @@ def test_llm_slots_full_answers_local_busy_fast(client, monkeypatch):
 def test_llm_slot_size_comes_from_settings():
     from app.agent import service
 
-    slots = service._llm_slots(SimpleNamespace(llm_max_concurrent=2))  # type: ignore[arg-type]
+    slots = service._llm_slots(Settings(llm_max_concurrent=2))
     assert slots.acquire(blocking=False) and slots.acquire(blocking=False)
     assert not slots.acquire(blocking=False)
     slots.release()
     slots.release()
-    default = service._llm_slots(SimpleNamespace())  # type: ignore[arg-type]
-    assert default is service._llm_slots(SimpleNamespace(llm_max_concurrent=service.LLM_MAX_CONCURRENT))  # type: ignore[arg-type]
+    default = service._llm_slots(Settings())
+    assert default is service._llm_slots(Settings(llm_max_concurrent=service.LLM_MAX_CONCURRENT))
 
 
 # A-22: o motivo da queda é o que de fato aconteceu.
@@ -622,3 +637,19 @@ def test_synthesis_skipped_near_deadline_is_timeout(repo, monkeypatch):
     out = service.chat(service.ChatRequest(question="por que o sla mudou?"), repo, settings)
     assert out.source == "local"
     assert out.fallback_reason == "timeout"
+
+
+def test_validate_drilldowns_matches_city_case_insensitively_and_returns_canonical_casing(repo):
+    canonical = str(repo.meta()["cities"][0]["value"])
+    drills = validate_drilldowns(
+        repo,
+        Filters(),
+        [
+            DrillDown(
+                label="Cidade",
+                filters={"city": [canonical.lower(), f"  {canonical.upper()}  ", "Cidade Inventada"]},
+            ),
+        ],
+    )
+    assert len(drills) == 1
+    assert drills[0].filters == {"city": [canonical]}

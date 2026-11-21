@@ -156,11 +156,15 @@ def _signature(tool: str, args: dict[str, Any]) -> str:
     return tool + ":" + json.dumps(args, sort_keys=True, ensure_ascii=False, separators=(",", ":"), default=str)
 
 
-def _run(state: InvestigationState, step: str, tool: str, args: dict[str, Any]) -> tuple[dict, Any, str]:
+def _is_error(result: Any) -> bool:
+    return isinstance(result, dict) and "erro" in result
+
+
+def _run(state: InvestigationState, step: str, tool: str, args: dict[str, Any]) -> tuple[dict, Any, str | None]:
     runner = llm.ToolRunner(state["repo"], state["filters"])
     result = runner.run(tool, args)
     entry = {"step": step, "tool": tool, "args": args, "result": _clean(result)}
-    label = runner.used[-1] if runner.used else tool
+    label = None if _is_error(result) else (runner.used[-1] if runner.used else tool)
     return entry, result, label
 
 
@@ -200,10 +204,11 @@ def _timed(name: str):
     return wrap
 
 
-def _add(state: InvestigationState, entries: list[tuple[dict, str]], trace: list[str]) -> dict[str, Any]:
+def _add(state: InvestigationState, entries: list[tuple[dict, str | None]], trace: list[str]) -> dict[str, Any]:
+    ok_labels = [label for e, label in entries if label and not _is_error(e.get("result"))]
     return {
         "evidence": [*state.get("evidence", []), *(e for e, _ in entries)],
-        "tools_used": [*state.get("tools_used", []), *(label for _, label in entries)],
+        "tools_used": [*state.get("tools_used", []), *ok_labels],
         "seen": [*state.get("seen", []), *(_signature(e["tool"], e["args"]) for e, _ in entries)],
         "trace": [*state.get("trace", []), *trace],
     }
@@ -443,7 +448,7 @@ def probe(state: InvestigationState) -> dict[str, Any]:
             "seen": [*state.get("seen", []), sig],
             "trace": [*state.get("trace", []), f"Consulta extra {tool} falhou; ignorada"],
         }
-    if isinstance(result, dict) and "erro" in result:
+    if _is_error(result):
         trace = [*state.get("trace", []), f"Consulta extra {tool} voltou erro: {llm._sanitize(str(result['erro']), 120)}"]
         return {**base, "seen": [*state.get("seen", []), sig], "trace": trace}
     return {**base, **_add(state, [(entry, label)], [f"Consulta extra: {tool}"])}

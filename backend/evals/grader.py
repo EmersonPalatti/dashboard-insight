@@ -8,12 +8,12 @@ quando nenhuma verificação de nível `error` fica abaixo de 1.
 from __future__ import annotations
 
 import re
-import unicodedata
 import weakref
 from dataclasses import dataclass, field
 from typing import Literal, get_args
 
 from app.filters import ChannelType, Filters, Modal, OrderStatus, Segment
+from app.fmt import fold_text
 from app.repository import Repository
 from app.schemas import ChatResponse
 
@@ -98,9 +98,8 @@ class CaseNotApplicable(Exception):
 
 # ----------------------------------------------------------------- texto
 def norm(text: str) -> str:
-    decomposed = unicodedata.normalize("NFD", (text or "").lower())
-    out = "".join(ch for ch in decomposed if unicodedata.category(ch) != "Mn")
-    return out.replace("−", "-").replace("–", "-").replace("—", "-")
+    # Além de fold_text, uniformiza traços tipográficos (pt-BR) para o corretor e preserva espaços nas pontas.
+    return fold_text(text).replace("−", "-").replace("–", "-").replace("—", "-")
 
 
 _FENCE = re.compile(r"```(?:leitura|json)?[^\n]*\n.*?```", re.DOTALL)
@@ -279,6 +278,7 @@ def en_us_hits(text: str) -> list[str]:
 
 
 # ----------------------------------------------------------------- entidades
+# Sem acento de propósito: compara contra texto já normalizado por norm(), diferente de fmt.WEEKDAYS (exibição).
 _WEEKDAYS = ("segunda", "terca", "quarta", "quinta", "sexta", "sabado", "domingo")
 
 

@@ -18,7 +18,6 @@ import json
 import logging
 import re
 import time
-import unicodedata
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeout
 from functools import lru_cache
@@ -33,6 +32,7 @@ from app.alerts import detect_alerts
 from app.analytics import DRILL_METRICS, drill_cause, explain_change
 from app.config import Settings
 from app.filters import Filters
+from app.fmt import WEEKDAYS, WEEKDAYS_SHORT, fold_text
 from app.repository import (
     ADDITIVE_METRICS,
     CANCEL_ABOVE_FLOOR,
@@ -78,8 +78,6 @@ _MAX_QM_METRICS = 6
 _MAX_ROWS = 15
 _MAX_ALERTS = 8
 
-WEEKDAYS = ("segunda", "terça", "quarta", "quinta", "sexta", "sábado", "domingo")
-WEEKDAYS_SHORT = ("seg", "ter", "qua", "qui", "sex", "sáb", "dom")
 _DISPLAY_LABELS = {**VALUE_LABELS, "freelance": "freelancer", "operator": "operador logístico"}
 _WINDOWS: dict[str, semantic.Concept] = {k: c for k, c in SEM.concepts.items() if c.hours or c.weekdays}
 
@@ -88,8 +86,7 @@ _WINDOWS: dict[str, semantic.Concept] = {k: c for k, c in SEM.concepts.items() i
 
 
 def _norm_text(text: str) -> str:
-    decomposed = unicodedata.normalize("NFD", str(text).lower().strip())
-    return "".join(ch for ch in decomposed if unicodedata.category(ch) != "Mn")
+    return fold_text(str(text)).strip()
 
 
 def _norm_key(text: Any) -> str:
@@ -251,18 +248,6 @@ def _key_cells(dim: str, key: Any, label: Any) -> list[Any]:
         cells.append(key)
     cells.append(_value_label(dim, key, label))
     return cells
-
-
-def _window_text(concept: semantic.Concept) -> str:
-    parts: list[str] = []
-    if concept.hours:
-        parts.append(f"{min(concept.hours)}h–{max(concept.hours) + 1}h")
-    if concept.weekdays:
-        days = sorted(concept.weekdays)
-        contiguous = len(days) > 2 and days == list(range(days[0], days[-1] + 1))
-        names = [WEEKDAYS_SHORT[d] for d in days]
-        parts.append(f"{names[0]}–{names[-1]}" if contiguous else "/".join(names))
-    return " ".join(parts)
 
 
 # ------------------------------------------------------------------ argumentos tolerantes
@@ -715,7 +700,10 @@ def _format_query(
     if where:
         out["where"] = where
     if windows:
-        out["janela"] = ", ".join(f"{_WINDOWS[w].label.lower()} ({_window_text(_WINDOWS[w])})" for w in windows)
+        out["janela"] = ", ".join(
+            f"{_WINDOWS[w].label.lower()} ({semantic.window_text(_WINDOWS[w].hours, _WINDOWS[w].weekdays)})"
+            for w in windows
+        )
     if compare:
         period = res.get("compare_period") or {}
         out["comparacao"] = _COMPARE_LABEL[compare] + (
@@ -1358,7 +1346,8 @@ def _terms_block(question: str) -> str:
             code = SEM.value_code(match.key, match.term)
             items.append(f"{term} → {match.key}" + (f" = {code}" if code is not None else ""))
         elif match.key in _WINDOWS:
-            items.append(f"{term} → window {match.key} ({_window_text(_WINDOWS[match.key])})")
+            win = _WINDOWS[match.key]
+            items.append(f"{term} → window {match.key} ({semantic.window_text(win.hours, win.weekdays)})")
         else:
             hint = _CONCEPT_HINTS.get(match.key)
             items.append(f"{term} → conceito {match.key}" + (f" ({hint})" if hint else ""))

@@ -69,6 +69,8 @@ class Settings(BaseSettings):
     # maior não trava o operador: a leitura por regras já está na tela e é substituída quando a
     # síntese chega. A síntese usa este prazo, não o teto por chamada (llm_timeout_s).
     investigation_budget_s: float = Field(default=35.0, gt=0, le=120)
+    # Teto de perguntas com LLM em voo ao mesmo tempo (cada uma segura uma thread do servidor).
+    llm_max_concurrent: int = Field(default=8, ge=1, le=64)
     chat_rate_limit_per_minute: int = 8
     # Teto de chamadas ao LLM por minuto, somando todos os IPs. 0 desliga.
     chat_global_rate_limit_per_minute: int = 60

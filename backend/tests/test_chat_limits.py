@@ -87,16 +87,28 @@ def test_chat_payload_validation_limits(client):
     assert r_history.status_code == 422
 
 
+def _tool_call(name: str = "get_kpis", arguments: str = "{}", call_id: str = "c1"):
+    return SimpleNamespace(id=call_id, function=SimpleNamespace(name=name, arguments=arguments))
+
+
+def _has_tool_result(kwargs: dict) -> bool:
+    return any(m.get("role") == "tool" for m in kwargs.get("messages", ()))
+
+
 def _fast_llm(monkeypatch, calls: list[int]):
-    """LLM falso que responde na hora e conta as chamadas."""
+    """LLM falso que consulta `get_kpis` e responde na hora e conta as perguntas que chegam ao modelo."""
 
     class Completions:
         def create(self, *args, **kwargs):
-            calls.append(1)
-            msg = SimpleNamespace(
-                content="Resposta do modelo.\n\n**Ação:** Líder do hub deve revisar o SLA hoje.",
-                tool_calls=None,
-            )
+            if not _has_tool_result(kwargs):
+                calls.append(1)
+            if kwargs.get("tools") and not _has_tool_result(kwargs):
+                msg = SimpleNamespace(content=None, tool_calls=[_tool_call()])
+            else:
+                msg = SimpleNamespace(
+                    content="Resposta do modelo.\n\n**Ação:** Líder do hub deve revisar o SLA hoje.",
+                    tool_calls=None,
+                )
             return SimpleNamespace(choices=[SimpleNamespace(message=msg)])
 
     monkeypatch.setattr(
@@ -245,28 +257,29 @@ def test_chat_slow_llm_returns_within_budget_with_local_mode(client, monkeypatch
 def test_chat_tool_call_id_none_and_malformed_json_handled(client, monkeypatch):
     test_settings = Settings(
         openrouter_api_key="test-key",
-        chat_budget_s=5.0,
-        llm_timeout_s=5.0,
+        chat_budget_s=10.0,
+        llm_timeout_s=10.0,
     )
     client.app.dependency_overrides[get_settings] = lambda: test_settings
 
-    # Simula chamada com call.id = None e arguments com JSON malformado
+    # Simula chamada com call.id = None e arguments com JSON malformado; o modelo se recupera na rodada seguinte.
     call_mock = SimpleNamespace(
         id=None,
         function=SimpleNamespace(name="get_kpis", arguments="{invalid_json"),
     )
     round1_msg = SimpleNamespace(content=None, tool_calls=[call_mock])
-    round1_choice = SimpleNamespace(message=round1_msg)
-    round1_response = SimpleNamespace(choices=[round1_choice])
+    round1_response = SimpleNamespace(choices=[SimpleNamespace(message=round1_msg)])
 
-    round2_msg = SimpleNamespace(
+    round2_msg = SimpleNamespace(content=None, tool_calls=[_tool_call(call_id="call_ok")])
+    round2_response = SimpleNamespace(choices=[SimpleNamespace(message=round2_msg)])
+
+    round3_msg = SimpleNamespace(
         content="Resposta final estruturada.\n\n**Ação:** Líder do hub deve revisar o SLA hoje.",
         tool_calls=None,
     )
-    round2_choice = SimpleNamespace(message=round2_msg)
-    round2_response = SimpleNamespace(choices=[round2_choice])
+    round3_response = SimpleNamespace(choices=[SimpleNamespace(message=round3_msg)])
 
-    mock_create = MagicMock(side_effect=[round1_response, round2_response])
+    mock_create = MagicMock(side_effect=[round1_response, round2_response, round3_response])
     mock_client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=mock_create)))
 
     monkeypatch.setattr("app.agent.llm._client", lambda settings, timeout=None: mock_client)
@@ -281,12 +294,13 @@ def test_chat_tool_call_id_none_and_malformed_json_handled(client, monkeypatch):
         body = res.json()
         assert body["mode"] == "llm-tools"
         assert body["answer"] == "Resposta final estruturada.\n\n**Ação:** Líder do hub deve revisar o SLA hoje."
-        # Verifica que o mock_create foi chamado 2 vezes (round 0 e round 1)
-        assert mock_create.call_count == 2
-        # Verifica que na 2ª chamada o message da tool tinha tool_call_id gerado (ex: "call_0_0")
+        # Verifica que o mock_create foi chamado 3 vezes (round 0 erro JSON, round 1 consulta válida, round 2 síntese).
+        assert mock_create.call_count == 3
+        # Verifica que na 2ª chamada o message da tool tinha tool_call_id gerado (ex: "call_0_0") e erro de JSON.
         call2_messages = mock_create.call_args_list[1].kwargs["messages"]
         tool_msg = next(m for m in call2_messages if m.get("role") == "tool")
         assert tool_msg["tool_call_id"] == "call_0_0"
+        assert "JSON inválido" in tool_msg["content"]
     finally:
         client.app.dependency_overrides.pop(get_settings, None)
 
@@ -519,10 +533,13 @@ def test_llm_strips_think_block_passes_max_tokens_and_handles_empty_choices(clie
 
     def create_with_think(*_args, **kwargs):
         captured.append(kwargs)
-        msg = SimpleNamespace(
-            content="<think>raciocinio</think> Resposta final.\n\n**Ação:** Líder do hub deve revisar o SLA hoje.",
-            tool_calls=None,
-        )
+        if kwargs.get("tools") and not _has_tool_result(kwargs):
+            msg = SimpleNamespace(content=None, tool_calls=[_tool_call()])
+        else:
+            msg = SimpleNamespace(
+                content="<think>raciocinio</think> Resposta final.\n\n**Ação:** Líder do hub deve revisar o SLA hoje.",
+                tool_calls=None,
+            )
         return SimpleNamespace(choices=[SimpleNamespace(message=msg)])
 
     _install_llm(monkeypatch, create_with_think)
@@ -684,6 +701,9 @@ def test_provider_429_is_retried_once_and_recovers(client, monkeypatch):
         calls.append(kwargs)
         if len(calls) == 1:
             raise _rate_limit("Error code: 429 - Provider returned error")
+        if kwargs.get("tools") and not _has_tool_result(kwargs):
+            msg = SimpleNamespace(content=None, tool_calls=[_tool_call()])
+            return SimpleNamespace(choices=[SimpleNamespace(message=msg, finish_reason="tool_calls")], usage=None)
         msg = SimpleNamespace(content="SLA em 80,0%.\n\n**Ação:** Líder do hub revisa o SLA hoje.", tool_calls=None)
         return SimpleNamespace(choices=[SimpleNamespace(message=msg, finish_reason="stop")], usage=None)
 
@@ -693,9 +713,11 @@ def test_provider_429_is_retried_once_and_recovers(client, monkeypatch):
     )
     try:
         body = client.post("/api/agent/chat", json={"question": "como esta o sla?"}).json()
+        assert body["mode"] == "llm-tools"
         assert body["source"] == "llm"
         assert body["fallback_reason"] is None
-        assert len(calls) == 2
+        assert len(calls) == 3  # 429 + nova tentativa pedindo tool + resposta final
+        assert all("tools" in c for c in calls)
     finally:
         client.app.dependency_overrides.pop(get_settings, None)
 
@@ -755,6 +777,8 @@ def test_no_fallback_models_by_default():
         {"investigation_budget_s": 0},
         {"llm_max_tokens": 0},
         {"investigation_synth_max_tokens": 50},
+        {"llm_max_concurrent": 0},
+        {"llm_max_concurrent": 65},
     ],
 )
 def test_settings_reject_out_of_range_budgets(overrides):
@@ -764,8 +788,15 @@ def test_settings_reject_out_of_range_budgets(overrides):
 
 
 def test_settings_accept_the_edges():
-    s = Settings(investigation_max_probes=5, chat_budget_s=120, llm_max_tokens=100, investigation_budget_s=0.1)
-    assert (s.investigation_max_probes, s.chat_budget_s, s.llm_max_tokens) == (5, 120, 100)
+    s = Settings(
+        investigation_max_probes=5,
+        chat_budget_s=120,
+        llm_max_tokens=100,
+        investigation_budget_s=0.1,
+        llm_max_concurrent=64,
+    )
+    assert (s.investigation_max_probes, s.chat_budget_s, s.llm_max_tokens, s.llm_max_concurrent) == (5, 120, 100, 64)
+    assert Settings(llm_max_concurrent=1).llm_max_concurrent == 1
 
 
 # ------------------------------------------------------------ SlidingWindowLimiter

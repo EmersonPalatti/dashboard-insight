@@ -34,7 +34,7 @@ _DEADLINE_SLACK_S = 0.6
 # Perguntas com LLM em voo ao mesmo tempo. Cada uma segura uma thread do servidor pelo prazo inteiro
 # (até 35 s na investigação); sem teto, uma rajada lenta ocupa o pool e trava /api/health e os KPIs.
 # Sem vaga, a pergunta sai na hora com a leitura local e `fallback_reason="busy"`.
-LLM_MAX_CONCURRENT = 8
+LLM_MAX_CONCURRENT: int = Settings.model_fields["llm_max_concurrent"].default
 _BUSY_WAIT_S = 0.05
 _slots_lock = threading.Lock()
 _slots: dict[int, threading.BoundedSemaphore] = {}
@@ -101,7 +101,7 @@ def _acceptable(text: str | None) -> bool:
 
 
 def _llm_slots(settings: Settings) -> threading.BoundedSemaphore:
-    size = max(1, int(getattr(settings, "llm_max_concurrent", LLM_MAX_CONCURRENT) or LLM_MAX_CONCURRENT))
+    size = max(1, settings.llm_max_concurrent)
     with _slots_lock:
         if size not in _slots:
             _slots[size] = threading.BoundedSemaphore(size)

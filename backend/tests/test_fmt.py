@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.fmt import brl, decimal, integer, km, minutes, pct, pp
+from app.fmt import WEEKDAYS, WEEKDAYS_SHORT, brl, decimal, fold_text, integer, km, minutes, pct, pp
 
 
 def test_brl_groups_thousands_and_uses_comma():
@@ -76,3 +76,11 @@ def test_non_finite_values_return_dash(bad: float):
 
 def test_pct_overflow_on_huge_float_returns_dash():
     assert pct(1e308) == "—"
+
+
+def test_weekdays_and_fold_text():
+    assert len(WEEKDAYS) == 7 and WEEKDAYS[0] == "segunda" and WEEKDAYS[5] == "sábado"
+    assert len(WEEKDAYS_SHORT) == 7 and WEEKDAYS_SHORT[0] == "seg" and WEEKDAYS_SHORT[5] == "sáb"
+    assert fold_text("São Paulo — Ação 100%") == "sao paulo — acao 100%"
+    assert fold_text("  SÁBADO  ") == "  sabado  "
+    assert fold_text(None) == ""

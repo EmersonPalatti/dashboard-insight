@@ -295,6 +295,11 @@ def _keep(key: str, value: object, known: dict[str, set]) -> str | int | None:
         return None
     if key == "status" and text not in _literal_values(OrderStatus):
         return None
+    if key == "city":
+        if text in known["city"]:
+            return text
+        folded = text.casefold()
+        return next((c for c in known["city"] if isinstance(c, str) and c.casefold() == folded), None)
     if text not in known[key]:
         return None
     return text

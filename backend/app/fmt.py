@@ -3,8 +3,18 @@
 from __future__ import annotations
 
 import math
+import unicodedata
 from decimal import ROUND_HALF_UP, Decimal
 from typing import TypeGuard
+
+WEEKDAYS: tuple[str, ...] = ("segunda", "terça", "quarta", "quinta", "sexta", "sábado", "domingo")
+WEEKDAYS_SHORT: tuple[str, ...] = ("seg", "ter", "qua", "qui", "sex", "sáb", "dom")
+
+
+def fold_text(text: str | None) -> str:
+    """Minúsculas sem acento (NFD), mantendo espaços e sinais."""
+    decomposed = unicodedata.normalize("NFD", (text or "").lower())
+    return "".join(ch for ch in decomposed if unicodedata.category(ch) != "Mn")
 
 
 def _br(text: str) -> str:

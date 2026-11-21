@@ -9,13 +9,14 @@ from __future__ import annotations
 
 import re
 import tomllib
-import unicodedata
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
 from app.config import Settings, get_settings
+from app.fmt import WEEKDAYS_SHORT, fold_text
 
 SOURCE = Path(__file__).with_name("semantic.toml")
 
@@ -23,7 +24,6 @@ UNITS = {"pct": "%", "brl": "R$", "min": "min", "km": "km", "count": "nº"}
 KINDS = {"rate", "median", "quantile", "avg", "count", "sum"}
 BETTER = {"up": "↑", "down": "↓"}
 BASES = ("orders", "delivered", "measured", "valid", "priced", "sale")
-WEEKDAY_SHORT = ("seg", "ter", "qua", "qui", "sex", "sáb", "dom")
 PROMPT_LIMIT = 6000
 # Prazos de SLA saem de Settings (SLA_FOOD_MIN / SLA_GOOD_MIN): o TOML escreve `{sla_food_min}`.
 SLA_PLACEHOLDERS = ("sla_food_min", "sla_good_min")
@@ -94,11 +94,6 @@ class Match:
 # ------------------------------------------------------------------ normalização
 
 
-def _fold(text: str) -> str:
-    decomposed = unicodedata.normalize("NFD", text.lower())
-    return "".join(ch for ch in decomposed if unicodedata.category(ch) != "Mn")
-
-
 def _stem(word: str) -> str:
     """Plural simples do português, igual nos dois lados: 'lojas' = 'loja', 'canais' = 'canal'."""
     if len(word) <= 3:
@@ -116,7 +111,7 @@ def _stem(word: str) -> str:
 
 def _tokens(text: str) -> tuple[str, ...]:
     # `_` separa palavra: a chave `sla_rate` vira a frase "sla rate".
-    return tuple(_stem(w) for w in re.findall(r"[a-z0-9]+", _fold(text)))
+    return tuple(_stem(w) for w in re.findall(r"[a-z0-9]+", fold_text(text)))
 
 
 # ------------------------------------------------------------------ camada
@@ -213,7 +208,7 @@ class SemanticLayer:
             if c not in windows:
                 lines.append(f"- {c.label}: {c.definition}")
         if windows:
-            lines.append("- Janelas: " + " · ".join(f"{c.label.lower()} {_window_text(c)}" for c in windows) + ".")
+            lines.append("- Janelas: " + " · ".join(f"{c.label.lower()} {window_text(c.hours, c.weekdays)}" for c in windows) + ".")
         lines.append("Mapa causal (efeito ← checar, em ordem | onde concentra):")
         for link in self.causal.values():
             drivers = ", ".join(link.drivers) or "—"
@@ -234,15 +229,16 @@ def _dimension_text(dim: Dimension) -> str:
     return f"{dim.key} ({detail})" if detail else dim.key
 
 
-def _window_text(concept: Concept) -> str:
+def window_text(hours: Sequence[int] = (), weekdays: Sequence[int] = ()) -> str:
+    """Descrição compacta de janela de tempo (ex.: '18h–22h', 'sáb/dom', 'seg–sex') para prompt e tools."""
     parts: list[str] = []
-    if concept.hours:
-        parts.append(f"{min(concept.hours)}h–{max(concept.hours) + 1}h")
-    if concept.weekdays:
-        days = sorted(concept.weekdays)
-        contiguous = days == list(range(days[0], days[-1] + 1))
-        names = [WEEKDAY_SHORT[d] for d in days]
-        parts.append(f"{names[0]}–{names[-1]}" if contiguous and len(days) > 2 else "/".join(names))
+    if hours:
+        parts.append(f"{min(hours)}h–{max(hours) + 1}h")
+    if weekdays:
+        days = sorted(weekdays)
+        contiguous = len(days) > 2 and days == list(range(days[0], days[-1] + 1))
+        names = [WEEKDAYS_SHORT[d] for d in days]
+        parts.append(f"{names[0]}–{names[-1]}" if contiguous else "/".join(names))
     return " ".join(parts)
 
 

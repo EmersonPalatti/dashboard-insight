@@ -311,3 +311,12 @@ def test_invalid_toml_syntax_raises():
 
 def test_source_builds_without_mutation(raw):
     assert semantic._build(copy.deepcopy(raw)).metrics.keys() == semantic.load().metrics.keys()
+
+
+def test_window_text_formats_hours_and_weekdays():
+    assert semantic.window_text((18, 19, 20, 21)) == "18h–22h"
+    assert semantic.window_text((0, 1, 2, 3, 4, 5)) == "0h–6h"
+    assert semantic.window_text(weekdays=(5, 6)) == "sáb/dom"
+    assert semantic.window_text(weekdays=(0, 1, 2, 3, 4)) == "seg–sex"
+    assert semantic.window_text(weekdays=(4, 0, 2)) == "seg/qua/sex"
+    assert semantic.window_text((18, 19, 20, 21), (4,)) == "18h–22h sex"

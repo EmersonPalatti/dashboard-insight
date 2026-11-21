@@ -448,3 +448,40 @@ def test_probe_exception_is_ignored_and_synthesis_still_runs(repo, monkeypatch):
     assert state["probes"] == 1
     assert len(state["evidence"]) == 4
     assert any("falhou; ignorada" in step for step in state["trace"])
+
+
+def test_failed_probe_is_not_recorded_in_tools_used(repo, monkeypatch):
+    seen: list[dict] = []
+    bad_probe = {
+        "done": False,
+        "hypothesis": "métrica inválida",
+        "next": {"tool": "query_metrics", "args": {"metrics": ["nps"]}},
+    }
+    _install(monkeypatch, [_resp(json.dumps(bad_probe)), _resp(DONE), _resp(FINAL)], seen)
+    state = inv.run_graph(WHY_SLA, [], repo, MAR, _settings(investigation_max_probes=2), deadline=_far())
+    assert state["answer"] == FINAL
+    assert state["probes"] == 1
+    assert len(state["evidence"]) == 4
+    assert state["tools_used"] == [
+        "get_kpis", "explain_change(sla_rate:hub)", "explain_change(sla_rate:store)", "drill_cause(sla_rate)",
+    ]
+    assert any("voltou erro" in step for step in state["trace"])
+    assert any(s.startswith("query_metrics:") for s in state["seen"])
+
+
+def test_add_skips_error_results_in_tools_used(repo):
+    err_entry, _, err_label = inv._run(
+        {"repo": repo, "filters": MAR}, "decompose", "query_metrics", {"metrics": ["nps"]},
+    )
+    ok_entry, _, ok_label = inv._run({"repo": repo, "filters": MAR}, "frame", "get_kpis", {})
+    assert err_label is None
+    assert ok_label == "get_kpis"
+
+    update = inv._add(
+        {"evidence": [], "tools_used": [], "seen": [], "trace": []},
+        [(err_entry, err_label), (ok_entry, ok_label), ({"step": "x", "tool": "explain_change", "args": {}, "result": {"erro": "sem comparação"}}, "explain_change")],
+        ["nota"],
+    )
+    assert len(update["evidence"]) == 3
+    assert update["tools_used"] == ["get_kpis"]
+    assert len(update["seen"]) == 3

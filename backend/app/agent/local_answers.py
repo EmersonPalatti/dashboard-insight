@@ -16,6 +16,7 @@ from app.agent.local_intent import Entity, Intent, Window
 from app.alerts import BROKEN_CANCEL, HUB_MIN, STAGES, STORE_MIN, _period_can_widen, detect_alerts
 from app.analytics import OTHERS_LABEL, drill_cause, explain_change
 from app.filters import Filters
+from app.fmt import WEEKDAYS
 from app.repository import (
     CANCEL_ABOVE_FLOOR,
     CANCEL_ABOVE_RATIO,
@@ -26,7 +27,6 @@ from app.repository import (
 )
 from app.schemas import DrillDown
 
-WEEKDAYS = ["segunda", "terça", "quarta", "quinta", "sexta", "sábado", "domingo"]
 # Dimensões que viram filtro do painel (atalho "Ver só").
 FILTER_KEYS = {"city", "hub", "store", "segment", "channel_type", "modal"}
 # Onde dá para cobrar alguém pelo "por que mudou". Hora e dia da semana são sazonalidade.
@@ -655,6 +655,7 @@ def by_dimension(repo: Repository, f: Filters, metric: str, dim: str, intent: In
 
 
 def _fold(value):
+    # Só casefold (mantém acento e int intactos) para casar com lower(city) do SQL; não usar fmt.fold_text.
     return value.casefold() if isinstance(value, str) else value
 
 
@@ -1065,6 +1066,7 @@ def _where(w: Window) -> dict:
 
 
 def _window_text(w: Window) -> str:
+    # Prosa do operador (hora com 2 dígitos para casar com Window.label, dias por extenso e ' · '), diferente de semantic.window_text.
     parts = []
     if w.hours:
         parts.append(f"{min(w.hours):02d}h–{max(w.hours) + 1:02d}h")

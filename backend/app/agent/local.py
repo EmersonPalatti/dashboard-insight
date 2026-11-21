@@ -9,7 +9,6 @@ pedido → métrica sozinha → pergunta anterior do histórico → briefing.
 from __future__ import annotations
 
 import re
-import unicodedata
 
 from app import fmt
 from app.agent import local_answers as la
@@ -37,16 +36,10 @@ _SLOW_TRANSIT_MIN = 25
 _STUCK_MIN_DELIVERED = 50
 
 SEVERITY = {"high": "Crítico", "medium": "Atenção", "low": "Observar"}
-WEEKDAYS = ["segunda", "terça", "quarta", "quinta", "sexta", "sábado", "domingo"]
 SUGGESTIONS = (
     "Tente perguntar: \"quais os alertas?\", \"onde está o gargalo?\", \"quais lojas cancelam mais?\", "
     "\"como está o pico do jantar?\", \"quanto estamos subsidiando de frete?\"."
 )
-
-
-def _norm(text: str) -> str:
-    decomposed = unicodedata.normalize("NFD", text.lower().strip())
-    return "".join(ch for ch in decomposed if unicodedata.category(ch) != "Mn")
 
 
 def _only_canceled(f: Filters) -> bool:
@@ -595,7 +588,7 @@ def _peak(repo: Repository, f: Filters, window=None) -> str:
         )
         worst = min(inside, key=lambda h: h["sla_rate"], default=worst)
     if days:
-        lines.append(f"Dia mais forte: {WEEKDAYS[int(days[0]['key'])]} ({fmt.integer(days[0]['orders'])} pedidos).")
+        lines.append(f"Dia mais forte: {fmt.WEEKDAYS[int(days[0]['key'])]} ({fmt.integer(days[0]['orders'])} pedidos).")
     if worst:
         lines += ["", f"**Ação:** Time de frota deve escalar entregadores 30 min antes das {int(worst['key']):02d}h no dia mais forte."]
     else:
@@ -911,7 +904,7 @@ _BRIEFING_PATTERNS = ("resumo", "briefing", "visao geral", "panorama", "como est
 
 
 def _route(question: str):
-    words = _words(_norm(question))
+    words = _words(fmt.fold_text(question))
     handler = _best_handler(words, _INTENT_ROUTES)
     if handler is not None:
         return handler
