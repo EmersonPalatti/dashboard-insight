@@ -40,11 +40,12 @@ número), então a base encolhe na mesma medida.
 | 48   | 4   | 03/03        | 150 no prazo                                              | contrapeso do piso de 6%   |
 | 29   | 2   | 04/03        | 120 entregas com frete R$ 2 e custo R$ 12 (< STORE_MIN)   | custo-frete sem loja com base para nomear (com 33 ou 48) |
 | 23   | 2   | 04/03        | 90 presos + 210 atrasados (30% preso, no teto)            | sla-hub com preso igual a STUCK_HUB_MAX (com 14) |
+| 50   | 4   | 06/03        | 100 entregas, só 1 com frete e custo (subsídio R$ 10)      | custo-frete com amostra pequena de frete |
 
 Os cenários novos ficam em 03/03 e 04/03 para não mexer na janela de volume (18–31/03) nem na data máxima.
 Amostra fina de frete: a loja 45 num dia só (02/03, 6 entregas) fica abaixo de MIN_MEASURED.
 
-Ambiente: `_isolate_settings_env` tira o .env e as variáveis do shell do caminho de `Settings()`,
+Ambiente: `pytest_configure` (antes da coleta) tira o .env e as variáveis do shell do caminho de `Settings()`,
 para que um AUTOMATION_TOKEN ou OPENROUTER_* do desenvolvedor não mude o resultado da suíte.
 """
 
@@ -144,10 +145,11 @@ def _order(
     status: str = "delivered",
     cycle: float = ON_TIME,
     stages: tuple[float, float, float, float] = LONG_STAGES,
-    fee: float = 9.9,
-    cost: float = 8.0,
+    fee: float | None = 9.9,
+    cost: float | None = 8.0,
+    hub: int | None = None,
 ) -> dict:
-    hub = store // 10
+    hub = hub or store // 10
     hub_name, city, state, segment = HUB_INFO[hub]
     production, collected, expedition, transit = stages
     return {
@@ -305,6 +307,11 @@ def _planted_rows() -> list[dict]:
     for k in range(210):
         add(_order(23, on_day4(210 + k), cycle=LATE))
 
+    # 50 (hub 4; as lojas x3..x9 já estão tomadas): 100 entregas em 06/03, só 1 com frete e custo
+    # (R$ 5 e R$ 15). O subsídio sai dessa uma.
+    for k in range(100):
+        add(_order(50, at(6, 9 + k % 12, (k * 7) % 60), fee=5.0, cost=15.0 if k == 0 else None, hub=4))
+
     return rows
 
 
@@ -335,23 +342,42 @@ def parquet_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
     return path
 
 
-@pytest.fixture(scope="session", autouse=True)
-def _isolate_settings_env():
+_SETTINGS_ENV = pytest.MonkeyPatch()
+
+
+def _clear_settings_caches() -> None:
+    from app import semantic
+    from app.config import get_settings
+
+    get_settings.cache_clear()
+    semantic.load.cache_clear()
+
+
+def pytest_configure(config: pytest.Config) -> None:
     """Impede que o .env local ou variáveis do shell vazem para Settings() nos testes.
 
-    Sem isso, um AUTOMATION_TOKEN no .env do desenvolvedor derruba os testes de /api/briefing (401),
-    e OPENROUTER_FALLBACK_MODELS ou INVESTIGATION_MAX_PROBES mudam o caminho do agente.
+    Roda antes da coleta: `app.main` (`app = create_app()`) e `app.agent.llm` (`SEM`, `SYSTEM_PROMPT`)
+    chamam `get_settings()` na importação, então uma fixture de sessão chegaria tarde. Sem isso, um
+    AUTOMATION_TOKEN no .env derruba os testes de /api/briefing (401), SLA_FOOD_MIN muda o prompt e a
+    camada semântica, e INVESTIGATION_MAX_PROBES=10 derruba a coleta com ValidationError.
     """
-    from app.config import Settings, get_settings
+    from app.config import Settings
 
-    mp = pytest.MonkeyPatch()
-    mp.setitem(Settings.model_config, "env_file", None)
+    _SETTINGS_ENV.setitem(Settings.model_config, "env_file", None)
     for name in Settings.model_fields:
-        mp.delenv(name.upper(), raising=False)
-    get_settings.cache_clear()
-    yield mp
-    mp.undo()
-    get_settings.cache_clear()
+        _SETTINGS_ENV.delenv(name.upper(), raising=False)
+    _clear_settings_caches()
+
+
+def pytest_unconfigure(config: pytest.Config) -> None:
+    _SETTINGS_ENV.undo()
+    _clear_settings_caches()
+
+
+@pytest.fixture(scope="session")
+def _isolate_settings_env():
+    """O MonkeyPatch do isolamento (pytest_configure), para fixtures que precisam ajustar o ambiente."""
+    return _SETTINGS_ENV
 
 
 @pytest.fixture(scope="session")

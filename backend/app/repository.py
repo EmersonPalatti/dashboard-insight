@@ -450,7 +450,10 @@ class Repository:
         start, end = self.period(f)
         parts = [f"{start:%d/%m/%Y} a {end:%d/%m/%Y}"]
         if f.city:
-            parts.append("cidade " + ", ".join(f.city))
+            # Mesma grafia dos dados e sem repetir cidade que só muda de caixa (o filtro já ignora a caixa).
+            canonical = {str(c["value"]).lower(): str(c["label"]) for c in self.meta()["cities"]}
+            city_labels = dict.fromkeys(canonical.get(c.lower(), c) for c in f.city)
+            parts.append("cidade " + ", ".join(city_labels))
         if f.hub:
             hub_labels = self.names("hub", f.hub) or [str(i) for i in dict.fromkeys(f.hub)]
             parts.append("hub " + ", ".join(hub_labels))
@@ -476,6 +479,15 @@ class Repository:
             return self._rows(f"select {METRICS_SQL} from orders where {where}", params)[0]
 
         return self.cached("metrics:" + f.cache_key(), build)
+
+    def priced_count(self, f: Filters) -> int:
+        """Entregas com frete e custo: a base de fee_avg, cost_avg e subsidy (fora do contrato da API)."""
+
+        def build() -> int:
+            where, params = f.where()
+            return self._rows(f"select count(*)::int as n from orders where {_PRICED} and {where}", params)[0]["n"]
+
+        return self.cached("priced:" + f.cache_key(), build)
 
     def period(self, f: Filters) -> tuple[date, date]:
         if f.start is not None and f.end is not None:

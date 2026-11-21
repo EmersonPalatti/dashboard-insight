@@ -1,6 +1,6 @@
 """Uma fatia plantada por regra de alerta, com o contraponto saudável, mais os casos de auditoria.
 
-As fatias estão descritas na tabela do conftest.py. Lojas 13..49 são as plantadas em março.
+As fatias estão descritas na tabela do conftest.py. Lojas 13..50 são as plantadas em março.
 """
 
 from __future__ import annotations
@@ -14,6 +14,7 @@ from app.alerts import (
     STORE_MIN,
     STUCK_HUB_MAX,
     THIN_FREIGHT_ACTION,
+    THIN_FREIGHT_ACTION_CLOSED,
     THIN_SLA_ACTION,
     _biggest_drop,
     _hours_label,
@@ -457,11 +458,29 @@ def test_thin_freight_slice_asks_to_widen_before_calling(repo):
     assert 0 < base["delivered"] < MIN_MEASURED
     alert = _by_id(repo, f)["custo-frete"]
     assert alert.severity == "low"
-    assert f"amostra pequena ({base['delivered']} entregas)" in alert.detail
+    assert f"amostra pequena ({base['delivered']} entregas com frete e custo)" in alert.detail
     assert alert.action == THIN_FREIGHT_ACTION
     assert "Loja 45" not in alert.action
     # Com base, a mesma loja continua nomeada.
     assert "Loja 45" in _by_id(repo, Filters(store=[45]))["custo-frete"].action
+
+
+@pytest.mark.parametrize(
+    ("f", "action"),
+    [
+        (Filters(store=[50], start=date(2021, 3, 6), end=date(2021, 3, 6)), THIN_FREIGHT_ACTION),
+        (Filters(store=[50]), THIN_FREIGHT_ACTION_CLOSED),  # já cobre todo o período: não dá para ampliar
+    ],
+)
+def test_freight_floor_counts_priced_deliveries_not_all_deliveries(repo, f, action):
+    # Loja 50: 100 entregas (no piso), mas só 1 com frete e custo. O subsídio sai dessa uma entrega.
+    base = repo.metrics(f)
+    assert base["delivered"] >= MIN_MEASURED
+    assert repo.priced_count(f) == 1
+    alert = _by_id(repo, f)["custo-frete"]
+    assert "amostra pequena (1 entregas com frete e custo)" in alert.detail
+    assert alert.action == action
+    assert "Ligar esta semana" not in alert.action
 
 
 class _DropRepo:

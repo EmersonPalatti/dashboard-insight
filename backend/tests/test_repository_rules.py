@@ -333,6 +333,28 @@ def test_describe_falls_back_to_ids_when_unknown(repo):
     assert many.endswith("loja 5 lojas")
 
 
+def test_describe_city_uses_the_data_casing_and_dedupes_by_case(repo):
+    # O filtro de cidade ignora a caixa; o rótulo do recorte segue a grafia dos dados, sem repetir.
+    city = repo.meta()["cities"][0]["label"]
+    assert repo.describe(Filters(city=[city.lower()])).endswith(f"cidade {city}")
+    assert repo.describe(Filters(city=[city.lower(), city, city.upper()])).endswith(f"cidade {city}")
+    assert repo.describe(Filters(city=["Cidade Fora"])).endswith("cidade Cidade Fora")
+
+
+def test_priced_count_is_the_base_of_the_freight_metrics(repo, parquet_path: Path):
+    # Loja 50: 100 entregas, 1 com frete e custo. fee_avg, cost_avg e subsidy saem dessa uma.
+    f = Filters(store=[50])
+    base = repo.metrics(f)
+    assert base["delivered"] == 100
+    assert repo.priced_count(f) == 1
+    assert (base["fee_avg"], base["cost_avg"], base["subsidy"]) == (5.0, 15.0, 10.0)
+    expected = duckdb.execute(
+        f"select count(*) from read_parquet('{parquet_path.as_posix()}') "
+        "where status = 'delivered' and delivery_fee is not null and delivery_cost is not null"
+    ).fetchone()[0]
+    assert repo.priced_count(Filters()) == expected
+
+
 def test_breakdown_tie_breaker_is_deterministic_and_preserves_winners(tmp_path: Path):
     path = tmp_path / "ties.parquet"
     con = duckdb.connect()

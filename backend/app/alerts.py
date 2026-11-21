@@ -675,8 +675,10 @@ def _detect(repo: Repository, f: Filters) -> list[Alert]:
     # 7. Subsídio de frete --------------------------------------------------
     subsidy = base["subsidy"]
     if subsidy is not None and subsidy >= SUBSIDY_WARN:
-        # Mesmo piso do SLA e do cancelamento, sobre as entregas (o subsídio só existe nelas).
-        thin_freight = base["delivered"] < MIN_MEASURED
+        # Mesmo piso do SLA e do cancelamento, sobre a base do subsídio: entregas com frete e custo.
+        priced = repo.priced_count(f)
+        thin_freight = priced < MIN_MEASURED
+        thin_note = f" Recorte com amostra pequena ({fmt.integer(priced)} entregas com frete e custo)."
         thin_freight_action = THIN_FREIGHT_ACTION if can_widen else THIN_FREIGHT_ACTION_CLOSED
         alerts.append(Alert(
             id="custo-frete",
@@ -688,7 +690,7 @@ def _detect(repo: Repository, f: Filters) -> list[Alert]:
             detail=(
                 f"Cada entrega custa {fmt.brl(base['cost_avg'])} e cobra {fmt.brl(base['fee_avg'])} de frete: "
                 f"{fmt.brl(subsidy)} de subsídio por pedido."
-                + (f" Recorte com amostra pequena ({base['delivered']} entregas)." if thin_freight else "")
+                + (thin_note if thin_freight else "")
             ),
             action=thin_freight_action if thin_freight else _freight_action(repo, f, base),
             evidence=Evidence(view="kpi", kpi="ticket"),
