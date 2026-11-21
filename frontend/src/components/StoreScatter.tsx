@@ -1,8 +1,9 @@
+import { useStore } from "@nanostores/react";
 import { Filter, SquareDashedMousePointer, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { BreakdownRow } from "@/lib/api/client";
 import { EVIDENCE_DIM } from "@/lib/evidence";
-import { LIST_CAP, patchFilters } from "@/lib/filters";
+import { $filters, applyDrilldown, LIST_CAP } from "@/lib/filters";
 import { fmt } from "@/lib/format";
 import { STORE_NAMES_HINT } from "@/lib/glossary";
 import { island, useRecorteQuery } from "@/lib/query";
@@ -10,7 +11,7 @@ import { ScatterChart } from "echarts/charts";
 import { BrushComponent, ToolboxComponent } from "echarts/components";
 import * as echarts from "echarts/core";
 import { ChartAccess, openStoreRanking } from "./charts/ChartAccess";
-import { EChart, type ECInstance, type Tokens } from "./charts/EChart";
+import { EChart, escapeHtml, type ECInstance, type Tokens } from "./charts/EChart";
 import { AskAgentButton } from "./ui/AskAgentButton";
 import { EvidenceTag, useEvidence } from "./ui/EvidenceTag";
 import { AsyncBody, Empty, panelFallback, PanelContent, Segmented } from "./ui/Panel";
@@ -34,10 +35,13 @@ const ASK_BY_Y: Record<Y, string> = {
   sla_rate: "Quais lojas estão mais atrasadas neste recorte e o que fazer?",
 };
 
+type BrushSelectedEvent = { batch?: { selected?: { dataIndex?: number[] }[] }[] };
+
 function StoreScatterInner() {
   const [y, setY] = useState<Y>("cancel_rate");
   const [picked, setPicked] = useState<BreakdownRow[]>([]);
   const [brushing, setBrushing] = useState(false);
+  const filters = useStore($filters);
   const chartRef = useRef<ECInstance | null>(null);
   const { data, error, isPending, refetch, isPlaceholderData, waking, down } = useRecorteQuery("/api/breakdown", {
     by: "store",
@@ -47,6 +51,19 @@ function StoreScatterInner() {
   });
   const rows = useMemo(() => (data?.rows ?? []).filter((r) => r[y] !== null), [data, y]);
 
+  const clearBrush = useCallback(() => {
+    setPicked((prev) => (prev.length ? [] : prev));
+    setBrushing(false);
+    chartRef.current?.dispatchAction({ type: "brush", areas: [] });
+    chartRef.current?.dispatchAction({ type: "takeGlobalCursor", key: "brush", brushOption: false });
+  }, []);
+
+  // A seleção pertence ao recorte e aos pontos na tela: recorte novo (ou dados novos dele) a descarta,
+  // para "Filtrar estas lojas" nunca aplicar lojas de outro recorte.
+  useEffect(() => {
+    clearBrush();
+  }, [filters, data, clearBrush]);
+
   // comanda aberta que aponta para lojas: o eixo vai para a métrica dela, as lojas ficam cheias e o resto recua
   const focus = useEvidence("scatter");
   const focusMetric = focus?.evidence.metric;
@@ -54,10 +71,9 @@ function StoreScatterInner() {
   useEffect(() => {
     if (focusMetric && focusMetric !== "orders") {
       setY(focusMetric);
-      setPicked([]);
-      setBrushing(false);
+      clearBrush();
     }
-  }, [focusId, focusMetric]);
+  }, [focusId, focusMetric, clearBrush]);
 
   const toggleBrush = () => {
     const next = !brushing;
@@ -103,7 +119,9 @@ function StoreScatterInner() {
         formatter: (p: { dataIndex: number }) => {
           const r = rows[p.dataIndex];
           if (!r) return "";
-          return `<b>${r.label}</b> · ${r.parent ?? ""}<br/>${fmt.int(r.orders)} pedidos · ${fmt.brl(r.gmv)}<br/>${Y_AXIS[y].label}: <b>${Y_AXIS[y].format(r[y] as number)}</b>`;
+          const store = escapeHtml(r.label);
+          const hub = r.parent ? ` · ${escapeHtml(r.parent)}` : "";
+          return `<b>${store}</b>${hub}<br/>${escapeHtml(fmt.int(r.orders))} pedidos · ${escapeHtml(fmt.brl(r.gmv))}<br/>${escapeHtml(Y_AXIS[y].label)}: <b>${escapeHtml(Y_AXIS[y].format(r[y] as number))}</b>`;
         },
       },
       xAxis: { type: "log", name: "Pedidos (escala log)", nameLocation: "middle", nameGap: 28, nameTextStyle: { color: t.muted }, splitLine: { show: false } },
@@ -135,8 +153,12 @@ function StoreScatterInner() {
   );
 
   const onBrush = useCallback(
-    (params: { batch?: { selected?: { dataIndex: number[] }[] }[] }, _c: ECInstance) => {
-      const idx = params.batch?.[0]?.selected?.[0]?.dataIndex ?? [];
+    (params: unknown, _c: ECInstance) => {
+      const batch =
+        typeof params === "object" && params !== null && "batch" in params
+          ? (params as BrushSelectedEvent).batch
+          : undefined;
+      const idx = batch?.[0]?.selected?.[0]?.dataIndex ?? [];
       setPicked(idx.map((i) => rows[i]).filter((r): r is BreakdownRow => Boolean(r)));
     },
     [rows],
@@ -220,7 +242,7 @@ function StoreScatterInner() {
                 .map((r) => ({
                   key: String(r.key),
                   label: `Filtrar ${r.label} (${Y_AXIS[y].format(r[y] as number)}, ${fmt.int(r.orders)} ped.)`,
-                  onSelect: () => patchFilters({ store: [Number(r.key)] }),
+                  onSelect: () => applyDrilldown({ store: [Number(r.key)] }),
                 })),
               {
                 key: "ranking",
@@ -267,11 +289,9 @@ function StoreScatterInner() {
                   type="button"
                   className="btn-ink py-1 max-lg:min-h-11"
                   onClick={() => {
-                    patchFilters({ store: targetStores.map((r) => Number(r.key)) });
-                    setPicked([]);
-                    setBrushing(false);
-                    chartRef.current?.dispatchAction({ type: "brush", areas: [] });
-                    chartRef.current?.dispatchAction({ type: "takeGlobalCursor", key: "brush", brushOption: false });
+                    const ids = targetStores.filter((r) => r.key != null).map((r) => Number(r.key));
+                    if (ids.length > 0) applyDrilldown({ store: ids });
+                    clearBrush();
                   }}
                 >
                   <Filter className="size-3.5" aria-hidden />{" "}

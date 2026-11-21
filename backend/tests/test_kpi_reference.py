@@ -178,3 +178,17 @@ def test_volume_low_sample_follows_the_order_floor(client, repo):
     full = client.get("/api/kpis").json()
     assert full["current"]["volume_low_sample"] is False
     assert repo.metrics(Filters())["volume_low_sample"] is False
+
+
+@pytest.mark.parametrize("status", ["canceled", "delivered"])
+def test_single_status_has_no_cancel_reading(client, status):
+    # Um status só fixa o cancelamento em 100% ou 0%: veredito e vão contra a rede seriam tautologia.
+    body = client.get("/api/kpis", params={"status": status}).json()
+    cancel = _hero(body["heroes"], "cancel_rate")
+    assert cancel == {"key": "cancel_rate", "verdict": None, "reference": None, "network_value": None}
+    if status == "delivered":
+        sla = _hero(body["heroes"], "sla_rate")
+        assert sla["verdict"] is not None
+        assert sla["reference"] is not None
+    both = client.get("/api/kpis", params={"status": ["canceled", "delivered"]}).json()
+    assert _hero(both["heroes"], "cancel_rate")["reference"] is not None

@@ -112,6 +112,14 @@ def test_where_dimension_by_label_or_id_case_insensitive(repo):
         assert total["sla_rate"] == pytest.approx(expected["sla_rate"])
 
 
+def test_where_integer_float_matches_int_id(repo):
+    expected = repo.query_metrics(Filters(), metrics=["orders", "sla_rate"], where={"hub": [1]})
+    got = repo.query_metrics(Filters(), metrics=["orders", "sla_rate"], where={"hub": [1.0]})
+    assert got["where"] == {"hub": ["1"]}
+    assert got["total"]["orders"] == expected["total"]["orders"] > 0
+    assert got["total"]["sla_rate"] == pytest.approx(expected["total"]["sla_rate"])
+
+
 def test_where_hour_and_weekday(repo):
     heat = repo.heatmap(Filters())
     result = repo.query_metrics(Filters(), metrics=["orders"], where={"hour": [19, "20"], "weekday": [0]})
@@ -244,7 +252,10 @@ def test_injection_like_values_are_plain_parameters(repo):
         ({"metrics": ["orders"], "compare": "rest"}, "informe where"),
         ({"metrics": ["orders"], "compare": "yoy"}, "compare aceita"),
         ({"metrics": ["orders"], "where": {"hour": [24]}}, "hour aceita"),
+        ({"metrics": ["orders"], "where": {"hour": [float("inf")]}}, "hour aceita"),
+        ({"metrics": ["orders"], "where": {"hour": [float("-inf")]}}, "hour aceita"),
         ({"metrics": ["orders"], "where": {"weekday": ["seg"]}}, "weekday aceita"),
+        ({"metrics": ["orders"], "where": {"weekday": [float("nan")]}}, "weekday aceita"),
         ({"metrics": ["orders"], "where": {"hour": [1.5]}}, "hour aceita"),
         ({"metrics": ["orders"], "where": {"order_id": [1]}}, "Dimensão desconhecida"),
         ({"metrics": ["orders"], "sort": "delta:orders"}, "delta"),

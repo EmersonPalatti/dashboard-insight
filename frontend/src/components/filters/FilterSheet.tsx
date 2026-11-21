@@ -1,5 +1,6 @@
 import { X } from "lucide-react";
 import { useLayoutEffect, useRef, type ReactNode, type RefObject } from "react";
+import { CopyLinkButton } from "./CopyLinkButton";
 
 interface Props {
   open: boolean;
@@ -7,6 +8,7 @@ interface Props {
   /** Botão que abriu a folha: recebe o foco quando ela fecha. */
   returnFocusRef: RefObject<HTMLButtonElement | null>;
   children: ReactNode;
+  /** Ações depois de "Copiar link", que a própria folha põe primeiro (o botão vem no chunk dela, não na barra). */
   footer: ReactNode;
 }
 
@@ -52,7 +54,10 @@ export function FilterSheet({ open, onClose, returnFocusRef, children, footer }:
         </header>
         {/* o corpo rola; o rodapé é irmão, fora da rolagem, então não cobre Segmento nem os chips */}
         <div className="min-h-0 min-w-0 flex-1 overflow-x-clip overflow-y-auto overscroll-contain px-4 pt-4 pb-4">{children}</div>
-        <footer className="grid shrink-0 grid-cols-2 gap-2 border-t border-rule bg-surface px-4 py-3">{footer}</footer>
+        <footer className="grid shrink-0 grid-cols-2 gap-2 border-t border-rule bg-surface px-4 py-3">
+          <CopyLinkButton className="min-h-11 justify-center" />
+          {footer}
+        </footer>
       </div>
     </dialog>
   );

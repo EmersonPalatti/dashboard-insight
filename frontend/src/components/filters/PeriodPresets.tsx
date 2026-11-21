@@ -23,15 +23,16 @@ interface Props {
   /** Nome acessível quando não há rótulo visível (barra). Na folha, o id do título. */
   labelId?: string;
   /**
-   * Último segmento (Datas). Recebe tabIndex e checked para entrar no mesmo
-   * radiogroup: um só tab stop, setas movem o foco.
+   * Último segmento (Datas). Recebe tabIndex e pressed para entrar no mesmo
+   * grupo: um só tab stop, setas movem o foco. Botão com aria-pressed (não radio),
+   * para Datas poder levar aria-expanded do calendário.
    */
-  extra?: (state: { tabIndex: number; checked: boolean }) => ReactNode;
+  extra?: (state: { tabIndex: number; pressed: boolean }) => ReactNode;
 }
 
 /** Classe de um segmento; exportada para o botão Datas, que vive fora deste componente. */
 export const presetClass = (on: boolean) =>
-  `relative z-[1] flex h-full min-w-0 items-center gap-1.5 rounded-t-[4px] border-b-2 border-transparent px-2.5 text-aux font-medium whitespace-nowrap transition-colors duration-(--duration-quick) max-lg:min-h-11 max-lg:flex-1 max-lg:justify-center max-lg:px-1.5 disabled:cursor-not-allowed disabled:opacity-50 ${
+  `relative z-[1] flex h-full min-w-0 items-center gap-1.5 rounded-t-tick border-b-2 border-transparent px-2.5 text-aux font-medium whitespace-nowrap transition-colors duration-(--duration-quick) max-lg:min-h-11 max-lg:flex-1 max-lg:justify-center max-lg:px-1.5 disabled:cursor-not-allowed disabled:opacity-50 ${
     on ? "text-ink" : "text-muted hover:text-ink disabled:hover:text-muted"
   }`;
 
@@ -143,10 +144,9 @@ export function PeriodPresets({ presets, activeId, onSelect, labelId, extra }: P
   return (
     <div
       ref={groupRef}
-      role="radiogroup"
+      role="group"
       aria-label={labelId ? undefined : "Período"}
       aria-labelledby={labelId}
-      aria-orientation="horizontal"
       onKeyDown={onKeyDown}
       onFocus={(e) => {
         const btn = (e.target as HTMLElement).closest<HTMLElement>("[data-preset]");
@@ -162,7 +162,7 @@ export function PeriodPresets({ presets, activeId, onSelect, labelId, extra }: P
       <span
         ref={indicatorRef}
         aria-hidden
-        className="pointer-events-none absolute top-0.5 bottom-0.5 left-0 origin-left rounded-t-[4px] border-b-2 border-ink bg-surface opacity-0 transition-[opacity,transform] duration-(--duration-fast) ease-(--ease-smooth-out) max-lg:top-0 max-lg:bottom-0 motion-reduce:transition-none"
+        className="pointer-events-none absolute top-0.5 bottom-0.5 left-0 origin-left rounded-t-tick border-b-2 border-ink bg-surface opacity-0 transition-[opacity,transform] duration-(--duration-fast) ease-(--ease-smooth-out) max-lg:top-0 max-lg:bottom-0 motion-reduce:transition-none"
       />
       {presets.map((p) => {
         const on = p.id === activeId;
@@ -170,10 +170,9 @@ export function PeriodPresets({ presets, activeId, onSelect, labelId, extra }: P
           <button
             key={p.id}
             type="button"
-            role="radio"
             data-preset={p.id}
             aria-label={p.label}
-            aria-checked={on}
+            aria-pressed={on}
             tabIndex={p.id === tabId ? 0 : -1}
             disabled={p.disabled}
             onClick={() => onSelect(p)}
@@ -183,7 +182,7 @@ export function PeriodPresets({ presets, activeId, onSelect, labelId, extra }: P
           </button>
         );
       })}
-      {extra?.({ tabIndex: tabId === "dates" ? 0 : -1, checked: activeId === "dates" })}
+      {extra?.({ tabIndex: tabId === "dates" ? 0 : -1, pressed: activeId === "dates" })}
     </div>
   );
 }

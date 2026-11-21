@@ -85,6 +85,7 @@ export function ExportDialog({ open, onClose }: Props) {
   return (
     <dialog
       ref={ref}
+      aria-labelledby="export-dialog-title"
       onClose={onClose}
       // Esc: o navegador fecharia na hora; impede, anima o fechamento e o evento close chama onClose.
       onCancel={(e) => {
@@ -97,7 +98,9 @@ export function ExportDialog({ open, onClose }: Props) {
       <div className="p-5">
         <div className="mb-4 flex items-start justify-between gap-4">
           <div>
-            <h2 className="section-title">Exportar recorte</h2>
+            <h2 id="export-dialog-title" className="section-title">
+              Exportar recorte
+            </h2>
             <p className="label">Tudo segue os filtros ativos agora.</p>
           </div>
           <button type="button" onClick={onClose} className="btn-ghost px-2 max-lg:min-h-11 max-lg:min-w-11 max-lg:justify-center" aria-label="Fechar">

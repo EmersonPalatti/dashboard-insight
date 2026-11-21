@@ -78,7 +78,7 @@ function TopBarStatusFallback() {
     <div className="flex items-center gap-2" aria-hidden="true">
       <span className="inline-flex items-center gap-1.5 text-aux text-on-wine">
         <span className="size-2 rounded-full bg-shell-warn/40 animate-pulse motion-reduce:animate-none" />
-        <span className="sr-only sm:not-sr-only sm:inline-block h-3.5 w-16 rounded-[4px] bg-on-wine/15 animate-pulse motion-reduce:animate-none" />
+        <span className="sr-only sm:not-sr-only sm:inline-block h-3.5 w-16 rounded-tick bg-on-wine/15 animate-pulse motion-reduce:animate-none" />
       </span>
       <div className="inline-flex size-10 rounded-card bg-on-wine/10 animate-pulse motion-reduce:animate-none max-lg:-my-0.5 max-lg:size-11" />
     </div>

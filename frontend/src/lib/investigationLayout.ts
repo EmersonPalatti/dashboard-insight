@@ -9,7 +9,8 @@
  *   recolher Zona 1, Ranking, Zona 2 e Fechamento.
  */
 import { $evidence, type FocusedEvidence } from "./evidence";
-import { $view, initFilters, setView } from "./filters";
+import { $view, initFilters, isTrendFromUrl, setView } from "./filters";
+import { prefersReducedMotion } from "./media";
 import { $recorteEmpty, investigationViewFor, trendViewForKpi, type InvestigationView } from "./investigation";
 
 const SLOT_ORDER: readonly InvestigationView[] = ["trend", "stages", "heatmap", "scatter"];
@@ -94,14 +95,61 @@ export function initInvestigationLayout() {
   }
 
   let currentPromoted: InvestigationView | null = null;
+  /** Primeira comanda aberta desde o carregamento (a abertura automática do trilho). */
+  let firstFocus = true;
+  /** Fade em curso por painel: cancelar o anterior evita listener acumulado e classe arrancada no meio. */
+  const fades = new Map<HTMLElement, AbortController>();
+
+  function fadeIn(slot: HTMLElement) {
+    fades.get(slot)?.abort();
+    fades.delete(slot);
+    slot.classList.remove("investigation-fade");
+    // movimento reduzido: o CSS zera a animação e animationend nunca dispara; não há o que esperar
+    if (prefersReducedMotion()) return;
+    void slot.offsetWidth;
+    slot.classList.add("investigation-fade");
+    const ctrl = new AbortController();
+    fades.set(slot, ctrl);
+    slot.addEventListener(
+      "animationend",
+      (e) => {
+        if (e.target !== slot) return; // animação de um filho sobe até aqui e não encerra o fade
+        slot.classList.remove("investigation-fade");
+        ctrl.abort();
+        if (fades.get(slot) === ctrl) fades.delete(slot);
+      },
+      { signal: ctrl.signal },
+    );
+  }
+
+  /**
+   * Mover um nó com o foco dentro tira o foco dele (vai para o body). Depois da troca,
+   * devolve ao mesmo elemento se ele segue visível; se o painel recolheu, ao botão do painel.
+   * Se o painel subiu para a investigação com o foco no botão (que some), o foco vai para o
+   * próprio painel (`tabindex="-1"`, rotulado pelo título), nunca para o body.
+   */
+  function restoreFocus(active: HTMLElement | null, slot: HTMLElement | null) {
+    if (!active || !slot || document.activeElement === active) return;
+    if (active.isConnected && !active.closest("[hidden]")) {
+      active.focus({ preventScroll: true });
+      return;
+    }
+    const toggle = slot.querySelector<HTMLButtonElement>("[data-panel-toggle]");
+    if (toggle && !toggle.closest("[hidden]")) toggle.focus({ preventScroll: true });
+    else slot.focus({ preventScroll: true });
+  }
 
   function syncEvidence(focused: FocusedEvidence | null) {
     heading!.textContent = focused ? `Investigação · Comanda ${focused.number}` : "Pulso do recorte";
 
-    if (focused?.evidence.view === "kpi") {
+    // A comanda escolhe a métrica sem empurrar histórico (Voltar não alterna a Tendência).
+    // Na abertura automática, um `?trend=` explícito do link compartilhado vale mais que a comanda.
+    const keepUrlTrend = firstFocus && isTrendFromUrl();
+    if (focused) firstFocus = false;
+    if (focused?.evidence.view === "kpi" && !keepUrlTrend) {
       const nextTrend = trendViewForKpi(focused.evidence.kpi);
       if (nextTrend && $view.get().trend !== nextTrend) {
-        setView({ trend: nextTrend });
+        setView({ trend: nextTrend }, { history: "replace" });
       }
     }
 
@@ -110,6 +158,9 @@ export function initInvestigationLayout() {
     if (!targetSlot) return;
 
     const changed = currentPromoted !== null && currentPromoted !== targetView;
+
+    const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const activeSlot = active?.closest<HTMLElement>("[data-investigation-slot]") ?? null;
 
     for (const view of SLOT_ORDER) {
       if (view === targetView) continue;
@@ -126,13 +177,9 @@ export function initInvestigationLayout() {
       stage!.appendChild(targetSlot);
     }
     applyPanelState(targetSlot, { promoted: true, open: true });
+    restoreFocus(active, activeSlot);
 
-    if (changed) {
-      targetSlot.classList.remove("investigation-fade");
-      void targetSlot.offsetWidth;
-      targetSlot.classList.add("investigation-fade");
-      targetSlot.addEventListener("animationend", () => targetSlot.classList.remove("investigation-fade"), { once: true });
-    }
+    if (changed) fadeIn(targetSlot);
 
     currentPromoted = targetView;
   }

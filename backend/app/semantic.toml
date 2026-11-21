@@ -109,7 +109,7 @@ unit = "pct"
 kind = "rate"
 better = "up"
 base = "measured"
-definition = "Entregas no prazo ÷ base medida; prazo do ciclo: food 60 min, goods 120 min."
+definition = "Entregas no prazo ÷ base medida; prazo do ciclo: food {sla_food_min} min, goods {sla_good_min} min."
 synonyms = ["sla", "no prazo", "dentro do prazo", "prazo", "fora do prazo", "entrega no prazo", "atraso", "atrasado", "atrasada", "atrasou", "atrasam", "atrasando", "pontualidade", "pontual", "nível de serviço"]
 
 [metrics.stuck_rate]
@@ -255,7 +255,7 @@ values = { marketplace = "marketplace", own = "canal próprio" }
 
 [dimensions.segment]
 label = "Segmento"
-definition = "food (restaurante, prazo 60 min) ou good (goods/varejo, prazo 120 min)."
+definition = "food (restaurante, prazo {sla_food_min} min) ou good (goods/varejo, prazo {sla_good_min} min)."
 synonyms = ["categoria", "vertical", "tipo de loja", "comida", "varejo"]
 values = { food = "food", good = "goods" }
 
@@ -310,7 +310,7 @@ related = ["cycle_p50", "production_p50", "collected_p50", "walking_p50", "exped
 
 [concepts.amostra_pequena]
 label = "Amostra pequena"
-definition = "low_sample: < 100 medidas (SLA, ciclo); volume_low_sample: < 100 pedidos (cancelamento). Vira indício; cite a base."
+definition = "low_sample: < 100 medidas (SLA, ciclo); volume_low_sample: < 100 pedidos (cancelamento); mapa dia × hora usa piso de 20. Vira indício; cite a base."
 synonyms = ["amostra pequena", "pouca amostra", "poucos pedidos", "base pequena", "low sample", "significativo", "confiável"]
 related = ["measured", "orders"]
 
@@ -381,7 +381,7 @@ related = ["subsidy", "fee_avg", "cost_avg", "distance_p50_km"]
 
 [concepts.reguas]
 label = "Réguas internas"
-definition = "SLA < 80% crítico, < 85% atenção; cancelamento ≥ 9% crítico, ≥ 6% atenção; presos > 3% atenção; subsídio ≥ R$ 3 por entrega."
+definition = "SLA < 80% crítico, < 85% atenção; cancelamento ≥ 9% crítico, ≥ 6% atenção; presos ≥ 3% atenção; subsídio ≥ R$ 3 por entrega."
 synonyms = ["meta", "régua", "teto", "limite", "crítico", "atenção", "aceitável"]
 related = ["sla_rate", "cancel_rate", "stuck_rate", "subsidy"]
 
@@ -418,7 +418,7 @@ note = "Mesma leitura do SLA; goods demora mais, mix de segmento move a mediana.
 
 [causal.cancel_rate]
 drivers = ["canceled", "orders"]
-dimensions = ["store", "modal", "hour", "hub", "channel"]
+dimensions = ["store", "hub", "channel", "hour"]
 note = "Comece pela loja: 90%+ = quebrada (tirar do ar); senão ruptura ou loja fechada antes do pico."
 
 [causal.transit_p50]

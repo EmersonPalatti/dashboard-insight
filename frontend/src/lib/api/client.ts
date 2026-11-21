@@ -33,7 +33,18 @@ export type GetResponse<P extends GetPaths> = paths[P] extends {
 type QueryValue = string | number | boolean | null | undefined | (string | number)[];
 export type Query = Record<string, QueryValue>;
 
-export const API_URL = (import.meta.env.PUBLIC_API_URL ?? "http://localhost:8000").replace(/\/$/, "");
+const rawApiUrl = import.meta.env.PUBLIC_API_URL?.trim();
+if (import.meta.env.PROD && !rawApiUrl && import.meta.env.SSR) {
+  const env = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env;
+  if (env?.VERCEL) {
+    throw new Error("PUBLIC_API_URL precisa estar definida no build de produção (Vercel).");
+  }
+  console.warn(
+    "[central-operacoes] PUBLIC_API_URL não definida em build de produção; usando caminho relativo (same-origin).",
+  );
+}
+
+export const API_URL = (rawApiUrl || (import.meta.env.DEV ? "http://localhost:8000" : "")).replace(/\/$/, "");
 
 export class ApiError extends Error {
   constructor(
@@ -63,8 +74,16 @@ async function handle<T>(res: Response): Promise<T> {
   if (!res.ok) {
     let detail = res.statusText;
     try {
-      const body = await res.json();
-      detail = typeof body.detail === "string" ? body.detail : JSON.stringify(body.detail);
+      const body = (await res.json()) as { detail?: unknown } | null;
+      const raw = body && typeof body === "object" ? body.detail : undefined;
+      if (typeof raw === "string" && raw.trim()) {
+        detail = raw;
+      } else if (Array.isArray(raw)) {
+        const msgs = raw
+          .map((item) => (item && typeof item === "object" && "msg" in item ? String(item.msg) : ""))
+          .filter(Boolean);
+        if (msgs.length) detail = msgs.join("; ");
+      }
     } catch {
       /* corpo não-JSON */
     }

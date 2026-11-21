@@ -37,7 +37,7 @@ export function ActiveChips({ chips }: { chips: Chip[] }) {
         {chips.map((c) => (
           <li
             key={c.key}
-            className="inline-flex min-w-0 max-w-full items-center gap-1 rounded-[4px] border border-ink bg-surface pl-2 pr-0.5 text-aux font-medium text-ink transition-[opacity,scale] duration-(--duration-fast) ease-(--ease-smooth-out) starting:scale-(--scale-medium) starting:opacity-0 motion-reduce:transition-none"
+            className="inline-flex min-w-0 max-w-full items-center gap-1 rounded-tick border border-ink bg-surface pl-2 pr-0.5 text-aux font-medium text-ink transition-[opacity,scale] duration-(--duration-fast) ease-(--ease-smooth-out) starting:scale-(--scale-medium) starting:opacity-0 motion-reduce:transition-none"
           >
             <span className="shrink-0 text-muted">{c.dim}</span>
             <span className="min-w-0 max-w-[16rem] truncate" title={c.value}>
@@ -47,7 +47,7 @@ export function ActiveChips({ chips }: { chips: Chip[] }) {
               type="button"
               aria-label={`Remover ${c.dim}: ${c.value}`}
               onClick={c.remove}
-              className="inline-flex size-6 shrink-0 items-center justify-center rounded-[4px] text-muted transition-colors duration-(--duration-quick) hover:bg-sunken hover:text-ink max-lg:size-11"
+              className="inline-flex size-6 shrink-0 items-center justify-center rounded-tick text-muted transition-colors duration-(--duration-quick) hover:bg-sunken hover:text-ink max-lg:size-11"
             >
               <X className="size-3.5" aria-hidden />
             </button>

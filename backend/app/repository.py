@@ -35,6 +35,9 @@ _MEASURED = f"{_VALID} and cycle_min is not null"
 # (SLA_BELOW_GAP) que o painel usa para marcar uma linha. Abaixo de 100, a figura oscila mais que a
 # diferença que o painel quer apontar.
 MIN_MEASURED = 100
+# O mapa dia × hora divide o recorte em 168 células: o piso de 100 esconderia recortes de 1 hub ou 7 dias.
+# Abaixo de 20, taxas e medianas da célula ficam marcadas como amostra pequena (fora da escala de cor).
+HEATMAP_MIN_SAMPLE = 20
 
 # Desvio de uma linha do ranking em relação ao recorte (marcado pelo servidor).
 SLA_BELOW_GAP = 0.05  # no prazo abaixo de SLA do recorte menos 5 pontos
@@ -88,9 +91,9 @@ SORTS: dict[str, str] = {
     "fee_avg": "fee_avg", "cost_avg": "cost_avg", "subsidy": "subsidy",
 }
 ORDER_COLUMNS = (
-    "order_id, created_at, status, city, hub_name, store_name, segment, channel, modal, payment_method, "
-    "amount, delivery_fee, cycle_min, production_min, transit_min, distance_m::int as distance_m, "
-    f"case when {_MEASURED} then on_time(segment, cycle_min) end as on_time"
+    "order_id, created_at, status, city, hub_id, hub_name, store_id, store_name, segment, channel, "
+    "modal, payment_method, amount, amount_outlier, delivery_fee, cycle_min, production_min, transit_min, "
+    f"distance_m::int as distance_m, case when {_MEASURED} then on_time(segment, cycle_min) end as on_time"
 )
 ORDER_SORTS = {
     "created_at", "amount", "delivery_fee", "cycle_min", "production_min", "transit_min",
@@ -178,7 +181,7 @@ def _time_value(dim: str, value: Any) -> int:
     valid = _TIME_RANGES[dim]
     try:
         number = int(str(value).strip()) if isinstance(value, str) else int(value)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         number = None
     if isinstance(value, bool) or number is None or number not in valid or (
         isinstance(value, float) and value != number
@@ -202,6 +205,8 @@ def _normalize_where(where: dict[str, Any] | None) -> dict[str, list]:
             # Sem diferenciar maiúsculas: "hub centro" e "Hub Centro" são o mesmo valor.
             by_lower: dict[str, str] = {}
             for v in values:
+                if isinstance(v, float) and v.is_integer():
+                    v = int(v)
                 text = "" if v is None else str(v).strip()
                 if text:
                     by_lower.setdefault(text.lower(), text)
@@ -307,6 +312,8 @@ def _csv_cell(value: Any) -> Any:
         return "true" if value else "false"
     if isinstance(value, datetime):
         return value.strftime("%Y-%m-%d %H:%M:%S")
+    if isinstance(value, str) and value[:1] in ("=", "+", "-", "@", "\t", "\r"):
+        return "'" + value
     return value
 
 
@@ -355,6 +362,9 @@ class Repository:
         ).fetchone()
 
     # ------------------------------------------------------------------ infra
+    def close(self) -> None:
+        self._con.close()
+
     def _rows(self, sql: str, params: list | None = None) -> list[dict[str, Any]]:
         with self._query_sem:
             cur = self._con.cursor()  # um cursor por chamada: seguro entre threads
@@ -402,13 +412,11 @@ class Repository:
         slot.event.set()
         return value
 
-    _cached = cached
-
     # ------------------------------------------------------------------ meta
-    def options(self, key: str, label: str, parent: str = "null", where: str = "true") -> list[dict]:
+    def options(self, key: str, label: str, parent: str = "null") -> list[dict]:
         return self._rows(
             f"select {key} as value, {label} as label, {parent} as parent, count(*)::int as orders "
-            f"from orders where {key} is not null and {where} group by all order by orders desc"
+            f"from orders where {key} is not null group by all order by orders desc"
         )
 
     def meta(self) -> dict:
@@ -419,6 +427,7 @@ class Repository:
                 "total_orders": self.total_orders,
                 "sla_food_min": self.sla_food_min,
                 "sla_good_min": self.sla_good_min,
+                "heatmap_min_sample": HEATMAP_MIN_SAMPLE,
                 "cities": self.options("city", "city", "state"),
                 "hubs": self.options("hub_id", "hub_name", "city"),
                 "stores": self.options("store_id", "store_name", "hub_id"),
@@ -438,16 +447,21 @@ class Repository:
 
     def describe(self, f: Filters) -> str:
         """Descrição legível do recorte, usada pelo agente e pela exportação."""
-        start = f.start or self.min_date
-        end = f.end or self.max_date
+        start, end = self.period(f)
         parts = [f"{start:%d/%m/%Y} a {end:%d/%m/%Y}"]
         if f.city:
-            parts.append("cidade " + ", ".join(f.city))
+            # Mesma grafia dos dados e sem repetir cidade que só muda de caixa (o filtro já ignora a caixa).
+            canonical = {str(c["value"]).lower(): str(c["label"]) for c in self.meta()["cities"]}
+            city_labels = dict.fromkeys(canonical.get(c.lower(), c) for c in f.city)
+            parts.append("cidade " + ", ".join(city_labels))
         if f.hub:
-            parts.append("hub " + ", ".join(self.names("hub", f.hub)))
+            hub_labels = self.names("hub", f.hub) or [str(i) for i in dict.fromkeys(f.hub)]
+            parts.append("hub " + ", ".join(hub_labels))
         if f.store:
-            names = self.names("store", f.store)
-            parts.append("loja " + (", ".join(names) if len(names) <= 4 else f"{len(names)} lojas"))
+            store_labels = self.names("store", f.store) or [str(i) for i in dict.fromkeys(f.store)]
+            parts.append(
+                "loja " + (", ".join(store_labels) if len(store_labels) <= 4 else f"{len(store_labels)} lojas")
+            )
         for title, values in (
             ("segmento", f.segment),
             ("canal", f.channel_type),
@@ -466,8 +480,23 @@ class Repository:
 
         return self.cached("metrics:" + f.cache_key(), build)
 
+    def priced_count(self, f: Filters) -> int:
+        """Entregas com frete e custo: a base de fee_avg, cost_avg e subsidy (fora do contrato da API)."""
+
+        def build() -> int:
+            where, params = f.where()
+            return self._rows(f"select count(*)::int as n from orders where {_PRICED} and {where}", params)[0]["n"]
+
+        return self.cached("priced:" + f.cache_key(), build)
+
     def period(self, f: Filters) -> tuple[date, date]:
-        return (f.start or self.min_date, f.end or self.max_date)
+        if f.start is not None and f.end is not None:
+            return f.start, f.end
+        if f.start is not None:
+            return f.start, max(self.max_date, f.start)
+        if f.end is not None:
+            return min(self.min_date, f.end), f.end
+        return self.min_date, self.max_date
 
     def covered_period(self, f: Filters) -> tuple[date | None, date | None]:
         """Período efetivo do recorte para automação.
@@ -491,6 +520,8 @@ class Repository:
 
     def previous_period(self, f: Filters) -> tuple[date, date] | None:
         start, end = self.period(f)
+        if end < start or start > self.max_date or end < self.min_date:
+            return None
         length = (end - start).days + 1
         prev_end = start - timedelta(days=1)
         prev_start = prev_end - timedelta(days=length - 1)
@@ -515,11 +546,13 @@ class Repository:
                 f"""select {bucket} as t,
                        count(*)::int as orders,
                        count(*) filter (where status = 'delivered')::int as delivered,
+                       count(*) filter (where {_MEASURED})::int as measured,
+                       count(*) filter (where {_MEASURED}) < {MIN_MEASURED} as low_sample,
+                       count(*) < {MIN_MEASURED} as volume_low_sample,
                        coalesce(sum(amount) filter (where {_SALE}), 0)::double as gmv,
                        avg((status = 'canceled')::int) as cancel_rate,
                        median(cycle_min) filter (where {_VALID}) as cycle_p50,
-                       avg(on_time(segment, cycle_min)::int)
-                           filter (where {_VALID} and cycle_min is not null) as sla_rate
+                       avg(on_time(segment, cycle_min)::int) filter (where {_MEASURED}) as sla_rate
                     from orders where {where} group by 1 order by 1""",
                 [*bucket_params, *params],
             )
@@ -530,12 +563,14 @@ class Repository:
         def build() -> list[dict]:
             where, params = f.where()
             return self._rows(
-                f"""select weekday::int as weekday, hour::int as hour, count(*)::int as orders,
+                f"""select weekday::int as weekday, hour::int as hour,
+                       count(*)::int as orders,
                        count(*) filter (where {_MEASURED})::int as measured,
+                       count(*) filter (where {_MEASURED}) < {HEATMAP_MIN_SAMPLE} as low_sample,
+                       count(*) < {HEATMAP_MIN_SAMPLE} as volume_low_sample,
                        avg((status = 'canceled')::int) as cancel_rate,
                        median(cycle_min) filter (where {_VALID}) as cycle_p50,
-                       avg(on_time(segment, cycle_min)::int)
-                           filter (where {_VALID} and cycle_min is not null) as sla_rate
+                       avg(on_time(segment, cycle_min)::int) filter (where {_MEASURED}) as sla_rate
                     from orders where {where} group by all order by 1, 2""",
                 params,
             )
@@ -564,7 +599,7 @@ class Repository:
                 f"""select {key} as key, {shown} as label, {parent}::varchar as parent, {METRICS_SQL}
                     from orders where {where}
                     group by all having count(*) >= ? and count(*) filter (where {_MEASURED}) >= ?
-                    order by {order} {direction} nulls last, orders desc limit ?""",
+                    order by {order} {direction} nulls last, orders desc, key asc nulls last limit ?""",
                 [*params, int(min_orders), int(min_measured), int(limit)],
             )
             return _flag_outliers(rows, self.metrics(f))
@@ -605,11 +640,14 @@ class Repository:
                 sub_params.append(norm_weekdays)
             if dim:
                 key, label, _ = DIMENSIONS[dim]
-                sub_clauses.append(
-                    f"(list_contains(?, lower(cast({label} as varchar))) "
-                    f"or list_contains(?, lower(cast({key} as varchar))))"
+                clause = (
+                    f"list_contains(?, lower(cast({label} as varchar))) "
+                    f"or list_contains(?, lower(cast({key} as varchar)))"
                 )
                 sub_params.extend([norm_vals, norm_vals])
+                if NULL_LABELS.get(dim, _NULL_LABEL).lower() in norm_vals:
+                    clause += f" or {key} is null"
+                sub_clauses.append(f"({clause})")
 
             sub_sql = " and ".join(sub_clauses)
             if complement:
@@ -845,29 +883,17 @@ class Repository:
     def orders_page(self, f: Filters, offset: int, limit: int, sort: str, desc: bool) -> dict:
         if sort not in ORDER_SORTS:
             sort = "created_at"
+        total = self.metrics(f)["orders"]
+        if offset >= total:
+            return {"total": total, "offset": offset, "limit": limit, "rows": []}
         direction = "desc" if desc else "asc"
         where, params = f.where()
-        total = self._rows(f"select count(*)::int as n from orders where {where}", params)[0]["n"]
         rows = self._rows(
             f"select {ORDER_COLUMNS} from orders where {where} "
             f"order by {sort} {direction} nulls last, order_id limit ? offset ?",
             [*params, int(limit), int(offset)],
         )
         return {"total": total, "offset": offset, "limit": limit, "rows": rows}
-
-    def export_csv(self, f: Filters, target: Path) -> None:
-        where, params = f.where()
-        dest = target.as_posix().replace("'", "''")  # caminho com aspas simples não quebra o COPY
-        with self._query_sem:
-            cur = self._con.cursor()
-            try:
-                cur.execute(
-                    f"copy (select {ORDER_COLUMNS} from orders where {where} order by created_at) "
-                    f"to '{dest}' (header, delimiter ',')",
-                    params,
-                )
-            finally:
-                cur.close()
 
     def iter_orders_csv(self, f: Filters, batch_size: int = 5000) -> Iterator[str]:
         """Gera o CSV do recorte em lotes para não materializar dezenas de MB em disco."""

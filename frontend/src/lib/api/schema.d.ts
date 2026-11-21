@@ -262,6 +262,11 @@ export interface components {
              * @description Pedidos no recorte; 0 significa que não há base para afirmar SLA ou cancelamento.
              */
             orders: number;
+            /**
+             * Empty Reason
+             * @description Motivo curto em pt-BR quando o recorte tem 0 pedidos (período fora da base ou combinação incompatível de cidade/hub/loja). Null quando há pedidos.
+             */
+            empty_reason?: string | null;
         };
         /** BreakdownResponse */
         BreakdownResponse: {
@@ -562,6 +567,21 @@ export interface components {
             hour: number;
             /** Orders */
             orders: number;
+            /**
+             * Measured
+             * @description Entregues com ciclo e sem presos na faixa: base do SLA e do ciclo.
+             */
+            measured: number;
+            /**
+             * Low Sample
+             * @description Base medida abaixo do piso do mapa de calor (HEATMAP_MIN_SAMPLE): SLA e ciclo fora da escala.
+             */
+            low_sample: boolean;
+            /**
+             * Volume Low Sample
+             * @description Pedidos abaixo do piso do mapa de calor (HEATMAP_MIN_SAMPLE): cancelamento fora da escala.
+             */
+            volume_low_sample: boolean;
             /** Cancel Rate */
             cancel_rate: number | null;
             /** Cycle P50 */
@@ -622,6 +642,11 @@ export interface components {
             sla_food_min: number;
             /** Sla Good Min */
             sla_good_min: number;
+            /**
+             * Heatmap Min Sample
+             * @description Piso de amostra por célula no mapa dia × hora (entregas medidas no SLA/ciclo; pedidos no cancelamento).
+             */
+            heatmap_min_sample: number;
             /** Cities */
             cities: components["schemas"]["Option"][];
             /** Hubs */
@@ -731,6 +756,7 @@ export interface components {
             /**
              * Created At
              * Format: date-time
+             * @description Momento de criação do pedido em horário de Brasília (UTC−3), sem offset (naive wall-clock).
              */
             created_at: string;
             /**
@@ -740,8 +766,12 @@ export interface components {
             status: "delivered" | "canceled";
             /** City */
             city: string;
+            /** Hub Id */
+            hub_id: number;
             /** Hub Name */
             hub_name: string;
+            /** Store Id */
+            store_id: number;
             /** Store Name */
             store_name: string;
             /** Segment */
@@ -754,6 +784,11 @@ export interface components {
             payment_method: string | null;
             /** Amount */
             amount: number;
+            /**
+             * Amount Outlier
+             * @description Valor acima do teto de outlier (R$ 5 mil): fica fora do GMV e do ticket médio.
+             */
+            amount_outlier: boolean;
             /** Delivery Fee */
             delivery_fee: number;
             /** Cycle Min */
@@ -808,12 +843,28 @@ export interface components {
             /**
              * T
              * Format: date-time
+             * @description Início do intervalo em horário de Brasília (UTC−3), sem offset (naive wall-clock).
              */
             t: string;
             /** Orders */
             orders: number;
             /** Delivered */
             delivered: number;
+            /**
+             * Measured
+             * @description Entregues com ciclo e sem presos no intervalo: base do SLA e do ciclo.
+             */
+            measured: number;
+            /**
+             * Low Sample
+             * @description Base medida abaixo do mínimo do painel (MIN_MEASURED): SLA e ciclo mediano não são firmes.
+             */
+            low_sample: boolean;
+            /**
+             * Volume Low Sample
+             * @description Menos de MIN_MEASURED pedidos no intervalo: cancelamento não é firme.
+             */
+            volume_low_sample: boolean;
             /** Gmv */
             gmv: number;
             /** Cancel Rate */
@@ -1216,8 +1267,8 @@ export interface operations {
                 status?: ("delivered" | "canceled")[];
                 offset?: number;
                 limit?: number;
-                /** @description Coluna de ordenação (fora da lista cai em created_at): created_at, amount, delivery_fee, cycle_min, production_min, transit_min, distance_m, store_name, hub_name, city, status */
-                sort?: string;
+                /** @description Coluna de ordenação dos pedidos. */
+                sort?: "created_at" | "amount" | "delivery_fee" | "cycle_min" | "production_min" | "transit_min" | "distance_m" | "store_name" | "hub_name" | "city" | "status";
                 desc?: boolean;
             };
             header?: never;

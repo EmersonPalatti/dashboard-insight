@@ -8,19 +8,22 @@ import { keepPreviousData, useInfiniteQuery } from "@tanstack/react-query";
 import { flexRender, getCoreRowModel, useReactTable, createColumnHelper } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { ArrowDown, ArrowUp, ChevronRight, Filter, X } from "lucide-react";
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { apiGet, type OrderRow } from "@/lib/api/client";
+import type { operations } from "@/lib/api/schema";
 import { askAgentAbout } from "@/lib/agentBridge";
 import { $filters, $ready, applyDrilldown, toQuery } from "@/lib/filters";
 import { fmt, label } from "@/lib/format";
 import { STORE_NAMES_HINT } from "@/lib/glossary";
 import { prefersReducedMotion, useMediaQuery } from "@/lib/media";
-import { gated, island, useApiGate, useMeta } from "@/lib/query";
+import { gated, island, useApiGate } from "@/lib/query";
 import { AskAgentButton } from "./ui/AskAgentButton";
 import { AsyncBody, Empty, PanelContent, panelFallback } from "./ui/Panel";
 
-// Pergunta pela coluna de ordenação atual (ids de SORTABLE); "Resumo" é o fallback do agente.
-const ASK_BY_SORT: Record<string, string> = {
+type OrderSort = NonNullable<NonNullable<operations["orders_api_orders_get"]["parameters"]["query"]>["sort"]>;
+
+// Pergunta pela coluna de ordenação atual (chaves de OrderSort vindas do OpenAPI).
+const ASK_BY_SORT: Record<OrderSort, string> = {
   created_at: "Onde estão os picos de horário dos pedidos do recorte e o que fazer?",
   amount: "Explique a receita dos pedidos do recorte e o que fazer?",
   delivery_fee: "Explique o frete dos pedidos do recorte e o que fazer?",
@@ -37,9 +40,9 @@ const ASK_BY_SORT: Record<string, string> = {
 const PAGE = 200;
 const ROW_H_DESKTOP = 34;
 const ROW_H_MOBILE = 44;
-const GMV_OUTLIER = 5000;
 const col = createColumnHelper<OrderRow>();
-const SORTABLE = new Set(["created_at", "amount", "delivery_fee", "cycle_min", "production_min", "transit_min", "distance_m", "store_name", "hub_name", "city", "status"]);
+const SORTABLE = new Set<string>(Object.keys(ASK_BY_SORT));
+const isOrderSort = (id: string): id is OrderSort => SORTABLE.has(id);
 const NUMERIC_COLS = new Set(["amount", "cycle_min", "production_min", "transit_min", "distance_m"]);
 
 const columns = [
@@ -67,7 +70,7 @@ const columns = [
     size: 108,
     cell: (c) => {
       const v = c.getValue();
-      return v > GMV_OUTLIER ? (
+      return c.row.original.amount_outlier ? (
         <span
           className="inline-flex items-center gap-1 font-semibold text-ink"
           title="Acima de R$ 5 mil: fora do GMV e do ticket médio"
@@ -104,13 +107,13 @@ function OrdersTableInner() {
   const filters = useStore($filters);
   const ready = useStore($ready);
   const gate = useApiGate();
-  const meta = useMeta().data;
   const desktop = useMediaQuery("(min-width: 1024px)");
   const rowH = desktop ? ROW_H_DESKTOP : ROW_H_MOBILE;
-  const [sort, setSort] = useState<{ id: string; desc: boolean }>({ id: "created_at", desc: true });
+  const [sort, setSort] = useState<{ id: OrderSort; desc: boolean }>({ id: "created_at", desc: true });
   const [selectedOrder, setSelectedOrder] = useState<OrderRow | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
-  const detailId = useId();
+  // tabindex móvel: só uma linha da grade entra no Tab; as setas andam entre as linhas
+  const [activeIndex, setActiveIndex] = useState(0);
   const detailRef = useRef<HTMLDivElement>(null);
   const originOrderIdRef = useRef<number | null>(null);
   const shouldReturnFocusRef = useRef(false);
@@ -161,6 +164,46 @@ function OrdersTableInner() {
     setSelectedOrder(null);
   }, [filters]);
 
+  useEffect(() => {
+    setActiveIndex(0);
+  }, [filters, sort]);
+
+  // A linha ativa pode ter saído da janela virtual: aí a primeira linha montada fica com o Tab.
+  const tabIndexRow = items.some((i) => i.index === activeIndex) ? activeIndex : (items[0]?.index ?? 0);
+
+  const focusRow = (index: number) => {
+    const next = Math.max(0, Math.min(rows.length - 1, index));
+    setActiveIndex(next);
+    const find = () => scroller.current?.querySelector<HTMLElement>(`[data-row-index="${next}"]`);
+    const el = find();
+    if (el) {
+      el.scrollIntoView({ block: "nearest" });
+      el.focus({ preventScroll: true });
+      return;
+    }
+    virtual.scrollToIndex(next, { align: "auto" });
+    requestAnimationFrame(() => find()?.focus({ preventScroll: true }));
+  };
+
+  const pageRows = () => Math.max(1, Math.floor((scroller.current?.clientHeight ?? 460) / rowH) - 1);
+  const onRowKeyDown = (e: KeyboardEvent<HTMLDivElement>, index: number, toggle: () => void) => {
+    const moves: Record<string, number> = {
+      ArrowDown: index + 1,
+      ArrowUp: index - 1,
+      PageDown: index + pageRows(),
+      PageUp: index - pageRows(),
+      Home: 0,
+      End: rows.length - 1,
+    };
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      toggle();
+    } else if (e.key in moves) {
+      e.preventDefault();
+      focusRow(moves[e.key]);
+    }
+  };
+
   const openOrder = (order: OrderRow) => {
     originOrderIdRef.current = order.order_id;
     shouldReturnFocusRef.current = false;
@@ -203,17 +246,6 @@ function OrdersTableInner() {
     }
   }, [selectedOrder?.order_id]);
 
-  const selectedHubId = selectedOrder
-    ? meta?.hubs.find((h) => h.label === selectedOrder.hub_name)?.value
-    : undefined;
-  const selectedStoreId = selectedOrder
-    ? meta?.stores.find(
-        (s) =>
-          s.label === selectedOrder.store_name &&
-          (selectedHubId === undefined || Number(s.parent) === Number(selectedHubId)),
-      )?.value ?? meta?.stores.find((s) => s.label === selectedOrder.store_name)?.value
-    : undefined;
-
   const width = table.getTotalSize();
 
   return (
@@ -227,7 +259,7 @@ function OrdersTableInner() {
       actions={
         <AskAgentButton
           subject="os pedidos do recorte"
-          question={ASK_BY_SORT[sort.id] ?? "Resumo dos pedidos do recorte e o que fazer?"}
+          question={ASK_BY_SORT[sort.id]}
         />
       }
     >
@@ -244,7 +276,6 @@ function OrdersTableInner() {
         {selectedOrder && (
           <div
             ref={detailRef}
-            id={detailId}
             role="region"
             tabIndex={-1}
             aria-label={`Detalhes do pedido ${selectedOrder.order_id}`}
@@ -261,15 +292,17 @@ function OrdersTableInner() {
               <div className="flex flex-wrap items-center gap-2">
                 <span className="font-semibold text-ink tabular-nums">Pedido #{selectedOrder.order_id}</span>
                 <span className="text-muted">{fmt.dateTime(selectedOrder.created_at)}</span>
+                {/* Fora do SLA em tinta com peso e seta, como na célula: o vermelho fica com as comandas. */}
                 <span
-                  className={`rounded-tick px-1.5 py-0.5 text-meta font-semibold ${
+                  className={`inline-flex items-center gap-1 rounded-tick px-1.5 py-0.5 text-meta font-semibold ${
                     selectedOrder.on_time === false
-                      ? "bg-crit-soft text-crit"
+                      ? "border border-ink bg-surface text-ink"
                       : selectedOrder.status === "canceled"
                         ? "bg-sunken-strong text-ink"
                         : "bg-surface text-ink"
                   }`}
                 >
+                  {selectedOrder.on_time === false && <ArrowUp className="size-3 shrink-0" aria-hidden />}
                   {selectedOrder.on_time === false
                     ? "Fora do SLA"
                     : selectedOrder.on_time === true
@@ -325,30 +358,26 @@ function OrdersTableInner() {
               </div>
             </dl>
             <div className="mt-3 flex flex-wrap items-center gap-2">
-              {selectedHubId !== undefined && (
-                <button
-                  type="button"
-                  className="btn-ink min-h-8 gap-1.5 px-2.5 py-1 text-meta max-lg:min-h-11"
-                  onClick={() => applyDrilldown({ city: [selectedOrder.city], hub: [Number(selectedHubId)] })}
-                >
-                  <Filter className="size-3" aria-hidden /> Filtrar hub {selectedOrder.hub_name}
-                </button>
-              )}
-              {selectedStoreId !== undefined && (
-                <button
-                  type="button"
-                  className="btn-ghost min-h-8 gap-1.5 px-2.5 py-1 text-meta max-lg:min-h-11"
-                  onClick={() =>
-                    applyDrilldown({
-                      city: [selectedOrder.city],
-                      ...(selectedHubId !== undefined ? { hub: [Number(selectedHubId)] } : {}),
-                      store: [Number(selectedStoreId)],
-                    })
-                  }
-                >
-                  <Filter className="size-3" aria-hidden /> Filtrar loja {selectedOrder.store_name}
-                </button>
-              )}
+              <button
+                type="button"
+                className="btn-ink min-h-8 gap-1.5 px-2.5 py-1 text-meta max-lg:min-h-11"
+                onClick={() => applyDrilldown({ city: [selectedOrder.city], hub: [selectedOrder.hub_id] })}
+              >
+                <Filter className="size-3" aria-hidden /> Filtrar hub {selectedOrder.hub_name}
+              </button>
+              <button
+                type="button"
+                className="btn-ghost min-h-8 gap-1.5 px-2.5 py-1 text-meta max-lg:min-h-11"
+                onClick={() =>
+                  applyDrilldown({
+                    city: [selectedOrder.city],
+                    hub: [selectedOrder.hub_id],
+                    store: [selectedOrder.store_id],
+                  })
+                }
+              >
+                <Filter className="size-3" aria-hidden /> Filtrar loja {selectedOrder.store_name}
+              </button>
               <button
                 type="button"
                 className="btn-ghost min-h-8 px-2.5 py-1 text-meta max-lg:min-h-11"
@@ -364,11 +393,11 @@ function OrdersTableInner() {
           </div>
         )}
         <div ref={scroller} className="content-reveal relative h-[460px] min-w-0 overflow-auto rounded-tick border border-rule" role="region" aria-label="Tabela de pedidos" tabIndex={0}>
-          <div style={{ width, minWidth: "100%" }} className="text-aux tabular-nums" role="table" aria-rowcount={total}>
-            <div className="sticky top-0 z-20 flex border-b border-rule bg-sunken" role="row">
+          <div style={{ width, minWidth: "100%" }} className="text-aux tabular-nums" role="grid" aria-label="Pedidos do recorte" aria-rowcount={total + 1}>
+            <div className="sticky top-0 z-20 flex border-b border-rule bg-sunken" role="row" aria-rowindex={1}>
               {table.getFlatHeaders().map((h) => {
+                const sortCol = isOrderSort(h.id) ? h.id : null;
                 const active = sort.id === h.id;
-                const sortable = SORTABLE.has(h.id);
                 const isNumeric = NUMERIC_COLS.has(h.id);
                 const isPinned = h.id === "created_at";
 
@@ -377,16 +406,16 @@ function OrdersTableInner() {
                   <div
                     key={h.id}
                     role="columnheader"
-                    aria-sort={sortable ? (active ? (sort.desc ? "descending" : "ascending") : "none") : undefined}
+                    aria-sort={sortCol ? (active ? (sort.desc ? "descending" : "ascending") : "none") : undefined}
                     style={{ width: h.getSize() }}
                     className={`flex shrink-0 items-center gap-1 px-2 py-2 text-aux font-semibold ${
                       isNumeric ? "justify-end text-right tabular-nums" : "justify-start"
                     } ${isPinned ? "sticky left-0 z-10 border-r border-rule bg-sunken" : ""}`}
                   >
-                    {sortable ? (
+                    {sortCol ? (
                       <button
                         type="button"
-                        onClick={() => setSort((s) => ({ id: h.id, desc: s.id === h.id ? !s.desc : true }))}
+                        onClick={() => setSort((s) => ({ id: sortCol, desc: s.id === sortCol ? !s.desc : true }))}
                         className={`hit-target inline-flex min-w-0 items-center gap-1 ${active ? "text-ink" : "text-muted hover:text-ink"}`}
                       >
                         <span className="truncate">{flexRender(h.column.columnDef.header, h.getContext())}</span>
@@ -410,19 +439,14 @@ function OrdersTableInner() {
                   <div
                     key={row.id}
                     role="row"
-                    tabIndex={0}
+                    tabIndex={item.index === tabIndexRow ? 0 : -1}
                     data-order-id={row.original.order_id}
+                    data-row-index={item.index}
                     aria-selected={isSelected}
-                    aria-expanded={isSelected}
-                    aria-controls={isSelected ? detailId : undefined}
                     aria-rowindex={item.index + 2}
                     onClick={toggleRow}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        toggleRow();
-                      }
-                    }}
+                    onFocus={() => setActiveIndex(item.index)}
+                    onKeyDown={(e) => onRowKeyDown(e, item.index, toggleRow)}
                     className={`group/row absolute left-0 flex w-full cursor-pointer border-b border-rule/50 transition-colors duration-(--duration-quick) ${
                       isSelected ? "bg-sunken" : "hover:bg-sunken/60"
                     }`}
@@ -434,7 +458,7 @@ function OrdersTableInner() {
                       return (
                         <div
                           key={cell.id}
-                          role="cell"
+                          role="gridcell"
                           style={{ width: cell.column.getSize() }}
                           className={`flex shrink-0 items-center px-2 ${
                             isNumeric ? "justify-end text-right tabular-nums" : ""
@@ -460,20 +484,21 @@ function OrdersTableInner() {
                 );
               })}
             </div>
-            {query.isFetchingNextPage && <p className="label px-2 py-2">Carregando mais pedidos…</p>}
-            {query.isFetchNextPageError && (
-              <div className="flex items-center gap-2 px-2 py-2 text-aux text-muted">
-                <span>Falha ao carregar mais pedidos.</span>
-                <button type="button" className="btn-ghost min-h-8 px-2 py-1 text-meta max-lg:min-h-11" onClick={() => query.fetchNextPage()}>
-                  Tentar de novo
-                </button>
-              </div>
-            )}
           </div>
+          {/* status da paginação fora da grade: role="grid" só aceita linhas e grupos de linhas */}
+          {query.isFetchingNextPage && <p className="label sticky left-0 px-2 py-2">Carregando mais pedidos…</p>}
+          {query.isFetchNextPageError && (
+            <div className="sticky left-0 flex items-center gap-2 px-2 py-2 text-aux text-muted">
+              <span>Falha ao carregar mais pedidos.</span>
+              <button type="button" className="btn-ghost min-h-8 px-2 py-1 text-meta max-lg:min-h-11" onClick={() => query.fetchNextPage()}>
+                Tentar de novo
+              </button>
+            </div>
+          )}
         </div>
       </AsyncBody>
     </PanelContent>
   );
 }
 
-export default island(OrdersTableInner, panelFallback(460, { hint: true }));
+export default island(OrdersTableInner, panelFallback(460, { hint: 2, hintMobile: 5 }));

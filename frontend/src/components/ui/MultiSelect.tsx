@@ -310,7 +310,7 @@ export function MultiSelect<V extends string | number>({
           }`}
         >
           {searchable && (
-            <div className="mb-1 flex items-center gap-1.5 rounded-[4px] border border-rule px-2 py-1 focus-within:border-ink max-lg:min-h-11">
+            <div className="mb-1 flex items-center gap-1.5 rounded-tick border border-rule px-2 py-1 focus-within:border-ink max-lg:min-h-11">
               <Search className="size-3.5 text-muted" aria-hidden />
               <input
                 ref={inputRef}
@@ -354,7 +354,7 @@ export function MultiSelect<V extends string | number>({
                     setActiveKey(String(o.value));
                     toggle(o.value);
                   }}
-                  className={`flex w-full items-center gap-2 rounded-[4px] px-2 py-1.5 text-body font-medium transition-colors duration-(--duration-quick) hover:bg-sunken max-lg:min-h-11 ${
+                  className={`flex w-full items-center gap-2 rounded-tick px-2 py-1.5 text-body font-medium transition-colors duration-(--duration-quick) hover:bg-sunken max-lg:min-h-11 ${
                     active ? "bg-sunken outline outline-1 -outline-offset-1 outline-ink" : ""
                   }`}
                 >

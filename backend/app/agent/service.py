@@ -14,7 +14,7 @@ from datetime import UTC, datetime, timedelta
 import openai
 
 from app.agent import investigate, llm, local
-from app.agent.reading import normalize_action, response_llm, response_local
+from app.agent.reading import has_extractable_action, normalize_action, response_llm, response_local
 from app.config import Settings
 from app.repository import Repository
 from app.schemas import ChatRequest, ChatResponse
@@ -27,7 +27,17 @@ log = logging.getLogger(__name__)
 # reservam só 25%, senão a reserva comeria o prazo inteiro.
 CONTEXT_MIN_S = 3.0
 _CONTEXT_SHARE = 0.25
-_ACTION = "**Ação:**"
+# Com menos que isso no prazo das tools, a investigação pula a síntese (`investigate.synthesize`) e
+# o `None` que volta é falta de tempo, não erro.
+_DEADLINE_SLACK_S = 0.6
+
+# Perguntas com LLM em voo ao mesmo tempo. Cada uma segura uma thread do servidor pelo prazo inteiro
+# (até 35 s na investigação); sem teto, uma rajada lenta ocupa o pool e trava /api/health e os KPIs.
+# Sem vaga, a pergunta sai na hora com a leitura local e `fallback_reason="busy"`.
+LLM_MAX_CONCURRENT: int = Settings.model_fields["llm_max_concurrent"].default
+_BUSY_WAIT_S = 0.05
+_slots_lock = threading.Lock()
+_slots: dict[int, threading.BoundedSemaphore] = {}
 
 
 FallbackReason = str  # "quota" | "busy" | "timeout" | "error"
@@ -86,7 +96,16 @@ def _local(local_reading: local.Reading, reason: FallbackReason | None) -> ChatR
 
 
 def _acceptable(text: str | None) -> bool:
-    return bool(text) and _ACTION in text
+    """Mesmo contrato de `response_llm`: só passa resposta de onde sai uma ação."""
+    return has_extractable_action(text)
+
+
+def _llm_slots(settings: Settings) -> threading.BoundedSemaphore:
+    size = max(1, settings.llm_max_concurrent)
+    with _slots_lock:
+        if size not in _slots:
+            _slots[size] = threading.BoundedSemaphore(size)
+        return _slots[size]
 
 
 def context_reserve(budget_s: float) -> float:
@@ -103,12 +122,25 @@ def chat(req: ChatRequest, repo: Repository, settings: Settings, use_llm: bool =
     if quota_breaker.is_open():
         return _local(local_reading, "quota")
 
+    slots = _llm_slots(settings)
+    if not slots.acquire(timeout=_BUSY_WAIT_S):
+        log.warning("Todas as vagas do LLM ocupadas; respondendo com o agente local")
+        return _local(local_reading, "busy")
+    try:
+        return _chain(req, repo, settings, local_reading)
+    finally:
+        slots.release()
+
+
+def _chain(req: ChatRequest, repo: Repository, settings: Settings, local_reading: local.Reading) -> ChatResponse:
+    f = req.filters
     graph = settings.investigation_enabled and investigate.should_investigate(req.question, req.history, repo, f)
     budget = settings.investigation_budget_s if graph else settings.chat_budget_s
     deadline = time.monotonic() + budget
     reserve = context_reserve(budget)
     tools_deadline = deadline - reserve
     reason: FallbackReason = "error"
+    first_error: FallbackReason | None = None
     first = "investigação" if graph else "LLM com tools"
     try:
         if graph:
@@ -123,21 +155,22 @@ def chat(req: ChatRequest, repo: Repository, settings: Settings, use_llm: bool =
             log.info("agent_chat mode=%s", "investigate" if graph else "llm-tools")
             return response_llm(text, "llm-tools", settings.openrouter_model, used, local_reading, repo, f)
         if result:
-            log.warning("%s respondeu sem **Ação:**; tentando contexto", first)
-        elif time.monotonic() >= tools_deadline:
+            log.warning("%s respondeu sem ação extraível; tentando contexto", first)
+        elif tools_deadline - time.monotonic() <= _DEADLINE_SLACK_S:
             reason = "timeout"
     except Exception as exc:  # noqa: BLE001 — falha do LLM cai no próximo modo, não derruba a resposta
-        reason = _reason(exc)
+        reason = first_error = _reason(exc)
         log.warning("%s falhou (%s): %s", first, reason, exc)
 
     # Cota esgotada ou provedor congestionado não tentam o contexto: a segunda chamada também volta 429.
     # None (texto vazio, rodadas esgotadas ou resposta sem ação) ainda tenta contexto se sobrou
-    # pelo menos a reserva. Menos que isso, a chamada não fecha a tempo: vai a leitura local.
+    # pelo menos a reserva. Menos que isso, a chamada não fecha a tempo: vai a leitura local, com o
+    # erro da primeira chamada se houve um (erro de API não vira "timeout").
     if reason in ("quota", "busy"):
         return _local(local_reading, reason)
     if deadline - time.monotonic() < reserve:
         log.warning("Prazo restante abaixo da reserva (%.1f s); pulando o modo contexto", reserve)
-        return _local(local_reading, "timeout")
+        return _local(local_reading, first_error or "timeout")
     try:
         context = llm.answer_with_context(req.question, req.history, repo, f, settings, deadline=deadline)
         if context and context[0]:
@@ -146,7 +179,9 @@ def chat(req: ChatRequest, repo: Repository, settings: Settings, use_llm: bool =
             text, used = context
             return response_llm(text, "llm-context", settings.openrouter_model, used, local_reading, repo, f)
         if context and context[0]:
-            log.warning("LLM com contexto respondeu sem **Ação:**; usando agente local")
+            log.warning("LLM com contexto respondeu sem ação extraível; usando agente local")
+        elif time.monotonic() >= deadline - _DEADLINE_SLACK_S:
+            reason = "timeout"
     except Exception as exc:  # noqa: BLE001 — falha do LLM cai nas regras locais
         reason = _reason(exc)
         log.warning("LLM com contexto falhou (%s), usando agente local: %s", reason, exc)

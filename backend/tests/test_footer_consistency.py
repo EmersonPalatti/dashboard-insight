@@ -10,10 +10,11 @@ from pathlib import Path
 
 import pytest
 
+from app import semantic
 from app.alerts import CANCEL_HIGH, CANCEL_WARN, SLA_HIGH, SLA_WARN
 from app.config import Settings
 from app.fmt import pct
-from app.repository import MIN_MEASURED
+from app.repository import HEATMAP_MIN_SAMPLE, MIN_MEASURED
 from scripts.build_parquet import AMOUNT_OUTLIER, SQL, STUCK_CYCLE_MIN, TZ_OFFSET_HOURS
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -46,12 +47,18 @@ def test_footer_and_readme_match_cleaning_rules():
     assert f"ciclo &gt; {hours}h" in footer
     assert f"ciclo > {hours}h" in readme
 
-    # Régua da faixa de KPI: os mesmos tetos das comandas, e o piso da comparação de volume.
+    # Régua da faixa de KPI: os mesmos tetos das comandas, e o piso da comparação de volume e do mapa.
     for text in (footer, readme):
-        assert pct(SLA_WARN, 0) in text
-        assert pct(SLA_HIGH, 0) in text
-        assert pct(CANCEL_WARN, 0) in text
-        assert pct(CANCEL_HIGH, 0) in text
+        assert f"abaixo de {pct(SLA_WARN, 0)} no prazo" in text
+        assert f"crítico abaixo de {pct(SLA_HIGH, 0)}" in text
+        assert f"cancelamento a partir de {pct(CANCEL_WARN, 0)}" in text
+        assert f"crítico a partir de {pct(CANCEL_HIGH, 0)}" in text
         assert f"{MIN_MEASURED} pedidos" in text
+        assert (
+            f"a partir de {HEATMAP_MIN_SAMPLE} entregas medidas (ou {HEATMAP_MIN_SAMPLE} pedidos no cancelamento)"
+            in text
+        )
         assert "rede no mesmo período" in text
         assert "Não há meta de SLA em percentual" in text
+
+    assert str(HEATMAP_MIN_SAMPLE) in semantic.load().concepts["amostra_pequena"].definition

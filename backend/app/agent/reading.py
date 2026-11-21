@@ -7,6 +7,7 @@ ou o outro valor existe no recorte que o servidor já consultou.
 from __future__ import annotations
 
 import json
+import logging
 import re
 from dataclasses import dataclass
 from functools import lru_cache
@@ -16,6 +17,8 @@ from app import semantic
 from app.filters import ChannelType, Filters, Modal, OrderStatus, Segment
 from app.repository import VALUE_LABELS, Repository
 from app.schemas import ChatResponse, DrillDown, ReadingBase
+
+log = logging.getLogger(__name__)
 
 _MAX_DRILLS = 3
 _LIST_CAP = 50
@@ -80,43 +83,80 @@ def _internal_terms() -> tuple[re.Pattern[str], dict[str, str]]:
     """Chave interna → rótulo pt-BR. Métricas vêm da camada semântica, nunca de lista duplicada aqui."""
     terms = {key: metric.label for key, metric in semantic.load().metrics.items() if "_" in key}
     terms.update(_FLAG_PT)
-    # Mais longa primeiro: `volume_low_sample` antes de `low_sample`. Crase em volta sai junto.
+    # Mais longa primeiro: `volume_low_sample` antes de `low_sample`. Crase em volta sai junto só quando
+    # fecha o par em volta da chave; trecho de código maior (`sla_pct = 0.82%`) fica intacto.
     alternation = "|".join(sorted(map(re.escape, terms), key=len, reverse=True))
-    return re.compile(rf"`?\b({alternation})\b`?"), terms
+    return re.compile(rf"`({alternation})`|(?<!`)\b({alternation})\b(?!`)"), terms
 
 
-# Parêntese com argumentos de ferramenta copiados ("(window=jantar, sort=production_p50)").
-_TOOL_ARGS = re.compile(r"\s*\((?=[^()]*\b[a-z_]+=)[^()]*\)")
-
-
-# Chamada de ferramenta escrita na prosa ("investiga query_metrics group_by=["store"], sort="x"").
-_ARG = r"""[a-z_]+=(?:\[[^\]]*\]|"[^"]*"|'[^']*'|[^\s,;.]+)"""
-_BARE_ARGS = re.compile(rf"(?:,?\s*{_ARG})+")
+# Nomes de argumento que o parser das tools aceita além dos declarados no schema (`llm._parse_*`).
+_ARG_ALIASES = ("window", "windows", "janela", "ascending", "desc", "worst")
+_ARG_VALUE = r"""(?:\[[^\]]*\]|"[^"]*"|'[^']*'|[^\s,;.]+)"""
 
 
 @lru_cache(maxsize=1)
-def _tool_call() -> re.Pattern[str]:
+def _arg_patterns() -> tuple[re.Pattern[str], re.Pattern[str], re.Pattern[str]]:
+    """Argumentos e chamadas de tool copiados para a prosa. Só nomes reais de argumento contam:
+    `(n=42 pedidos)` ou `taxa=80%` é texto do modelo e fica."""
     from app.agent.llm import TOOLS  # import tardio: llm carrega a camada semântica e o repositório
 
+    keys = set(_ARG_ALIASES)
+    for tool in TOOLS:
+        keys.update(tool["function"]["parameters"].get("properties", {}))
+    arg_names = "|".join(sorted(map(re.escape, keys), key=len, reverse=True))
+    arg = rf"\b(?:{arg_names})={_ARG_VALUE}"
+    # Parêntese com argumentos de ferramenta ("(window=jantar, sort=production_p50)").
+    tool_args = re.compile(rf"\s*\((?=[^()]*\b(?:{arg_names})=)[^()]*\)")
+    # Chamada escrita na prosa ("investiga query_metrics group_by=["store"], sort="x"").
+    bare_args = re.compile(rf"(?:,?\s*{arg})+")
     names = "|".join(sorted((t["function"]["name"] for t in TOOLS), key=len, reverse=True))
-    return re.compile(rf"`?\b(?:{names})\b`?(?:\([^()]*\))?(?:,?\s*{_ARG})*")
+    tool_call = re.compile(rf"`?\b(?:{names})\b`?(?:\([^()]*\))?(?:,?\s*{arg})*")
+    return tool_args, bare_args, tool_call
 
 
 def _pt_internal(text: str) -> str:
     pattern, terms = _internal_terms()
-    text = _tool_call().sub("uma consulta", _TOOL_ARGS.sub("", text))
-    text = _BARE_ARGS.sub("", text)
-    return pattern.sub(lambda m: terms[m.group(1)], text)
+    tool_args, bare_args, tool_call = _arg_patterns()
+    text = tool_call.sub("uma consulta", tool_args.sub("", text))
+    text = bare_args.sub("", text)
+    return pattern.sub(lambda m: terms[m.group(1) or m.group(2)], text)
+
+
+# Número em formato en-US que o modelo às vezes devolve. Só formas sem ambiguidade: decimal com ponto
+# seguido de unidade (82.4%, 38.5 min, 1.2 p.p.) e valor em reais (R$ 1,234.56, R$ 9.90). Data, hora,
+# Nº de hub/loja e "1.200 pedidos" (milhar pt-BR) não casam. Código entre crases fica como está.
+# Valor negativo em reais (subsídio negativo, "R$ -0.97") também converte.
+_EN_UNIT = re.compile(r"(?<![\d.,])(\d+)\.(\d{1,2})(\s?(?:%|min\b|p\.\s?p\.|pp\b|km\b))")
+_EN_BRL_THOUSANDS = re.compile(r"(R\$\s?[-−+]?\s?)(\d{1,3}(?:,\d{3})+)(?:\.(\d{1,2}))?(?![\d,]|\.\d)")
+_EN_BRL_DECIMAL = re.compile(r"(R\$\s?[-−+]?\s?)(\d+)\.(\d{1,2})(?![\d.,]\d|\d)")
+_CODE = re.compile(r"(```[\s\S]*?```|`[^`\n]*`)")
+
+
+def _brl_thousands(m: re.Match[str]) -> str:
+    cents = f",{m.group(3)}" if m.group(3) else ""
+    return f"{m.group(1)}{m.group(2).replace(',', '.')}{cents}"
+
+
+def _pt_numbers(text: str) -> str:
+    """82.4% → 82,4%; R$ 1,234.56 → R$ 1.234,56. Fora de trechos de código."""
+
+    def fix(part: str) -> str:
+        part = _EN_BRL_THOUSANDS.sub(_brl_thousands, part)
+        part = _EN_BRL_DECIMAL.sub(r"\1\2,\3", part)
+        return _EN_UNIT.sub(r"\1,\2\3", part)
+
+    return "".join(part if i % 2 else fix(part) for i, part in enumerate(_CODE.split(text)))
 
 
 def _pt_severity(text: str) -> str:
-    """Troca severidade em inglês (`high`/`medium`/`low`) e chaves internas das tools por pt-BR."""
+    """Troca severidade em inglês (`high`/`medium`/`low`), chaves internas das tools e número en-US
+    por pt-BR. Recebe prosa, nunca o JSON da leitura."""
     for pattern, repl in _SEVERITY_PT:
         text = pattern.sub(
             lambda m, r=repl: (r[0].upper() + r[1:]) if m.group(0)[0].isupper() else r,
             text,
         )
-    return _pt_internal(text)
+    return _pt_numbers(_pt_internal(text))
 
 
 @dataclass
@@ -257,6 +297,11 @@ def _keep(key: str, value: object, known: dict[str, set]) -> str | int | None:
         return None
     if key == "status" and text not in _literal_values(OrderStatus):
         return None
+    if key == "city":
+        if text in known["city"]:
+            return text
+        folded = text.casefold()
+        return next((c for c in known["city"] if isinstance(c, str) and c.casefold() == folded), None)
     if text not in known[key]:
         return None
     return text
@@ -367,15 +412,34 @@ def _strip_fence(text: str) -> str:
     return _OPEN_FENCE.sub("", _FENCE.sub("", text)).strip()
 
 
-# "Ação:", "**Ação**:", "__Ação:__", "Acao:" no começo da linha: modelos diferentes formatam a marca
-# de jeitos diferentes. Sem normalizar, uma resposta boa sem o negrito vira leitura local.
-_ACTION_LINE = re.compile(r"(?im)^[ \t]*(?:\*\*|__)?[ \t]*a[çc][ãa]o[ \t]*(?:\*\*|__)?[ \t]*:[ \t]*(?:\*\*|__)?[ \t]*")
+# "Ação:", "**Ação**:", "__Ação:__", "Acao:", "- **Ação:**", "1. **Ação:**", "### Ação:" no começo da
+# linha: modelos diferentes formatam a marca de jeitos diferentes. Sem normalizar, uma resposta boa vira
+# leitura local. O negrito só sai em par em volta de "ação" ("**Ação:**", "**Ação**:"); o "**" que abre
+# a primeira palavra da ação ("Ação: **Líder do hub** revisa") fica.
+_BOLD_MARK = r"(\*\*|__)[ \t]*a[çc][ãa]o(?:[ \t]*:[ \t]*\1|[ \t]*\1[ \t]*:)|(?:\*\*|__)[ \t]*a[çc][ãa]o[ \t]*:"
+_ACTION_LINE = re.compile(
+    rf"(?im)^[ \t]*(?:(?:[-*•+]|\d{{1,2}}[.)])[ \t]+|#{{1,4}}[ \t]*)?(?:{_BOLD_MARK}|a[çc][ãa]o[ \t]*:)[ \t]*"
+)
+# Marca em negrito no meio da linha ("Corpo. **Ação:** Líder revisa hoje."): vai para parágrafo próprio.
+_INLINE_ACTION = re.compile(rf"(?i)(?<=\S)[ \t]*(?:{_BOLD_MARK})[ \t]*")
+_LEITURA_FENCE = re.compile(r"```(?:leitura|json)\b", re.IGNORECASE)
+_LIST_ITEM = re.compile(r"^[ \t]*(?:[-*•+]|\d{1,2}[.)])[ \t]+")
+_MARKER = "**Ação:**"
+
+
+def _mark_action(text: str) -> str:
+    """Marca de ação canônica em linha própria. O bloco `leitura` fica intacto (é JSON)."""
+    fence = _LEITURA_FENCE.search(text)
+    cut = fence.start() if fence else len(text)
+    prose = _ACTION_LINE.sub(_MARKER + " ", text[:cut])
+    prose = _INLINE_ACTION.sub("\n\n" + _MARKER + " ", prose)
+    return prose + text[cut:]
 
 
 def normalize_action(text: str) -> str:
     """Padroniza a linha de ação em `**Ação:**`; sem a linha, usa a ação do bloco `leitura` se houver."""
-    text = _ACTION_LINE.sub("**Ação:** ", text)
-    if "**Ação:**" in text:
+    text = _mark_action(text)
+    if _MARKER in text:
         return text
     parsed = parse_leitura(text)
     if parsed is None or not parsed.action.strip():
@@ -383,22 +447,72 @@ def normalize_action(text: str) -> str:
     fence = text.find("```")
     body = (text[:fence] if fence >= 0 else text).rstrip()
     rest = text[fence:] if fence >= 0 else ""
-    return f"{body}\n\n**Ação:** {parsed.action.strip()}\n\n{rest}".rstrip()
+    return f"{body}\n\n{_MARKER} {parsed.action.strip()}\n\n{rest}".rstrip()
+
+
+def _action_lines(lines: list[str]) -> tuple[str, list[str]]:
+    """Primeira linha é a ação; seguem junto passos em lista, linha recuada ou frase que não fechou.
+    O resto (nota depois da ação) volta para o corpo."""
+    action = _LIST_ITEM.sub("", lines[0]).strip()
+    steps: list[str] = []
+    rest_at = len(lines)
+    for i, line in enumerate(lines[1:], start=1):
+        open_sentence = not (steps[-1] if steps else action).endswith((".", "!", "?"))
+        if _LIST_ITEM.match(line):
+            steps.append(_LIST_ITEM.sub("", line).strip())
+        elif line[:1] in (" ", "\t") or open_sentence:
+            if steps:
+                steps[-1] = f"{steps[-1]} {line.strip()}"
+            else:
+                action = f"{action} {line.strip()}".strip()
+        else:
+            rest_at = i
+            break
+    for step in steps:
+        action = f"{action}{' ' if action.endswith(('.', '!', '?', ';', ':')) else '; '}{step}".strip()
+    return action, lines[rest_at:]
 
 
 def split_markdown(text: str) -> tuple[str, str]:
-    """Separa o corpo da última linha que é só a ação. Sem ação, o segundo item vem vazio."""
-    stripped = _strip_fence(text).rstrip()
-    marker = "**Ação:**"
-    index = stripped.rfind(marker)
+    """Separa o corpo da última marca de ação não vazia. Passos em lista entram na ação; nota depois dela
+    volta para o corpo; marca anterior no corpo vira "Próximo passo:". Sem ação, o segundo item vem vazio."""
+    stripped = _mark_action(_strip_fence(text)).strip()
+    index = stripped.rfind(_MARKER)
+    paragraphs: list[str] = []
+    while index != -1:
+        paragraphs = [p for p in re.split(r"\n[ \t]*\n", stripped[index + len(_MARKER):].strip()) if p.strip()]
+        if paragraphs:
+            break
+        # Marca vazia no fim ("**Ação:**" sem texto): a ação que vale é a anterior.
+        stripped = stripped[:index].rstrip()
+        index = stripped.rfind(_MARKER)
     if index == -1:
-        return stripped, ""
-    line_start = stripped.rfind("\n", 0, index) + 1
-    if stripped[line_start:index].strip() or "\n" in stripped[index:]:
-        return stripped, ""
-    body = stripped[:line_start].rstrip()
-    action = stripped[index + len(marker):].strip()
+        return _demote_markers(stripped), ""
+    head = _demote_markers(stripped[:index].rstrip())
+    lines = [line for line in paragraphs[0].splitlines() if line.strip()]
+    rest = paragraphs[1:]
+    # "**Ação:** Líder do hub:" seguido de lista em parágrafo próprio: a lista é a ação.
+    while lines and lines[-1].rstrip().endswith(":") and rest and _LIST_ITEM.match(rest[0]):
+        lines += [line for line in rest.pop(0).splitlines() if line.strip()]
+    action, trailing = _action_lines(lines)
+    tail = "\n\n".join(part for part in ["\n".join(trailing), *rest] if part.strip())
+    body = "\n\n".join(part for part in (head, tail) if part)
     return body, action
+
+
+def _demote_markers(text: str) -> str:
+    """Ação de um alerta listado antes da ação final fica no corpo como passo, sem a marca da comanda."""
+    return text.replace(_MARKER, "Próximo passo:")
+
+
+def has_extractable_action(text: str | None) -> bool:
+    """Mesma regra de `response_llm`: a resposta só é aceita se dela sai uma ação não vazia."""
+    if not text:
+        return False
+    parsed = parse_leitura(text)
+    if parsed is not None and _pt_severity(parsed.action).strip():
+        return True
+    return bool(split_markdown(_pt_severity(_strip_fence(text)))[1])
 
 
 def clip_title(diagnosis: str) -> str:
@@ -442,15 +556,21 @@ def response_llm(
     repo: Repository,
     filters: Filters,
 ) -> ChatResponse:
-    """Fecha a comanda do modelo. Sem JSON válido, usa o texto e os atalhos das regras."""
+    """Fecha a comanda do modelo. Sem JSON válido, usa o texto e os atalhos das regras.
+
+    O bloco `leitura` nunca fica em `answer`: ele volta como histórico na próxima pergunta.
+    """
     parsed = parse_leitura(text)
-    clean_text = _pt_severity(text)
+    # Tira o bloco antes de traduzir: a tradução é para prosa, não para o JSON.
+    clean_text = _pt_severity(_strip_fence(text))
+    if parsed is not None and not _pt_severity(parsed.action).strip():
+        parsed = None
     if parsed is None:
-        clean_text = _strip_fence(clean_text)
         diagnosis, action = split_markdown(clean_text)
         if not action:
-            fallback = response_local(local)
-            return fallback.model_copy(update={"answer": local.answer})
+            # `service` só chega aqui com `has_extractable_action`; se escapar, a queda não é silenciosa.
+            log.warning("Resposta do modelo sem ação extraível; usando agente local")
+            return response_local(local).model_copy(update={"fallback_reason": "error"})
         drills = local.drilldowns
         title = clip_title(diagnosis) if diagnosis else local.title
         diagnosis = diagnosis or local.diagnosis
@@ -460,6 +580,9 @@ def response_llm(
         action = _pt_severity(parsed.action)
         validated = validate_drilldowns(repo, filters, parsed.drilldowns)
         drills = local.drilldowns if not parsed.sent_drilldowns else validated
+        # Só o bloco (ou só a ação que `normalize_action` tirou dele): a resposta vira diagnóstico + ação.
+        if not split_markdown(clean_text)[0]:
+            clean_text = f"{diagnosis}\n\n{_MARKER} {action}"
     return ChatResponse(
         answer=clean_text,
         mode=mode,  # type: ignore[arg-type]

@@ -40,7 +40,7 @@ def test_low_sample_flag_matches_threshold_day_by_day(repo):
         assert m["low_sample"] == (m["measured"] < MIN_MEASURED)
         flags.append(m["low_sample"])
     assert flags[0] is True  # um dia só não sustenta a medição
-    assert flags[-1] is False  # quatro meses sustentam
+    assert flags[-1] is False  # janela completa (jan–mar) sustenta
     assert flags.index(False) > 0
 
 
@@ -55,7 +55,7 @@ def test_previous_period_carries_measured_and_flag(client):
 
 def test_full_period_is_not_low_sample_on_both_sides(client):
     # Fevereiro tem período anterior (janeiro) dentro dos dados e base medida de sobra nos dois lados.
-    # O fixture cobre só ~58 dias, por isso março ficaria vazio.
+    # Fevereiro compara com janeiro (base sintética contínua); março concentra os cenários plantados.
     body = client.get("/api/kpis", params={"start": "2021-02-01", "end": "2021-02-28"}).json()
     assert body["previous"] is not None
     assert body["current"]["low_sample"] is False

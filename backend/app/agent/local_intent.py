@@ -8,18 +8,16 @@ responde. Nomes de hub, loja e cidade saem de `repo.meta()`, nunca do código.
 from __future__ import annotations
 
 import re
-import unicodedata
 from dataclasses import dataclass, field
 
-from app import semantic
+from app import fmt, semantic
 from app.repository import Repository
 
 # --------------------------------------------------------------------------- texto
 
 
 def norm(text: str) -> str:
-    decomposed = unicodedata.normalize("NFD", (text or "").lower().strip())
-    return "".join(ch for ch in decomposed if unicodedata.category(ch) != "Mn")
+    return fmt.fold_text(text).strip()
 
 
 def words(text: str) -> list[str]:

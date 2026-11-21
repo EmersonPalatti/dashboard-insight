@@ -114,16 +114,28 @@ def test_chat_local_engine_returns_the_comanda(client):
     assert "SLA do recorte" in body["answer"]
 
 
+def _tool_call(name: str = "get_kpis", arguments: str = "{}", call_id: str = "c1"):
+    return SimpleNamespace(id=call_id, function=SimpleNamespace(name=name, arguments=arguments))
+
+
+def _has_tool_result(kwargs: dict) -> bool:
+    return any(m.get("role") == "tool" for m in kwargs.get("messages", ()))
+
+
 def test_local_engine_does_not_burn_the_llm_quota(client, monkeypatch):
     calls: list[int] = []
 
     class Completions:
         def create(self, *args, **kwargs):
-            calls.append(1)
-            msg = SimpleNamespace(
-                content="Resposta do modelo.\n\n**Ação:** Líder do hub deve revisar o SLA hoje.",
-                tool_calls=None,
-            )
+            if not _has_tool_result(kwargs):
+                calls.append(1)
+            if kwargs.get("tools") and not _has_tool_result(kwargs):
+                msg = SimpleNamespace(content=None, tool_calls=[_tool_call()])
+            else:
+                msg = SimpleNamespace(
+                    content="Resposta do modelo.\n\n**Ação:** Líder do hub deve revisar o SLA hoje.",
+                    tool_calls=None,
+                )
             return SimpleNamespace(choices=[SimpleNamespace(message=msg)])
 
     monkeypatch.setattr(
@@ -157,7 +169,10 @@ def test_local_engine_does_not_burn_the_llm_quota(client, monkeypatch):
 
 def _install(monkeypatch, content: str):
     def create(*_args, **kwargs):
-        msg = SimpleNamespace(content=content, tool_calls=None)
+        if kwargs.get("tools") and not _has_tool_result(kwargs):
+            msg = SimpleNamespace(content=None, tool_calls=[_tool_call()])
+        else:
+            msg = SimpleNamespace(content=content, tool_calls=None)
         return SimpleNamespace(choices=[SimpleNamespace(message=msg)])
 
     monkeypatch.setattr(
@@ -203,6 +218,8 @@ def test_llm_invented_drilldown_is_dropped(client, monkeypatch):
         assert body["mode"] == "llm-tools"
         assert body["title"] == "SLA baixo"
         assert body["drilldowns"] == [{"label": "Ver hub real", "filters": {"hub": [2]}}]
+        assert "```leitura" not in body["answer"]
+        assert '"drilldowns"' not in body["answer"]
     finally:
         client.app.dependency_overrides.pop(get_settings, None)
 
@@ -262,6 +279,8 @@ def test_llm_severity_is_translated_to_pt_br(client, monkeypatch):
         assert "alertas críticos" in body["diagnosis"]
         assert "alerta em atenção" in body["diagnosis"]
         assert "alertas críticos" in body["action"]
+        assert "```leitura" not in body["answer"]
+        assert '"drilldowns"' not in body["answer"]
     finally:
         client.app.dependency_overrides.pop(get_settings, None)
 
@@ -357,3 +376,331 @@ def test_bare_tool_call_in_prose_is_removed():
     out = _pt_severity(text)
     assert "query_metrics" not in out and "group_by" not in out and "=" not in out
     assert out == "Analista investiga uma consulta para achar lojas acima de 6%."
+
+
+# A-01: marca de ação fora do lugar não derruba a resposta do modelo para a leitura local.
+@pytest.mark.parametrize(
+    ("content", "expected"),
+    [
+        ("O SLA do hub caiu para 80,0%.\nCorpo. **Ação:** Líder do hub revisa hoje.", "Líder do hub revisa hoje."),
+        ("O SLA caiu.\n\n**Ação:** Líder do hub:\n- revisa a escala hoje.", "Líder do hub: revisa a escala hoje."),
+        ("O SLA caiu.\n\n- **Ação:** Líder do hub revisa hoje.", "Líder do hub revisa hoje."),
+        ("O SLA caiu.\n\n### Ação: Líder do hub revisa hoje.", "Líder do hub revisa hoje."),
+        (
+            "O SLA caiu.\n\n**Ação:** Líder do hub revisa hoje.\n\nObservação: base pequena.",
+            "Líder do hub revisa hoje.",
+        ),
+    ],
+    ids=["inline", "multiline", "bulleted", "heading", "trailing-note"],
+)
+def test_llm_action_outside_last_line_is_accepted(client, monkeypatch, content, expected):
+    _install(monkeypatch, content)
+    client.app.dependency_overrides[get_settings] = lambda: Settings(
+        openrouter_api_key="test-key", chat_rate_limit_enabled=False
+    )
+    try:
+        body = client.post("/api/agent/chat", json={"question": "como esta o sla?"}).json()
+        assert body["source"] == "llm"
+        assert body["mode"].startswith("llm-")
+        assert body["fallback_reason"] is None
+        assert body["action"] == expected
+        assert "**Ação:**" not in body["diagnosis"]
+    finally:
+        client.app.dependency_overrides.pop(get_settings, None)
+
+
+def test_trailing_note_after_action_stays_in_the_body():
+    from app.agent.reading import split_markdown
+
+    body, action = split_markdown("O SLA caiu.\n\n**Ação:** Líder do hub revisa hoje.\n\nObservação: base pequena.")
+    assert action == "Líder do hub revisa hoje."
+    assert body == "O SLA caiu.\n\nObservação: base pequena."
+
+
+def test_llm_with_empty_action_falls_back_with_a_reason(client, monkeypatch):
+    _install(monkeypatch, "O SLA caiu.\n\n**Ação:** ")
+    client.app.dependency_overrides[get_settings] = lambda: Settings(
+        openrouter_api_key="test-key", chat_rate_limit_enabled=False
+    )
+    try:
+        body = client.post("/api/agent/chat", json={"question": "como esta o sla?"}).json()
+        assert body["source"] == "local"
+        assert body["mode"] == "local"
+        assert body["fallback_reason"] == "error"
+        assert body["action"]
+    finally:
+        client.app.dependency_overrides.pop(get_settings, None)
+
+
+def test_acceptable_matches_what_the_comanda_can_extract():
+    from app.agent.reading import has_extractable_action
+
+    assert has_extractable_action("Texto.\n\n**Ação:** Líder revisa hoje.")
+    assert has_extractable_action('```leitura\n{"title":"t","diagnosis":"d","action":"Líder revisa hoje."}\n```')
+    assert not has_extractable_action("Texto.\n\n**Ação:** ")
+    assert not has_extractable_action("Texto sem ação.")
+    assert not has_extractable_action(None)
+
+
+# A-02: o bloco `leitura` não fica em `answer` (volta como histórico na próxima pergunta).
+def test_leitura_fence_is_not_kept_in_the_answer(client, monkeypatch):
+    payload = (
+        "SLA do recorte em 70%.\n\n**Ação:** Líder do hub deve revisar o SLA hoje.\n\n"
+        "```leitura\n"
+        '{"title":"SLA high","diagnosis":"SLA em 70% no recorte.","action":"Líder do hub deve revisar o SLA hoje.",'
+        '"drilldowns":[{"label":"Ver hub real","filters":{"hub":[2]}}]}\n'
+        "```"
+    )
+    _install(monkeypatch, payload)
+    client.app.dependency_overrides[get_settings] = lambda: Settings(
+        openrouter_api_key="test-key", chat_rate_limit_enabled=False
+    )
+    try:
+        body = client.post("/api/agent/chat", json={"question": "como esta o sla?"}).json()
+        assert body["source"] == "llm"
+        assert body["title"] == "SLA high"
+        assert "```leitura" not in body["answer"]
+        assert '"drilldowns"' not in body["answer"]
+        assert body["answer"].startswith("SLA do recorte em 70%.")
+    finally:
+        client.app.dependency_overrides.pop(get_settings, None)
+
+
+def test_leitura_only_answer_gets_a_readable_answer(client, monkeypatch):
+    _install(
+        monkeypatch,
+        '```leitura\n{"title":"SLA baixo","diagnosis":"SLA em 70%.","action":"Líder do hub revisa hoje.",'
+        '"drilldowns":[]}\n```',
+    )
+    client.app.dependency_overrides[get_settings] = lambda: Settings(
+        openrouter_api_key="test-key", chat_rate_limit_enabled=False
+    )
+    try:
+        body = client.post("/api/agent/chat", json={"question": "como esta o sla?"}).json()
+        assert body["source"] == "llm"
+        assert "```" not in body["answer"]
+        assert "SLA em 70%." in body["answer"] and "Líder do hub revisa hoje." in body["answer"]
+    finally:
+        client.app.dependency_overrides.pop(get_settings, None)
+
+
+# A-03: só argumento real de tool sai da prosa; amostra e números do modelo ficam.
+@pytest.mark.parametrize(
+    "text",
+    [
+        "SLA de 80,0% (n=42 pedidos).",
+        "Amostra pequena com n=42 pedidos.",
+        "Hub com taxa=80% e ciclo=45.",
+        "Hub com SLA de 80% (base=42).",
+    ],
+)
+def test_prose_with_equals_sign_is_kept(text):
+    from app.agent.reading import _pt_severity
+
+    assert _pt_severity(text) == text
+
+
+# A-18: número en-US na prosa do modelo vira pt-BR; data, hora, Nº e código ficam.
+def test_en_us_numbers_are_normalized_to_pt_br():
+    from app.agent.reading import _pt_severity
+
+    text = "SLA 82.4%, ciclo 38.5 min, queda de 1.2 p.p., GMV R$ 1,234.56 e frete R$ 9.90"
+    assert _pt_severity(text) == "SLA 82,4%, ciclo 38,5 min, queda de 1,2 p.p., GMV R$ 1.234,56 e frete R$ 9,90"
+    assert _pt_severity("R$ 1,234,567 no mês") == "R$ 1.234.567 no mês"
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "GMV de R$ 1.234,56 em 1.200 pedidos, SLA 82,4%.",
+        "Pico em 05.01.2021 às 19.30, hub 8 e loja 1234.",
+        "Versão 1.2 do relatório; jantar 19h-21h.",
+        "Campo `sla_pct = 0.82%` no código.",
+    ],
+)
+def test_pt_br_numbers_dates_and_code_are_untouched(text):
+    from app.agent.reading import _pt_numbers
+
+    assert _pt_numbers(text) == text
+
+
+# A-16: sem vaga para o LLM, a pergunta sai na hora com a leitura local.
+def test_llm_slots_full_answers_local_busy_fast(client, monkeypatch):
+    import threading
+    import time
+
+    from app.agent import service
+
+    entered = threading.Semaphore(0)
+    release = threading.Event()
+
+    def create(*_args, **_kwargs):
+        entered.release()
+        release.wait(10)
+        msg = SimpleNamespace(content="SLA em 80,0%.\n\n**Ação:** Líder revisa hoje.", tool_calls=None)
+        return SimpleNamespace(choices=[SimpleNamespace(message=msg)])
+
+    monkeypatch.setattr(
+        "app.agent.llm._client",
+        lambda settings, timeout=None: SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create))),
+    )
+    settings = Settings(openrouter_api_key="test-key", chat_rate_limit_enabled=False, investigation_enabled=False)
+    client.app.dependency_overrides[get_settings] = lambda: settings
+    repo = client.app.state.repo
+    results: list = []
+
+    def ask() -> None:
+        results.append(service.chat(service.ChatRequest(question="como esta o sla?"), repo, settings))
+
+    workers = [threading.Thread(target=ask) for _ in range(service.LLM_MAX_CONCURRENT)]
+    try:
+        for worker in workers:
+            worker.start()
+        for _ in workers:
+            assert entered.acquire(timeout=10), "chamada lenta não chegou ao modelo"
+        started = time.monotonic()
+        body = client.post("/api/agent/chat", json={"question": "como esta o sla?"}).json()
+        # A meta é < 0,5 s de espera pela vaga; a folga cobre a leitura local num CI lento.
+        assert time.monotonic() - started < 2.0
+        assert body["mode"] == "local"
+        assert body["fallback_reason"] == "busy"
+        assert client.get("/api/health").status_code == 200
+    finally:
+        release.set()
+        for worker in workers:
+            worker.join(15)
+        client.app.dependency_overrides.pop(get_settings, None)
+    assert len(results) == service.LLM_MAX_CONCURRENT
+    assert all(r.source == "llm" for r in results)
+    # As vagas voltam: a próxima pergunta chega ao modelo.
+    assert service.chat(service.ChatRequest(question="como esta o sla?"), repo, settings).source == "llm"
+
+
+def test_llm_slot_size_comes_from_settings():
+    from app.agent import service
+
+    slots = service._llm_slots(Settings(llm_max_concurrent=2))
+    assert slots.acquire(blocking=False) and slots.acquire(blocking=False)
+    assert not slots.acquire(blocking=False)
+    slots.release()
+    slots.release()
+    default = service._llm_slots(Settings())
+    assert default is service._llm_slots(Settings(llm_max_concurrent=service.LLM_MAX_CONCURRENT))
+
+
+# A-22: o motivo da queda é o que de fato aconteceu.
+class _Clock:
+    def __init__(self) -> None:
+        self.now = 1000.0
+
+    def monotonic(self) -> float:
+        return self.now
+
+
+def test_slow_api_error_keeps_error_reason(repo, monkeypatch):
+    import httpx
+    import openai
+
+    from app.agent import service
+
+    clock = _Clock()
+    monkeypatch.setattr(service, "time", clock)
+
+    def tools(*_args, deadline, **_kwargs):
+        clock.now = deadline + 1.0  # o erro chega quando já não há reserva para o contexto
+        raise openai.APIConnectionError(request=httpx.Request("POST", "http://llm.invalid"))
+
+    def context(*_args, **_kwargs):
+        raise AssertionError("modo contexto não deveria rodar sem reserva")
+
+    monkeypatch.setattr(service.llm, "answer_with_tools", tools)
+    monkeypatch.setattr(service.llm, "answer_with_context", context)
+    settings = Settings(openrouter_api_key="test-key", investigation_enabled=False)
+    out = service.chat(service.ChatRequest(question="como esta o sla?"), repo, settings)
+    assert out.source == "local"
+    assert out.fallback_reason == "error"
+
+
+def test_synthesis_skipped_near_deadline_is_timeout(repo, monkeypatch):
+    from app.agent import service
+
+    clock = _Clock()
+    monkeypatch.setattr(service, "time", clock)
+    monkeypatch.setattr(service.investigate, "should_investigate", lambda *_a, **_k: True)
+
+    def investigate(*_args, deadline, **_kwargs) -> None:
+        clock.now = deadline - 0.3  # `synthesize` pula com <= 0,5 s e devolve None
+
+    monkeypatch.setattr(service.investigate, "investigate", investigate)
+    monkeypatch.setattr(service.llm, "answer_with_context", lambda *_a, **_k: None)
+    settings = Settings(openrouter_api_key="test-key", investigation_enabled=True)
+    out = service.chat(service.ChatRequest(question="por que o sla mudou?"), repo, settings)
+    assert out.source == "local"
+    assert out.fallback_reason == "timeout"
+
+
+def test_validate_drilldowns_matches_city_case_insensitively_and_returns_canonical_casing(repo):
+    canonical = str(repo.meta()["cities"][0]["value"])
+    drills = validate_drilldowns(
+        repo,
+        Filters(),
+        [
+            DrillDown(
+                label="Cidade",
+                filters={"city": [canonical.lower(), f"  {canonical.upper()}  ", "Cidade Inventada"]},
+            ),
+        ],
+    )
+    assert len(drills) == 1
+    assert drills[0].filters == {"city": [canonical]}
+
+
+# FA-05: a marca de ação não come o negrito da ação, não deixa número de lista nem ação anterior no corpo.
+@pytest.mark.parametrize(
+    "text",
+    ["O SLA caiu para 82,4%.\n\nAção: **Líder do hub** revisa hoje.",
+     "O SLA caiu.\n\n**Ação**: **Líder do hub** revisa hoje.",
+     "O SLA caiu. **Ação**: **Líder do hub** revisa hoje."],
+)
+def test_action_marker_keeps_the_bold_that_opens_the_action(text):
+    from app.agent.reading import normalize_action, split_markdown
+
+    _body, action = split_markdown(normalize_action(text))
+    assert action == "**Líder do hub** revisa hoje."
+
+
+def test_numbered_action_line_leaves_no_list_number_in_the_body():
+    from app.agent.reading import normalize_action, split_markdown
+
+    body, action = split_markdown(normalize_action("O SLA caiu.\n\n1. **Ação:** Líder do hub revisa hoje."))
+    assert (body, action) == ("O SLA caiu.", "Líder do hub revisa hoje.")
+
+
+def test_earlier_action_lines_leave_the_diagnosis():
+    from app.agent.reading import has_extractable_action, split_markdown
+
+    text = ("Alertas:\n- Hub A: SLA 70%.\n**Ação:** Líder A revisa hoje.\n- Hub B: SLA 75%.\n"
+            "**Ação:** Líder B revisa hoje.")
+    body, action = split_markdown(text)
+    assert action == "Líder B revisa hoje."
+    assert "**Ação:**" not in body and "Líder A revisa hoje." in body
+    # Marca vazia no fim: vale a ação anterior, não "sem ação".
+    text = "Alerta 1.\n**Ação:** Líder A revisa hoje.\n\n**Ação:** "
+    assert split_markdown(text) == ("Alerta 1.", "Líder A revisa hoje.")
+    assert has_extractable_action(text)
+
+
+# FA-06: real negativo (subsídio negativo) e código entre crases passando pelo caminho inteiro.
+def test_negative_brl_is_normalized_to_pt_br():
+    from app.agent.reading import _pt_severity
+
+    text = "Subsídio de R$ -0.97 no hub (diferença R$ -1,234.56); pt-BR R$ -0,97 e R$ -1.234,56 ficam."
+    assert _pt_severity(text) == "Subsídio de R$ -0,97 no hub (diferença R$ -1.234,56); pt-BR R$ -0,97 e R$ -1.234,56 ficam."
+
+
+def test_inline_code_survives_the_internal_key_cleanup():
+    from app.agent.reading import _pt_severity
+
+    text = "Campo `sla_pct = 0.82%` no código."
+    assert _pt_severity(text) == text
+    assert _pt_severity("Hub com `sla_below` hoje.") == "Hub com SLA abaixo do recorte hoje."

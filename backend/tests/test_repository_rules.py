@@ -3,17 +3,18 @@
 from __future__ import annotations
 
 import tempfile
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import duckdb
 import pytest
 from fastapi.testclient import TestClient
 
+from app.alerts import hero_readings
 from app.config import get_settings
 from app.filters import Filters
 from app.main import create_app
-from app.repository import MIN_MEASURED, Repository, _flag_outliers
+from app.repository import HEATMAP_MIN_SAMPLE, MIN_MEASURED, Repository, _csv_cell, _flag_outliers
 
 
 # ----------------------------------------------------------------- filtro de status
@@ -108,18 +109,6 @@ def test_stuck_orders_have_no_on_time(client):
     ).json()["rows"]
     measured = [r for r in measured_rows if r["status"] == "delivered" and r["cycle_min"] is not None]
     assert measured and all(isinstance(r["on_time"], bool) for r in measured)
-
-
-# ------------------------------------------------------------------- exportação CSV
-def test_csv_export_works_when_target_dir_has_single_quote(repo, tmp_path: Path):
-    target_dir = tmp_path / "O'Neil"
-    target_dir.mkdir()
-    target = target_dir / "pedidos.csv"
-    f = Filters(city=["Curitiba"])
-    repo.export_csv(f, target)
-    lines = target.read_text(encoding="utf-8").splitlines()
-    assert lines[0].startswith("order_id,created_at,status,city")
-    assert len(lines) - 1 == repo.metrics(f)["orders"] > 0
 
 
 def _repo_with_gaps(tmp_path: Path):
@@ -252,9 +241,299 @@ def test_subslice_metrics_and_complement_sum_to_base(repo):
 
 def test_subslice_complement_includes_null_dimension_rows(tmp_path: Path):
     gap_repo = _repo_with_gaps(tmp_path)
-    total = gap_repo.metrics(Filters())
-    moto = gap_repo.subslice_metrics(Filters(), dimension="modal", values=["moto"])
-    rest = gap_repo.subslice_metrics(Filters(), dimension="modal", values=["moto"], complement=True)
-    assert moto["orders"] == 1
-    assert rest["orders"] == 4
-    assert moto["orders"] + rest["orders"] == total["orders"]
+    try:
+        total = gap_repo.metrics(Filters())
+        moto = gap_repo.subslice_metrics(Filters(), dimension="modal", values=["moto"])
+        rest = gap_repo.subslice_metrics(Filters(), dimension="modal", values=["moto"], complement=True)
+        assert moto["orders"] == 1
+        assert rest["orders"] == 4
+        assert moto["orders"] + rest["orders"] == total["orders"]
+    finally:
+        gap_repo.close()
+
+
+def test_subslice_metrics_matches_null_labels_like_query_metrics(tmp_path: Path):
+    gap_repo = _repo_with_gaps(tmp_path)
+    try:
+        total = gap_repo.metrics(Filters())["orders"]
+        sub_modal = gap_repo.subslice_metrics(Filters(), dimension="modal", values=["sem entregador"])
+        qm_modal = gap_repo.query_metrics(Filters(), metrics=["orders"], where={"modal": ["sem entregador"]})["total"]
+        rest_modal = gap_repo.subslice_metrics(Filters(), dimension="modal", values=["sem entregador"], complement=True)
+        assert sub_modal["orders"] == qm_modal["orders"] == 2
+        assert rest_modal["orders"] == 3
+        assert sub_modal["orders"] + rest_modal["orders"] == total
+
+        sub_driver = gap_repo.subslice_metrics(Filters(), dimension="driver_type", values=["não informado"])
+        qm_driver = gap_repo.query_metrics(
+            Filters(), metrics=["orders"], where={"driver_type": ["não informado"]}
+        )["total"]
+        assert sub_driver["orders"] == qm_driver["orders"] == 1
+    finally:
+        gap_repo.close()
+
+
+@pytest.mark.parametrize(
+    "f",
+    [
+        Filters(start=date(2021, 5, 1)),
+        Filters(city=["Curitiba"], start=date(2021, 5, 1)),
+        Filters(city=["Curitiba"], end=date(2020, 12, 31)),
+        Filters(end=date(2020, 12, 20)),
+    ],
+)
+def test_one_sided_out_of_range_dates_do_not_invert_period_or_crash_heroes(repo, f: Filters):
+    start, end = repo.period(f)
+    assert start <= end
+    assert repo.previous_period(f) is None
+    assert repo.describe(f).startswith(f"{start:%d/%m/%Y} a {end:%d/%m/%Y}")
+    assert len(hero_readings(repo, f)) == 3
+
+
+@pytest.mark.parametrize(
+    "params",
+    [
+        {"start": "2021-05-01"},
+        {"city": "Curitiba", "start": "2021-05-01"},
+        {"city": "Curitiba", "end": "2020-12-31"},
+        {"end": "2020-12-20"},
+    ],
+)
+def test_kpis_http_one_sided_out_of_range_dates_return_200(client, params: dict):
+    r = client.get("/api/kpis", params=params)
+    assert r.status_code == 200
+    body = r.json()
+    assert body["period"]["start"] <= body["period"]["end"]
+    assert body["previous_period"] is None
+    assert body["previous"] is None
+    assert body["current"]["orders"] == 0
+
+
+def test_csv_cell_neutralizes_formulas_without_touching_numbers():
+    assert _csv_cell('=HYPERLINK("http://x","y")') == '\'=HYPERLINK("http://x","y")'
+    assert _csv_cell("+1+1") == "'+1+1"
+    assert _csv_cell("-1+1") == "'-1+1"
+    assert _csv_cell("@SUM(A1)") == "'@SUM(A1)"
+    assert _csv_cell("\t=1") == "'\t=1"
+    assert _csv_cell("\r=1") == "'\r=1"
+    assert _csv_cell(-12.5) == -12.5
+    assert _csv_cell(-3) == -3
+    assert _csv_cell(0) == 0
+    assert _csv_cell("") == ""
+    assert _csv_cell("Loja 11") == "Loja 11"
+    assert _csv_cell(True) == "true"
+    assert _csv_cell(False) == "false"
+    assert _csv_cell(None) == ""
+    assert _csv_cell(datetime(2021, 1, 2, 3, 4, 5)) == "2021-01-02 03:04:05"
+
+
+def test_describe_falls_back_to_ids_when_unknown(repo):
+    assert repo.describe(Filters(hub=[999999])).endswith("hub 999999")
+    assert repo.describe(Filters(store=[999999])).endswith("loja 999999")
+    many = repo.describe(Filters(store=[999991, 999992, 999993, 999994, 999995]))
+    assert many.endswith("loja 5 lojas")
+
+
+def test_describe_city_uses_the_data_casing_and_dedupes_by_case(repo):
+    # O filtro de cidade ignora a caixa; o rótulo do recorte segue a grafia dos dados, sem repetir.
+    city = repo.meta()["cities"][0]["label"]
+    assert repo.describe(Filters(city=[city.lower()])).endswith(f"cidade {city}")
+    assert repo.describe(Filters(city=[city.lower(), city, city.upper()])).endswith(f"cidade {city}")
+    assert repo.describe(Filters(city=["Cidade Fora"])).endswith("cidade Cidade Fora")
+
+
+def test_priced_count_is_the_base_of_the_freight_metrics(repo, parquet_path: Path):
+    # Loja 50: 100 entregas, 1 com frete e custo. fee_avg, cost_avg e subsidy saem dessa uma.
+    f = Filters(store=[50])
+    base = repo.metrics(f)
+    assert base["delivered"] == 100
+    assert repo.priced_count(f) == 1
+    assert (base["fee_avg"], base["cost_avg"], base["subsidy"]) == (5.0, 15.0, 10.0)
+    expected = duckdb.execute(
+        f"select count(*) from read_parquet('{parquet_path.as_posix()}') "
+        "where status = 'delivered' and delivery_fee is not null and delivery_cost is not null"
+    ).fetchone()[0]
+    assert repo.priced_count(Filters()) == expected
+
+
+def test_breakdown_tie_breaker_is_deterministic_and_preserves_winners(tmp_path: Path):
+    path = tmp_path / "ties.parquet"
+    con = duckdb.connect()
+    row_sql = []
+    oid = 1
+    for store_id, store_name, modal, count in (
+        (5, "Loja 5", "van", 3),
+        (20, "Loja 20", "moto", 2),
+        (10, "Loja 10", "bike", 2),
+        (30, "Loja 30", None, 2),
+    ):
+        for _ in range(count):
+            modal_sql = "cast(null as varchar)" if modal is None else f"'{modal}'"
+            row_sql.append(
+                f"({oid}, timestamp '2021-01-06 12:00:00', date '2021-01-06', 12::tinyint, 2::tinyint, "
+                f"'delivered', 40.0, 5.0, 7.0, {store_id}, '{store_name}', 'food', 1, 'Hub Centro', "
+                f"'São Paulo', 'SP', 'Food Place', 'marketplace', 'online', false, {modal_sql}, 'freelance', "
+                f"1000::bigint, 1, 10.0, 1.0, 2.0, 4.0, 12.0, 30.0, false, false)"
+            )
+            oid += 1
+    con.execute(
+        f"""
+        create table fact as
+        select * from (values {", ".join(row_sql)})
+        t(order_id, created_at, created_date, hour, weekday, status, amount, delivery_fee,
+          delivery_cost, store_id, store_name, segment, hub_id, hub_name, city, state, channel,
+          channel_type, payment_method, has_chargeback, modal, driver_type, distance_m,
+          delivery_attempts, production_min, collected_min, walking_min, expedition_min,
+          transit_min, cycle_min, cycle_outlier, amount_outlier)
+        """
+    )
+    con.execute(f"copy fact to '{path.as_posix()}' (format parquet)")
+    con.close()
+
+    tie_repo = Repository(path, 60, 120)
+    try:
+        for _ in range(5):
+            tie_repo._cache.clear()
+            stores = tie_repo.breakdown(Filters(), "store", sort="orders", limit=10)
+            assert [r["key"] for r in stores] == [5, 10, 20, 30]
+            modals = tie_repo.breakdown(Filters(), "modal", sort="orders", limit=10)
+            assert [r["key"] for r in modals] == ["van", "bike", "moto", None]
+    finally:
+        tie_repo.close()
+
+
+def test_orders_page_reuses_metrics_and_skips_query_past_total(repo, monkeypatch):
+    f = Filters(city=["Curitiba"])
+    total = repo.metrics(f)["orders"]
+    assert total > 0
+
+    calls: list[str] = []
+    orig_rows = repo._rows
+
+    def spy_rows(sql: str, params: list | None = None):
+        calls.append(sql)
+        return orig_rows(sql, params)
+
+    monkeypatch.setattr(repo, "_rows", spy_rows)
+
+    at_end = repo.orders_page(f, total, 50, "created_at", True)
+    past_end = repo.orders_page(f, total + 500, 50, "created_at", True)
+    assert at_end == {"total": total, "offset": total, "limit": 50, "rows": []}
+    assert past_end == {"total": total, "offset": total + 500, "limit": 50, "rows": []}
+    assert len(calls) == 0
+
+    first_page = repo.orders_page(f, 0, 50, "created_at", True)
+    assert first_page["total"] == total
+    assert len(first_page["rows"]) == min(50, total)
+    assert len(calls) == 1
+    assert "select count(*)" not in calls[0].lower()
+
+
+def test_orders_page_exposes_exact_ids_and_amount_outlier(tmp_path: Path):
+    path = tmp_path / "homonyms.parquet"
+    con = duckdb.connect()
+    con.execute(
+        """
+        create table fact as
+        select * from (values
+            (1, timestamp '2021-01-06 12:00:00', date '2021-01-06', 12::tinyint, 2::tinyint,
+             'delivered', 5000.00, 5.0, 7.0, 101, 'Loja Homonima', 'food', 10, 'Hub A',
+             'São Paulo', 'SP', 'Food Place', 'marketplace', 'online', false, 'moto', 'freelance',
+             1000::bigint, 1, 10.0, 1.0, 2.0, 4.0, 12.0, 30.0, false, false),
+            (2, timestamp '2021-01-06 13:00:00', date '2021-01-06', 13::tinyint, 2::tinyint,
+             'delivered', 5000.01, 5.0, 7.0, 202, 'Loja Homonima', 'food', 20, 'Hub B',
+             'São Paulo', 'SP', 'Food Place', 'marketplace', 'online', false, 'moto', 'freelance',
+             1000::bigint, 1, 10.0, 1.0, 2.0, 4.0, 12.0, 30.0, false, true)
+        ) t(order_id, created_at, created_date, hour, weekday, status, amount, delivery_fee,
+            delivery_cost, store_id, store_name, segment, hub_id, hub_name, city, state, channel,
+            channel_type, payment_method, has_chargeback, modal, driver_type, distance_m,
+            delivery_attempts, production_min, collected_min, walking_min, expedition_min,
+            transit_min, cycle_min, cycle_outlier, amount_outlier)
+        """
+    )
+    con.execute(f"copy fact to '{path.as_posix()}' (format parquet)")
+    con.close()
+
+    r = Repository(path, 60, 120)
+    try:
+        rows = r.orders_page(Filters(), 0, 10, "order_id", False)["rows"]
+        # Mesma loja em hubs diferentes: a API entrega ids próprios e o flag de outlier do ETL.
+        assert [(row["order_id"], row["hub_id"], row["store_id"], row["amount_outlier"]) for row in rows] == [
+            (1, 10, 101, False),
+            (2, 20, 202, True),
+        ]
+    finally:
+        r.close()
+
+
+def test_heatmap_flags_measured_below_threshold_independently_of_orders(tmp_path: Path):
+    path = tmp_path / "heat_sample.parquet"
+    con = duckdb.connect()
+    rows_sql = []
+    # Célula (segunda 12h): 20 pedidos, sendo 19 cancelados e só 1 entregue medido (orders >= 20, measured = 1).
+    for oid in range(1, HEATMAP_MIN_SAMPLE + 1):
+        status = "'delivered'" if oid == 1 else "'canceled'"
+        rows_sql.append(
+            f"({oid}, timestamp '2021-01-04 12:00:00', date '2021-01-04', 12::tinyint, 0::tinyint, "
+            f"{status}, 40.0, 5.0, 7.0, 11, 'Loja 11', 'food', 1, 'Hub Centro', 'São Paulo', 'SP', "
+            f"'Food Place', 'marketplace', 'online', false, 'moto', 'freelance', 1000::bigint, 1, "
+            f"10.0, 1.0, 2.0, 4.0, 12.0, 30.0, false, false)"
+        )
+    # Célula (terça 12h): 20 entregas medidas (orders >= 20, measured == 20).
+    for offset in range(1, HEATMAP_MIN_SAMPLE + 1):
+        oid = HEATMAP_MIN_SAMPLE + offset
+        rows_sql.append(
+            f"({oid}, timestamp '2021-01-05 12:00:00', date '2021-01-05', 12::tinyint, 1::tinyint, "
+            f"'delivered', 40.0, 5.0, 7.0, 11, 'Loja 11', 'food', 1, 'Hub Centro', 'São Paulo', 'SP', "
+            f"'Food Place', 'marketplace', 'online', false, 'moto', 'freelance', 1000::bigint, 1, "
+            f"10.0, 1.0, 2.0, 4.0, 12.0, 30.0, false, false)"
+        )
+    con.execute(
+        f"""
+        create table fact as
+        select * from (values {", ".join(rows_sql)})
+        t(order_id, created_at, created_date, hour, weekday, status, amount, delivery_fee,
+          delivery_cost, store_id, store_name, segment, hub_id, hub_name, city, state, channel,
+          channel_type, payment_method, has_chargeback, modal, driver_type, distance_m,
+          delivery_attempts, production_min, collected_min, walking_min, expedition_min,
+          transit_min, cycle_min, cycle_outlier, amount_outlier)
+        """
+    )
+    con.execute(f"copy fact to '{path.as_posix()}' (format parquet)")
+    con.close()
+
+    r = Repository(path, 60, 120)
+    try:
+        cells = {c["weekday"]: c for c in r.heatmap(Filters())}
+        assert cells[0]["orders"] == HEATMAP_MIN_SAMPLE
+        assert cells[0]["measured"] == 1
+        assert cells[0]["volume_low_sample"] is False
+        assert cells[0]["low_sample"] is True
+
+        assert cells[1]["orders"] == HEATMAP_MIN_SAMPLE
+        assert cells[1]["measured"] == HEATMAP_MIN_SAMPLE
+        assert cells[1]["volume_low_sample"] is False
+        assert cells[1]["low_sample"] is False
+    finally:
+        r.close()
+
+
+def test_eval_run_main_closes_repository(parquet_path: Path, monkeypatch):
+    from evals import run as eval_run
+
+    opened: list[Repository] = []
+    real_repo_cls = eval_run.Repository
+
+    def tracking_repo(*args, **kwargs):
+        instance = real_repo_cls(*args, **kwargs)
+        opened.append(instance)
+        return instance
+
+    monkeypatch.setattr(eval_run, "Repository", tracking_repo)
+    eval_run.main(["--engine", "local", "--data", str(parquet_path), "--cases", "ov-geral", "--quiet"])
+    with pytest.raises(SystemExit):
+        eval_run.main(["--engine", "local", "--data", str(parquet_path), "--cases", "nao-existe", "--quiet"])
+
+    assert len(opened) == 2
+    for instance in opened:
+        with pytest.raises(duckdb.ConnectionException):
+            instance.metrics(Filters(store=[999999]))

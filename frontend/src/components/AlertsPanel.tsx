@@ -6,7 +6,7 @@
  */
 import { useStore } from "@nanostores/react";
 import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, CircleSlash, Filter, LineChart, MessageSquareText, RotateCcw, ShieldCheck } from "lucide-react";
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
 import type { Alert } from "@/lib/api/client";
 import { $railAgentComandas, askAgentAbout, openComandaCount, scopeKey } from "@/lib/agentBridge";
 import { AgentOpenBand, AgentStub } from "./agent/AgentComanda";
@@ -14,8 +14,7 @@ import { $evidence, EVIDENCE_ANCHOR, showEvidence } from "@/lib/evidence";
 import { $filters, applyDrilldown, resetFilters } from "@/lib/filters";
 import { $nextComandaRequest, $recorteEmpty } from "@/lib/investigation";
 import { prefersReducedMotion } from "@/lib/media";
-import { island, useMeta, useRecorteQuery } from "@/lib/query";
-import { outsideBaseNote } from "@/lib/format";
+import { island, useRecorteQuery } from "@/lib/query";
 import { STORE_NAMES_HINT } from "@/lib/glossary";
 import { SEVERITY } from "./ui/EvidenceTag";
 import { ErrorState } from "./ui/Panel";
@@ -348,7 +347,7 @@ function AlertsSkeletonBody() {
           >
             <div className="flex items-center justify-between">
               <div className="skeleton h-3 w-20" />
-              <div className="skeleton size-3.5 rounded" />
+              <div className="skeleton size-3.5 rounded-tick" />
             </div>
             <div className="skeleton mt-2 h-4 w-full" />
             <div className="skeleton mt-1 h-4 w-3/4" />
@@ -409,11 +408,10 @@ function AlertsSkeleton() {
 }
 
 function AlertsPanelInner() {
-  const { data, error, isPending, refetch, isPlaceholderData } = useRecorteQuery("/api/alerts");
+  const { data, error, isPending, refetch, isPlaceholderData, down } = useRecorteQuery("/api/alerts");
   const alerts = data?.alerts ?? [];
   const railAgents = useStore($railAgentComandas);
   const filters = useStore($filters);
-  const { data: meta } = useMeta();
   const scope = scopeKey(filters);
   // undefined = o operador ainda não escolheu (abre a primeira); null = recolheu todas
   const [openId, setOpenId] = useState<string | null | undefined>(undefined);
@@ -545,13 +543,13 @@ function AlertsPanelInner() {
     };
   }, [expanding]);
 
-  const finishCollapse = (id: string) => {
+  const finishCollapse = useCallback((id: string) => {
     setFolding(null);
     setOpenId(null);
     setOpenedFromCollapsed(false);
     setExpanding(false);
     setFocusRequest({ id, on: "stub" });
-  };
+  }, []);
 
   // fallback do recolhimento: se transitionend não disparar, a faixa fecha no mesmo tempo
   useEffect(() => {
@@ -559,7 +557,7 @@ function AlertsPanelInner() {
     const id = folding;
     const timer = window.setTimeout(() => finishCollapse(id), FOLD_FALLBACK_MS);
     return () => window.clearTimeout(timer);
-  }, [folding]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [folding, finishCollapse]);
 
   const collapse = (id: string) => {
     setPrinting(false);
@@ -603,17 +601,30 @@ function AlertsPanelInner() {
   const nextComandaRequest = useStore($nextComandaRequest);
   const seenNextRequest = useRef(nextComandaRequest);
   const scrollQueueRef = useRef(false);
+  const nextStateRef = useRef({
+    railIds,
+    folding,
+    effectiveOpen,
+    openComanda,
+  });
+  nextStateRef.current = { railIds, folding, effectiveOpen, openComanda };
 
   useEffect(() => {
     if (nextComandaRequest === seenNextRequest.current) return;
     seenNextRequest.current = nextComandaRequest;
-    if (railIds.length === 0) return;
-    const activeOpen = folding === null ? effectiveOpen : null;
-    const currentIndex = activeOpen ? railIds.indexOf(activeOpen) : -1;
-    const nextId = currentIndex >= 0 ? railIds[(currentIndex + 1) % railIds.length] : railIds[0];
+    const {
+      railIds: ids,
+      folding: currentFolding,
+      effectiveOpen: currentOpen,
+      openComanda: openTicket,
+    } = nextStateRef.current;
+    if (ids.length === 0) return;
+    const activeOpen = currentFolding === null ? currentOpen : null;
+    const currentIndex = activeOpen ? ids.indexOf(activeOpen) : -1;
+    const nextId = currentIndex >= 0 ? ids[(currentIndex + 1) % ids.length] : ids[0];
     scrollQueueRef.current = true;
-    openComanda(nextId, { id: nextId, on: "title" });
-  }, [nextComandaRequest]); // eslint-disable-line react-hooks/exhaustive-deps
+    openTicket(nextId, { id: nextId, on: "title" });
+  }, [nextComandaRequest]);
 
   useEffect(() => {
     if (focusRequest) setFocusRequest(null);
@@ -673,13 +684,32 @@ function AlertsPanelInner() {
   const agentStatus = agentSide ? `, ${agentSide}` : "";
   const status = !data
     ? ""
-    : total > 0
-      ? alerts.length > 0
-        ? `${countText}, ${highText}${mediumText}${agentStatus}`
-        : `${countText}, ${agentSide}`
-      : noOrders
-        ? "Sem pedidos neste recorte."
+    : noOrders
+      ? railAgents.length > 0
+        ? `Sem pedidos neste recorte. ${countText}, ${agentSide}.`
+        : "Sem pedidos neste recorte."
+      : total > 0
+        ? alerts.length > 0
+          ? `${countText}, ${highText}${mediumText}${agentStatus}`
+          : `${countText}, ${agentSide}`
         : "Nenhuma comanda aberta neste recorte.";
+
+  const noOrdersTile = noOrders ? (
+    <div className={`tile flex flex-wrap items-center justify-between gap-3 px-5 py-4 ${total > 0 ? "mb-3" : ""}`}>
+      <div className="flex min-w-0 flex-1 items-center gap-3">
+        <CircleSlash className="size-5 shrink-0 text-muted" aria-hidden />
+        <p className="text-pretty">
+          <span className="font-semibold">Sem pedidos neste recorte.</span>{" "}
+          <span className="text-muted">
+            Não dá para afirmar SLA nem cancelamento sem pedidos. {data?.empty_reason ?? "Amplie o período ou tire um filtro."}
+          </span>
+        </p>
+      </div>
+      <button type="button" className="btn-ghost shrink-0 max-lg:min-h-11" onClick={resetFilters}>
+        <RotateCcw className="size-3.5" aria-hidden /> Limpar recorte
+      </button>
+    </div>
+  ) : null;
 
   return (
     <section ref={sectionRef} aria-labelledby="comandas-title" className={`min-w-0 transition-opacity ${isPlaceholderData ? "opacity-60" : ""}`}>
@@ -738,34 +768,27 @@ function AlertsPanelInner() {
         <AlertsSkeletonBody />
       ) : error ? (
         <div className="tile p-4">
-          <ErrorState error={error} onRetry={() => refetch()} />
+          <ErrorState error={error} onRetry={() => refetch()} what="as comandas" down={down} />
         </div>
-      ) : alerts.length === 0 && railAgents.length === 0 ? (
-        <div className="tile flex flex-wrap items-center justify-between gap-3 px-5 py-4">
-          <div className="flex min-w-0 flex-1 items-center gap-3">
-            {noOrders ? (
-              <CircleSlash className="size-5 shrink-0 text-muted" aria-hidden />
-            ) : (
+      ) : total === 0 ? (
+        noOrdersTile ?? (
+          <div className="tile flex flex-wrap items-center justify-between gap-3 px-5 py-4">
+            <div className="flex min-w-0 flex-1 items-center gap-3">
               <ShieldCheck className="size-5 shrink-0 text-good" aria-hidden />
-            )}
-            <p className="text-pretty">
-              <span className="font-semibold">{noOrders ? "Sem pedidos neste recorte." : "Nenhuma comanda aberta neste recorte."}</span>{" "}
-              <span className="text-muted">
-                {noOrders
-                  ? `Não dá para afirmar SLA nem cancelamento sem pedidos. ${outsideBaseNote(filters, meta) ?? "Amplie o período ou tire um filtro."}`
-                  : "SLA, cancelamento e lojas dentro do esperado. Mude o recorte para checar outro hub."}
-              </span>
-            </p>
+              <p className="text-pretty">
+                <span className="font-semibold">Nenhuma comanda aberta neste recorte.</span>{" "}
+                <span className="text-muted">
+                  SLA, cancelamento e lojas dentro do esperado. Mude o recorte para checar outro hub.
+                </span>
+              </p>
+            </div>
           </div>
-          {noOrders && (
-            <button type="button" className="btn-ghost shrink-0 max-lg:min-h-11" onClick={resetFilters}>
-              <RotateCcw className="size-3.5" aria-hidden /> Limpar recorte
-            </button>
-          )}
-        </div>
+        )
       ) : (
-        // keyed em printKey: cada recorte novo remonta o trilho e o reimprime inteiro
-        <div key={printKey}>
+        <>
+          {noOrdersTile}
+          {/* keyed em printKey: cada recorte novo remonta o trilho e o reimprime inteiro */}
+          <div key={printKey}>
           <ol
             ref={railRef}
             aria-label="Trilho de comandas"
@@ -850,7 +873,8 @@ function AlertsPanelInner() {
           {hasStoreAlert && (
             <p className="mt-2 px-0.5 text-meta text-pretty text-muted">{STORE_NAMES_HINT}</p>
           )}
-        </div>
+          </div>
+        </>
       )}
     </section>
   );

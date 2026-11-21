@@ -8,15 +8,19 @@ colors:
   sunken-strong: "#E8E8E8"
   rule: "#DCDCDC"
   ink: "#1A1A1A"
+  action: "#1A1A1A"
+  on-action: "#FFFFFF"
   muted: "#666666"
   crit: "#D92B20"
   crit-deep: "#A51E16"
   crit-soft: "#FBE1DE"
+  on-crit: "#FFFFFF"
   warn: "#946000"
   good: "#46700F"
   wine: "#3D0B1F"
   wine-raised: "#5A1730"
   on-wine: "#F1DBE3"
+  on-wine-strong: "#FFFFFF"
   series: "#7A1E3D"
   series-deep: "#4A0F25"
   series-soft: "#C07D93"
@@ -72,10 +76,10 @@ spacing:
 components:
   button-primary:
     backgroundColor: "{colors.crit}"
-    textColor: "#FFFFFF"
+    textColor: "{colors.on-crit} (#FFFFFF light / #1B1B1B dark)"
     rounded: "{rounded.card}"
     padding: "6px 12px"
-    typography: "{typography.label}"
+    typography: "{typography.body} (weight 500)"
   button-primary-hover:
     backgroundColor: "{colors.crit-deep}"
   button-ink:
@@ -105,8 +109,8 @@ components:
     rounded: "{rounded.card}"
     padding: "20px 20px 16px"
   ticket-action:
-    backgroundColor: "{colors.ink} (claro) / #27131A com borda {colors.wine-raised} (escuro)"
-    textColor: "{colors.surface} (claro) / {colors.ink} (escuro)"
+    backgroundColor: "{colors.action} (light #1A1A1A / dark #27131A with {colors.wine-raised} border)"
+    textColor: "{colors.on-action} (light #FFFFFF / dark #F2F2F2)"
     rounded: "{rounded.card}"
     padding: "14px 16px"
   ticket-stub:
@@ -127,20 +131,20 @@ components:
   agent-dock:
     backgroundColor: "{colors.surface}"
     textColor: "{colors.ink}"
-    width: "clamp(360px, 28vw, 420px)"
+    width: "clamp(320px, 26vw, 420px)"
   agent-fab:
     backgroundColor: "{colors.wine}"
-    textColor: "#FFFFFF"
+    textColor: "{colors.on-wine}"
     rounded: "{rounded.card}"
+    width: "48px"
     height: "48px"
-    padding: "0 16px"
-    typography: "{typography.label}"
+    padding: "0"
   ask-agent-button:
     backgroundColor: "{colors.surface}"
     textColor: "{colors.ink}"
     rounded: "{rounded.card}"
     padding: "4px 8px"
-    typography: "{typography.label}"
+    typography: "{typography.meta} (weight 500)"
   filter-bar:
     backgroundColor: "{colors.surface}"
     textColor: "{colors.ink}"
@@ -152,7 +156,7 @@ components:
     rounded: "{rounded.card}"
     height: "40px"
     padding: "0 12px"
-    typography: "{typography.label}"
+    typography: "{typography.body}"
   share-menu:
     backgroundColor: "{colors.surface}"
     textColor: "{colors.ink}"
@@ -181,15 +185,15 @@ The shell is a wine band, not red: it gives the product a recognisable colour fi
 ## Colors
 
 ### Primary
-- **Crit** `#D92B20` (dark `#FF5D50`): critical severity marks, worsening deltas, the primary action button. Hover `crit-deep`.
+- **Crit** `#D92B20` (dark `#FF5D50`): critical severity marks and the primary action button. Hover `crit-deep`. Text on `crit` uses `on-crit` (`#FFFFFF` light, `#1B1B1B` dark for contrast). Worsening KPI deltas use `warn`, never `crit`.
 
 ### Secondary
-- **Wine** `#3D0B1F` (dark `#26060F`): the shell band. `wine-raised` for hover/active inside it, `on-wine` for its text.
+- **Wine** `#3D0B1F` (dark `#26060F`): the shell band. `wine-raised` for hover/active inside it, `on-wine` (`#F1DBE3` light, `#E6C3CF` dark) for shell text, and `on-wine-strong` (`#FFFFFF` in both themes) for high-emphasis shell text (product name, order count, link hover).
 - **Series** `#7A1E3D` (dark `#E0789A`): the data colour. Ordered ramps use `series-deep` → `series` → `series-soft`.
 
 ### Neutral
-- **Field** `#ECECEC`, **Surface** `#FFFFFF`, **Sunken** `#F5F5F5` / `sunken-strong` `#E8E8E8`, **Rule** `#DCDCDC`, **Ink** `#1A1A1A`, **Muted** `#666666`. Dark theme mirrors them (`#111111`, `#1B1B1B`, `#232323`, `#353535`, `#F2F2F2`, `#A6A6A6`).
-- **Warn** `#946000` and **Good** `#46700F` carry state only.
+- **Field** `#ECECEC`, **Surface** `#FFFFFF`, **Sunken** `#F5F5F5` / `sunken-strong` `#E8E8E8`, **Rule** `#DCDCDC`, **Ink** `#1A1A1A`, **Muted** `#666666`. Dark theme mirrors them (`#111111`, `#1B1B1B`, `#232323` / `#2D2D2D`, `#353535`, `#F2F2F2`, `#A6A6A6`).
+- **Warn** `#946000` (dark `#F0A93B`) and **Good** `#46700F` (dark `#9BC75A`) carry state only (verdicts, small-sample notices, and KPI deltas: improving in `good`, worsening in `warn`).
 
 ### Named Rules
 **The One Red Rule.** Red marks what is critical or what the operator should press next. Active filters, selected tabs, focus rings and icons use ink, never red.
@@ -198,7 +202,7 @@ The shell is a wine band, not red: it gives the product a recognisable colour fi
 
 ## Typography
 
-Two families, both from Google Fonts. **Libre Franklin** (`wght` 400–700) sets all reading text, labels, controls and charts. **Zilla Slab** (500, 600, 700) is the stamp voice, used only on headline figures (`figure`), the comanda identity (`cond`) and the product name in the band (`font-slab`). Never on running text, labels or tables. `cond` keeps its name for compatibility; it now means the stamp voice (Zilla Slab caps), not a narrow cut.
+Two families, both from Google Fonts. **Libre Franklin** (`wght` 400–700) sets all reading text, labels, controls and charts. **Zilla Slab** (500, 600, 700) is the stamp voice, used only on headline figures (`figure`), the comanda identity, evidence tags and "Comandas abertas" rail title (`cond`), and the product name in the band (`font-slab`). Never on running text, labels or tables. `cond` keeps its name for compatibility; it now means the stamp voice (Zilla Slab caps), not a narrow cut.
 
 ### Scale
 Six steps, as `@theme` tokens in `global.css`; no `text-[x.xxrem]` outside them: `text-meta` 0.75 · `text-aux` 0.85 · `text-body` 0.95 · `text-lead` 1.125 · `text-figure` 1.5 · `text-hero` 2.5rem. Panel titles use `text-base`.
@@ -209,7 +213,7 @@ Six steps, as `@theme` tokens in `global.css`; no `text-[x.xxrem]` outside them:
 - **Figure** `text-figure`/600 in Zilla Slab (`figure`): volume KPIs inline with their label.
 - **Section** 1rem/600: panel titles; ticket titles `text-lead`/600.
 - **Body** `text-body`/400, 1.6 line height; **Label** `text-aux`/600, sentence case: KPI labels, table headers, "Ação", footer headings.
-- **Cond** `text-meta`/700 in Zilla Slab, uppercase, 0.03em tracking, lining figures: comanda identity only.
+- **Cond** `text-meta`/700 in Zilla Slab, uppercase, 0.03em tracking, lining figures: comanda identity (`Nº 01 · SLA`, evidence tags) and the "Comandas abertas" rail title (`text-body`).
 
 ### Weights
 400 text · 500 controls only (buttons, tabs, chips, inputs) · 600 panel titles, labels and headline figures · 700 the product name and the cond comanda head.
@@ -217,26 +221,26 @@ Six steps, as `@theme` tokens in `global.css`; no `text-[x.xxrem]` outside them:
 ### Named Rules
 **The One Body Rule.** Tables use one text size; header rank comes from weight and colour, never from a bigger size.
 
-**The Comanda Caps Rule.** Stamp-voice caps (`cond`, Zilla Slab) belong to the comanda's identity. A KPI, a table header or a footer heading is a label in sentence case; caps everywhere is the generic dashboard voice this world refuses.
+**The Comanda Caps Rule.** Stamp-voice caps (`cond`, Zilla Slab) belong to the comanda's identity, evidence tags, and the "Comandas abertas" rail title. A KPI, a table header or a footer heading is a label in sentence case; caps everywhere is the generic dashboard voice this world refuses.
 
 ## Layout
 
 Max width 1440px, 24px side padding (16px under `sm`), 20px gutters. The page reads top-down at full width: comanda rail → KPIs → investigação → ranking → explorar o recorte → fechamento do recorte. The rail sits first because the action is the product; KPIs follow as the context the comandas cite.
 
-The lower half is built around the open comanda. **Investigação** (`#investigacao`), right under the KPIs, holds exactly one chart: the one that proves the open comanda (stages, heatmap or stores), or the trend when the comanda's evidence is a KPI card (its metric follows the card: SLA and ciclo → SLA, cancelamento → cancel, volume figures → volume). With no comanda open, or an agent comanda, it shows the trend and its heading reads "Pulso do recorte"; otherwise "Investigação · Comanda Nº 02". The **ranking** always stays open after it. **Explorar o recorte** (`#explorar`) lists the other charts and the orders table, folded by default as one row each: title, one muted line saying what the view answers, and "Abrir ▾" (≥44px below `lg`, hover sunken). A folded view does not hydrate until it opens, and one the operator opened stays open while comandas change. Charts move between the two zones as DOM nodes, never by CSS `order`, so reading and Tab order follow what is on screen; the trend slot is in Investigação in the static HTML. The zone does not reserve height: the swap happens while the operator is at the rail, above the fold. **Fechamento do recorte** (`#fechamento`) closes the page: the comanda count with severities, the comanda in focus with its Ação block, and Próxima comanda → (ink; cycles the rail, scrolls to it and focuses the open comanda's title), Copiar briefing, Perguntar ao agente and Pedidos em CSV (ghost). With 0 orders in the recorte the whole lower half hides; the rail already says so and offers Limpar recorte. Printed ("PDF da tela"), the page is a focused report: what is open prints whole, folded views print as title and summary line, and buttons drop out. From `lg` the KPI block is two tracks (`minmax(0,3fr) minmax(15rem,1fr)`): the three operation heroes on the left, the three volume figures stacked in one column on the right at the same height. Charts and tables follow full width or in pairs. The agent is not a grid track: it is one fixed panel outside `main` (see Agent panel). Every grid track is `minmax(0, 1fr)` so truncated text never widens the page.
+The lower half is built around the open comanda. **Investigação** (`#investigacao`), right under the KPIs, holds exactly one chart: the one that proves the open comanda (stages, heatmap or stores), or the trend when the comanda's evidence is a KPI card (its metric follows the card: SLA and ciclo → SLA, cancelamento → cancel, volume figures → volume). With no comanda open, or an agent comanda, it shows the trend and its heading reads "Pulso do recorte"; otherwise "Investigação · Comanda Nº 02". The **ranking** always stays open after it. **Explorar o recorte** (`#explorar`) lists the other charts and the orders table, folded by default as one row each: title, one muted line saying what the view answers, and "Abrir ▾" (≥44px below `lg`, hover sunken). A folded view does not hydrate until it opens, and one the operator opened stays open while comandas change. Charts move between the two zones as DOM nodes, never by CSS `order`, so reading and Tab order follow what is on screen; the trend slot is in Investigação in the static HTML. The zone does not reserve height: the swap happens while the operator is at the rail, above the fold. **Fechamento do recorte** (`#fechamento`) closes the page: the comanda count with severities, the comanda in focus with its Ação block, and Próxima comanda → (ink; cycles the rail, scrolls to it and focuses the open comanda's title), Copiar briefing, Perguntar ao agente and Pedidos em CSV (ghost). With 0 orders in the recorte the whole lower half hides; the rail already says so and offers Limpar recorte. Printed ("PDF da tela"), the page is a focused report: what is open prints whole, folded views print as title and summary line, and buttons drop out. From container width `52rem` (`@min-[52rem]`, so it responds when the agent panel narrows `main`), the KPI block is two tracks (`minmax(0,3fr) minmax(15rem,1fr)`): the three operation heroes on the left, the three volume figures stacked in one column on the right at the same height. Charts and tables follow full width or in pairs. The agent is not a grid track: it is one fixed panel outside `main` (see Agent panel). Every grid track is `minmax(0, 1fr)` so truncated text never widens the page.
 
 The ranking keeps its row filter in a sticky right column (24px button, 44px below `lg`), so the drill stays on screen while the table scrolls sideways. A rate or median the backend marks as small-sample (`low_sample`, `volume_low_sample`) prints muted with an asterisk (`*`) — distinct from `<Term>` dotted underlines — and sorts to the end of its column in both directions; the panel hint says so when such rows exist.
 
 ## Elevation & Depth
 
-Flat. Depth comes from layer tone: the open comanda and its rail ticket are pure surface, the other rail tickets are surface at 60% over the field. The filter bar is the only sticky layer, at every width, separated by a hairline. The agent panel floats over the page only in its float mode (1024–1279px), outlined in ink instead of shadowed.
+Flat. Depth comes from layer tone: the open comanda and its rail ticket are pure surface, the other rail tickets are surface at 60% over the field. The filter bar is the only sticky layer, at every width, separated by a hairline. In float mode (1024–1279px) the agent panel sits under the sticky filter bar outlined in ink instead of shadowed, and `main` adds matching right padding (`calc(var(--agent-w) + 1.5rem)`) so content stays uncovered.
 
 ### Named Rules
 **The No Shadow Rule.** No box-shadows anywhere, including tooltips and dialogs.
 
 ## Shapes
 
-`tick` 4px for inner controls (segmented items, checkboxes, table frames); `card` 8px for panels, tiles, buttons and the comanda body. The comanda's top edge is a row of 5px half-holes (CSS mask), its header sits over a 1.5px dashed rule.
+`tick` 4px for inner controls (segmented items, checkboxes, table frames); `card` 8px for panels, tiles, buttons and the comanda body. The comanda's top edge is a row of 5px half-holes (CSS mask, `ticket`), used on rail comandas (alerts and pinned agent comandas, stubs and open band); its header sits over a 1.5px dashed rule.
 
 ## Components
 
@@ -244,7 +248,7 @@ Flat. Depth comes from layer tone: the open comanda and its rail ticket are pure
 The mark is "Carimbo Nº": the `Nº` drawn in one stroke inside a receipt whose bottom edge is perforated. It draws in `currentColor` on the wine band, beside the product name, and its favicon is `#F2E6EA` on a wine square (`#3D0B1F`, 6px corners). Keep it still: no animation, no pulse. Don't put it on a coloured rounded tile in the header, and don't bring back the radar or orbit mark.
 
 ### Buttons
-- **Primary** (`btn-primary`): crit fill, white text. One on the page: the open comanda's drill-down.
+- **Primary** (`btn-primary`): `crit` fill, `on-crit` text (`#FFFFFF` in light mode, `#1B1B1B` in dark mode for contrast), `text-body` weight 500. One on the page: the open comanda's drill-down.
 - **Ink** (`btn-ink`): ink fill; secondary commitments such as the agent's Enviar, agent comanda primary drill-down, Filtrar estas lojas and the trend zoom.
 - **Ghost** (`btn-ghost`): surface with rule border; everything else, including Mais filtros, Compartilhar, the mobile sheet's Exportar, each Perguntar and Nova conversa.
 - **Wine FAB** (`agent-fab`): the only wine-filled button. It is the agent's opener below `lg`, in the thumb zone: a 48px square with the Bot icon only (the name lives in its accessible label), so it covers as little of the open comanda and the KPIs as possible. Its status dot sits in the top-right corner. It hides while the sheet is open.
@@ -262,7 +266,7 @@ Exportar is no longer on the desktop bar. The Export dialog opens only from the 
 ### Inputs / Fields
 Filter selects are 40px surface boxes (44px below `lg`) with the label inline and muted before the value; an active filter gets an ink border. Selected options use an ink checkbox. From `lg` up, Período, Cidade, Hub and Loja stay visible; Segmento, Canal, Modal and Status live in the "Mais filtros" popover, which floats over the page instead of pushing it down. Below `lg` the bar collapses to one recorte summary ("Recorte · N / Rio de Janeiro · Editar") that opens a bottom sheet with every control (Período and Lugar open; Segmento, Canal, Modal and Status folded under "Pedido", which opens by itself when one of them is in use), plus a "Comandas · N / X críticas" shortcut to the queue. Every active value also shows as a removable chip.
 
-No native dropdown or calendar ships: their open state is the operating system's, with square corners and no tokens. Single choices (Quebrar por) use `Select`, dates use `DatePicker`; both open the same floating panel as the filter menus (`card` corners, rule border, surface, no shadow, same open/close motion). The calendar is pt-BR (dd/mm/aaaa, week from Sunday), day cells are `tick`, the chosen day is ink and the rest of the range a sunken tint. Below `lg` it opens in flow instead of floating, so the bottom sheet never clips it.
+No native dropdown or calendar ships: their open state is the operating system's, with square corners and no tokens. Single choices (Quebrar por) use `Select`, dates use `DatePicker`; both open the same floating panel as the filter menus (`card` corners, ink border, surface, no shadow, same open/close motion). The calendar is pt-BR (dd/mm/aaaa, week from Sunday), day cells are `tick`, the chosen day is ink and the rest of the range a sunken tint. Below `lg` it opens in flow instead of floating, so the bottom sheet never clips it.
 
 Table outliers (No prazo abaixo do recorte, cancelamento acima, ciclo fora do SLA) are flagged by the backend and drawn in ink with weight and an arrow mark, never in red: red stays with the comandas. The Orders table documents `↑ fora do SLA` in its panel hint and does not mutate global filters from column headers.
 
@@ -270,8 +274,8 @@ Table outliers (No prazo abaixo do recorte, cancelamento acima, ciclo fora do SL
 The wine band holds product name, subtitle, the API (Swagger) link, API status dot and the theme toggle. The agent does not live here: it opens from the filter bar, the mobile FAB or Ctrl K. Below `sm` the band is one 56px row: name, status dot (label kept for screen readers) and theme toggle; subtitle and API link hide. Below `lg` every control in the page is at least 44px tall.
 
 ### Comanda (signature component)
-The alert rail. **Rail tickets** hang side by side (`auto-cols minmax(12rem,1fr)`, 15rem under `sm`), scrolling sideways with snap when they don't fit: severity mark + `Nº 01 · CATEGORIA` in cond caps, then the title, which always reserves two lines so every ticket has the same height, then the ticket's **figure** on its foot: the headline number in Zilla Slab (`figure`, e.g. "80,0% no SLA") and its reference muted beside it ("recorte 86,2%", "meta 85%"), one line, truncated at the reference. Figure and reference come pre-formatted from the backend (`Alert.figure`, `Alert.figure_ref`), so the queue can be triaged without opening a ticket. When any comanda is about a store, one muted line under the band says the store names are anonymized by the dataset. Pinned agent comandas stay on the rail after the recorte changes, marked "Recorte mudou". A chevron at the right of the head says the ticket opens; it flips (`scaleY(-1)`, `--duration-fast`, symmetric) while its comanda is open. The severity word is left to the open band; on the rail the mark carries it. An ink bar under the rail marks the open ticket and slides between tickets (`--duration-fast`, `--ease-smooth-out`, symmetric like tabs); it fades out on collapse. When tickets are cut off at the right edge, the queue header shows "mais N" (ink, underlined, chevron), which scrolls the rail one page; it disappears when nothing is hidden ahead. Once the rail has scrolled, "voltar" (same style, chevron left) sits before it and scrolls one page back. Hovering (or focusing) a closed ticket previews that lane with a `rule` bar, lifts the paper to full `surface` and the title and chevron to full ink (`--duration-quick`). Clicking the open ticket again collapses it.
-The **open band** is a full-width comanda under the rail, never a popover: header with severity word and Recolher, then two columns from `lg` — title, detail and the actions (drill-down primary, Ver no gráfico and Perguntar ao agente ghost) on the left, the **Ação** block in inverted ink on the right. Under `lg` the diagnosis stays first, followed by the Ação block and the actions, without a right gutter. Severity is a shape as well as a colour: filled dot (crítico), hollow ring (atenção), dash (observar). Printed, every rail ticket carries its action.
+The alert rail. **Rail tickets** hang side by side (`auto-cols minmax(max-content,1fr)`, min `11.5rem` per ticket, `15rem` under `sm`), scrolling sideways with snap when they don't fit: severity mark + `Nº 01 · CATEGORIA` in cond caps, then the title, which always reserves two lines so every ticket has the same height, then the ticket's **figure** on its foot: the headline number in Zilla Slab (`figure`, e.g. "80,0% no SLA") and its reference muted beside it ("recorte 86,2%", "meta 85%"), one line, truncated at the reference. Figure and reference come pre-formatted from the backend (`Alert.figure`, `Alert.figure_ref`), so the queue can be triaged without opening a ticket. When any comanda is about a store, one muted line under the band says the store names are anonymized by the dataset. Pinned agent comandas stay on the rail after the recorte changes, marked "Recorte mudou". A chevron at the right of the head says the ticket opens; it flips (`scaleY(-1)`, `--duration-fast`, symmetric) while its comanda is open. The severity word is left to the open band; on the rail the mark carries it. An ink bar under the rail marks the open ticket and slides between tickets (`--duration-fast`, `--ease-smooth-out`, symmetric like tabs); it fades out on collapse. When tickets are cut off at the right edge, the queue header shows "mais N" (ink, underlined, chevron), which scrolls the rail one page; it disappears when nothing is hidden ahead. Once the rail has scrolled, "voltar" (same style, chevron left) sits before it and scrolls one page back. Hovering (or focusing) a closed ticket previews that lane with a `rule` bar, lifts the paper to full `surface` and the title and chevron to full ink (`--duration-quick`). Clicking the open ticket again collapses it.
+The **open band** is a full-width comanda under the rail, never a popover: header with severity word and Recolher, then two columns from `lg` — title, detail and the actions (drill-down primary, Ver no gráfico and Perguntar ao agente ghost) on the left, the **Ação** block (`action-block`: inverted ink in light mode, deep wine `#27131A` with a `wine-raised` border in dark mode) on the right. Under `lg` the diagnosis stays first, followed by the Ação block and the actions, without a right gutter. Severity is a shape as well as a colour: filled dot (crítico), hollow ring (atenção), dash (observar). Printed, every rail ticket carries its action.
 Motion: each new recorte reprints the rail, tickets unfolding in order (40ms stagger, six steps max, 280ms each) and the band last; switching comanda reprints the band (280ms, `cubic-bezier(0.16, 1, 0.3, 1)`). Opening from collapsed and collapsing animate the band's height as an accordion (`grid-template-rows: 0fr ↔ 1fr`, `--duration-fast`, `--ease-smooth-out`, symmetric, with a fade and `--blur-small` on the content), so the KPIs below glide instead of jumping. All of it is skipped under reduced motion.
 
 ### Evidence mark
@@ -279,8 +283,8 @@ Each alert names its evidence (backend `Evidence`: a KPI card, the stages chart 
 
 ### Agent panel
 One panel node (`#agente`, `AgentDock`) holds the conversation at every width. It is the same node across modes, so a question in progress survives a resize. The mode follows the viewport:
-- **Dock** (≥ 1280px): fixed right column, `clamp(360px, 28vw, 420px)` wide. The page gets right padding equal to the column, so nothing is covered. Only a 1px rule separates them.
-- **Float** (1024–1279px): non-modal panel under the sticky filter bar, top-right, with a 1px ink border. The page stays scrollable and clickable.
+- **Dock** (≥ 1280px): fixed right column, `clamp(320px, 26vw, 420px)` wide. The page gets right padding equal to the column, so nothing is covered. Only a 1px rule separates them.
+- **Float** (1024–1279px): non-modal panel under the sticky filter bar, top-right, with a 1px ink border; `main` receives matching right padding (`calc(var(--agent-w) + 1.5rem)`) so the page stays scrollable, clickable, and uncovered.
 - **Sheet** (< 1024px): full-screen modal. The rest of the page is inert and does not scroll.
 
 Openers. Every opener prefills the question and never sends it; the operator reviews and presses Enviar.
@@ -288,7 +292,7 @@ Openers. Every opener prefills the question and never sends it; the operator rev
 - **Perguntar** (`AskAgentButton`, ghost) as the last action of each chart and table panel, and in each comanda's footer beside the drill-down.
 - **Wine FAB** on mobile (see Buttons).
 
-Status sits on the opener as an 8px dot in series wine. It pulses while the agent consults the recorte and stays solid when an answer arrives with the panel closed. It is never red: red stays for critical and the primary action.
+Status sits on the opener as an 8px dot in `series` wine (or `on-wine` on the wine mobile FAB). It pulses while the agent consults the recorte and stays solid when an answer arrives with the panel closed. It is never red: red stays for critical and the primary action.
 
 The header names the panel and shows the live recorte as removable chips, because filters can change mid-conversation. The "recorte mudou" divider in the log stays. The conversation persists across open and close and in the tab's sessionStorage (last 40 messages). Esc closes the panel and returns focus to the opener.
 
@@ -303,7 +307,7 @@ Tokens live in `:root` (`--duration-*`, `--ease-*`, `--distance-*`, `--scale-*`,
 - The agent's wait is a shimmer over "Consultando o recorte…"; its answer rises 4px into place in 250ms.
 
 ### KPI grid
-Three operation cells joined by 1px rule gaps, each with a sentence-case label, figure, one status line, a daily trail in series wine, and a muted footnote that wraps, never truncates. The status line leads with the verdict (Dentro, Atenção, Crítico — dash in `good`, hollow ring in `warn`, filled dot in `crit`) and the reference, then the previous-period delta when it exists. Nothing in it truncates: the part that does not fit beside the rest drops whole to a second line. A dashed hairline marks the network value on the trail only when that value already sits inside the series scale; whenever one is drawn, the strip's SLA note gains a matching "--- rede" legend item. When the backend flags the measured base as small (`low_sample`), SLA and ciclo keep their figure and swap the status line for a `warn` note ("base: 20 entregas · amostra pequena"). Volume KPIs sit in one tile below, inline, and swap their delta for "amostra pequena" when either period has fewer than 100 orders.
+Three operation cells joined by 1px rule gaps, each with a sentence-case label, figure, one status line, a daily trail in series wine, and a muted footnote that wraps, never truncates. The status line leads with the verdict (Dentro, Atenção, Crítico — dash in `good`, hollow ring in `warn`, filled dot in `crit`) and the reference, then the previous-period delta when it exists. Nothing in it truncates: the part that does not fit beside the rest drops whole to a second line. A dashed hairline marks the network value on the trail only when that value already sits inside the series scale; whenever one is drawn, the strip's SLA note gains a matching "--- rede" legend item. When the backend flags a small base (`low_sample` on SLA and ciclo, or `volume_low_sample` without an extreme verdict on cancelamento), the cell keeps its figure and swaps the status line for a `warn` note ("base: 20 entregas · amostra pequena" / "base: 20 pedidos · amostra pequena"). Volume KPIs sit in one stacked tile (to the right from `@min-[52rem]`, below when narrower), with label and figure inline per row, and swap their delta for "amostra pequena" when either period has fewer than 100 orders.
 
 ## Do's and Don'ts
 
@@ -315,7 +319,7 @@ Three operation cells joined by 1px rule gaps, each with a sentence-case label, 
 
 ### Don't:
 - Don't use red for selection, focus, filters or decorative icons.
-- Don't put the comanda's perforated edge or stamp-voice caps on anything that isn't the comanda itself.
+- Don't put the comanda's perforated edge (`ticket`) outside rail comandas (alerts and pinned agent comandas), or stamp-voice caps (`cond`) outside comanda identity, evidence tags, and the "Comandas abertas" rail title.
 - Don't set running text, labels or tables in Zilla Slab, and don't bring back a condensed cut: Libre Franklin has one width.
 - Don't add shadows, coloured side stripes on cards, or eyebrow labels above headings.
 - Don't use any delivery company's wordmark, logo, brand red or proprietary typeface.

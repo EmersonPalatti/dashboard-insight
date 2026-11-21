@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
+import ast
+import re
 from datetime import date
 from pathlib import Path
 
+import duckdb
 import pytest
 
 from app import fmt
 from app.agent import local, local_answers, local_intent
 from app.agent.reading import labels_for
-from app.alerts import detect_alerts
+from app.alerts import BROKEN_CANCEL, CANCEL_WARN, HUB_MIN, SLA_WARN, STORE_MIN, STUCK_HUB_MAX, detect_alerts
 from app.analytics import explain_change
 from app.filters import Filters
 
@@ -72,14 +75,58 @@ THIN_INTENTS = [
 ]
 
 
-@pytest.mark.parametrize("module", ["local.py", "local_answers.py", "local_intent.py"])
-def test_no_hardcoded_names_in_source(module):
-    """Garante que nenhum nome de hub, loja ou cidade foi fixado no código do agente local."""
-    source_path = Path(__file__).resolve().parent.parent / "app" / "agent" / module
-    content = source_path.read_text(encoding="utf-8")
-    for name in DISALLOWED_STATIC_NAMES:
-        assert f'"{name}"' not in content, f"Nome fixo encontrado em {module}: {name}"
-        assert f"'{name}'" not in content, f"Nome fixo encontrado em {module}: {name}"
+APP_DIR = Path(__file__).resolve().parent.parent / "app"
+REAL_PARQUET = Path(__file__).resolve().parent.parent / "data" / "orders.parquet"
+
+
+def _code_strings(path: Path) -> list[str]:
+    """Literais de texto do código, sem docstrings (exemplo em docstring não é nome fixo) e sem comentários."""
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    docstrings: set[int] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)) and node.body:
+            first = node.body[0]
+            if isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant) and isinstance(first.value.value, str):
+                docstrings.add(id(first.value))
+    return [n.value for n in ast.walk(tree)
+            if isinstance(n, ast.Constant) and isinstance(n.value, str) and id(n) not in docstrings]
+
+
+def _data_names(repo) -> set[str]:
+    """Nomes de hub, loja e cidade do fixture e, quando existe, do parquet real."""
+    meta = repo.meta()
+    names = {str(o["label"]) for key in ("hubs", "stores", "cities") for o in meta[key] if o["label"]}
+    names |= set(DISALLOWED_STATIC_NAMES)
+    if REAL_PARQUET.exists():
+        con = duckdb.connect()
+        try:
+            for column in ("hub_name", "store_name", "city"):
+                rows = con.execute(f"select distinct {column} from read_parquet(?) where {column} is not null",
+                                   [str(REAL_PARQUET)]).fetchall()
+                names |= {str(r[0]) for r in rows}
+        finally:
+            con.close()
+    # Nome de 3 letras ou menos casaria com pedaço de palavra comum; o índice de entidades já ignora esses.
+    return {n.strip() for n in names if len(n.strip()) >= 4}
+
+
+def test_no_hardcoded_names_in_source(repo):
+    """Regra 4: nenhum nome de hub, loja ou cidade dos dados fixado em literal do código de `app/`."""
+    names = _data_names(repo)
+    # Sensível a maiúsculas: "loja quebrada" (termo do glossário) e "sigo" (verbo) não são os nomes próprios.
+    patterns = [(name, re.compile(rf"(?<!\w){re.escape(name)}(?!\w)")) for name in names]
+    found = []
+    for path in sorted(APP_DIR.rglob("*.py")):
+        for text in _code_strings(path):
+            found += [(path.relative_to(APP_DIR).as_posix(), name) for name, rx in patterns if rx.search(text)]
+    assert not found, f"Nomes fixos no código: {found[:10]}"
+
+
+def test_hardcoded_name_guard_sees_code_but_not_docstrings(tmp_path):
+    sample = tmp_path / "sample.py"
+    sample.write_text('"""Exemplo: hub Hub Lento."""\n\ndef f():\n    """Hub Lento."""\n    return "líder do Hub Lento"\n',
+                      encoding="utf-8")
+    assert _code_strings(sample) == ["líder do Hub Lento"]
 
 
 @pytest.mark.parametrize("question,marker", QUESTIONS_AND_MARKERS)
@@ -122,12 +169,14 @@ def test_low_sample_recorte(repo):
     # Teste no SLA
     res_sla = local.answer("como esta o sla?", repo, f)
     assert "**Ação:**" in res_sla
-    assert "ampliar o período" in res_sla.lower() or "amostra reduzida" in res_sla.lower()
+    assert "amostra reduzida" in res_sla.lower()
+    assert "ampliar o período" in res_sla[res_sla.rfind("**Ação:**"):]
 
     # Teste no Cancelamento
     res_cancel = local.answer("quais lojas cancelam mais?", repo, f)
     assert "**Ação:**" in res_cancel
-    assert "ampliar o período" in res_cancel.lower() or "amostra reduzida" in res_cancel.lower()
+    assert "amostra reduzida" in res_cancel.lower()
+    assert "ampliar o período" in res_cancel[res_cancel.rfind("**Ação:**"):]
 
 
 def test_unmatched_question_fallback_to_briefing(repo):
@@ -163,7 +212,8 @@ def test_channel_and_revenue_actions_use_real_metrics(repo):
     revenue = local.answer("qual o gmv?", repo, Filters())
     assert "campanhas de incentivo" not in revenue.lower()
     action = revenue[revenue.rfind("**Ação:**"):].lower()
-    assert "ticket" in action or "cancelamento" in action
+    # No fixture o food cancela acima do teto: o ramo é o de perda de receita por cancelamento.
+    assert "segmento food" in action and "conter perdas de receita por cancelamento" in action
 
 
 @pytest.mark.parametrize("question,marker", THIN_INTENTS)
@@ -177,6 +227,7 @@ def test_thin_sample_widens_period_for_every_intent(repo, question, marker):
     action = res[res.rfind("**Ação:**"):]
     assert "ampliar o período" in action
     assert "acionar alguém hoje" in action
+    assert "Loja 10" in action  # a entidade filtrada entra na ação (Regra 3: onde)
     assert "\n" not in action.rstrip()
 
 
@@ -519,3 +570,367 @@ def test_answer_helpers_format_ptbr():
     assert local_answers.in_window("dias úteis") == "nos dias úteis"
     assert local_answers.in_window("Sexta") == "na sexta"
     assert local_answers.in_window("19h–21h") == "na faixa 19h–21h"
+
+
+# ----------------------------------------------------------------- corpo, ação e atalho na mesma entidade
+ENTITY_ROUTES = [
+    "qual hub tem o pior SLA?",
+    "quantos pedidos presos no fluxo existem?",
+    "quais lojas cancelam mais?",
+    "quais as lojas do recorte?",
+    "onde esta o gargalo?",
+    "quanto estamos subsidiando de frete?",
+    "quais os hubs com maior volume na praca?",
+    "qual o volume do recorte?",
+    "resumo",
+]
+
+
+def _entity_labels(repo) -> list[str]:
+    meta = repo.meta()
+    return [str(o["label"]) for key in ("hubs", "stores") for o in meta[key]]
+
+
+def _named_in(text: str, labels: list[str]) -> set[str]:
+    return {name for name in labels if re.search(rf"(?<!\w){re.escape(name)}(?!\w)", text)}
+
+
+@pytest.mark.parametrize("question", ENTITY_ROUTES)
+@pytest.mark.parametrize("f", [Filters(), Filters(segment=["food"]), Filters(city=["São Paulo"])],
+                         ids=["tudo", "food", "cidade"])
+def test_drilldown_names_the_entity_the_action_targets(repo, question, f):
+    """A-04: o atalho aponta o hub/loja que a ação cobra, e esse nome aparece no corpo ou na ação."""
+    reading = local.build_reading(question, repo, f)
+    labels = _entity_labels(repo)
+    in_action = _named_in(reading.action, labels)
+    in_answer = _named_in(reading.answer, labels)
+    for drill in reading.drilldowns:
+        name = drill.label.removeprefix("Ver só ").strip()
+        if set(drill.filters) & {"hub", "store"}:
+            assert name in in_answer, f"{question}: atalho {name} não aparece na resposta"
+    entity_drills = [d for d in reading.drilldowns if set(d.filters) & {"hub", "store"}]
+    if in_action and entity_drills:
+        first = entity_drills[0].label.removeprefix("Ver só ").strip()
+        assert first in in_action, f"{question}: ação cobra {in_action}, atalho aponta {first}"
+
+
+def test_sla_ranking_separates_the_stuck_hub_with_the_reason(repo):
+    reading = local.build_reading("qual hub tem o pior SLA?", repo, Filters())
+    ranking = reading.answer.split("Hubs com pior SLA", 1)[1].split("\n\n", 1)[0]
+    assert "Hub Preso" not in ranking
+    assert "Fora do ranking de SLA por excesso de pedidos presos" in reading.answer
+    assert "Hub Preso" in reading.answer.split("Fora do ranking", 1)[1]
+    assert "Hub Lento" in reading.action
+    assert [d.filters for d in reading.drilldowns] == [{"hub": [2]}]
+
+
+def test_stages_drill_and_action_name_the_same_hub(repo):
+    reading = local.build_reading("onde esta o gargalo?", repo, Filters())
+    target = reading.drilldowns[0].label.removeprefix("Ver só ")
+    assert target in reading.action and target in reading.diagnosis
+
+
+# ----------------------------------------------------------------- amostra fina × loja quebrada
+@pytest.mark.parametrize("question", ["como está a Loja Quebrada?", "quais os alertas?", "quais lojas cancelam mais?"])
+def test_broken_store_keeps_the_take_down_action_on_its_own_slice(repo, question):
+    """A-05: 100% cancelado com pedido de sobra não é amostra pequena; o 'tirar do ar' do alerta fica."""
+    f = Filters(store=[30])
+    assert repo.metrics(f)["low_sample"] is True
+    reading = local.build_reading(question, repo, f)
+    assert "Tirar Loja Quebrada do ar" in reading.action
+    assert "ampliar o período" not in reading.action
+
+
+def test_thin_sample_without_dates_does_not_ask_to_widen_the_period(repo):
+    """A-05: sem filtro de data o recorte já cobre a base inteira; a ação afrouxa os outros filtros."""
+    f = Filters(store=[36])
+    m = repo.metrics(f)
+    assert m["orders"] < 100 and m["delivered"] > 0
+    reading = local.build_reading("como esta o sla?", repo, f)
+    assert reading.answer.startswith("Atenção: amostra reduzida")
+    assert "ampliar o período" not in reading.action
+    assert "já cobre todo o período dos dados" in reading.action
+    assert "Loja 36" in reading.action and "acionar alguém hoje" in reading.action
+
+
+# ----------------------------------------------------------------- status = cancelado
+@pytest.mark.parametrize(
+    "question",
+    ["como está a Loja 38?", "cancelamento por cidade", "cancelamento por hub", "fim de semana é pior que dia útil no SLA?",
+     "quais os motivos dos cancelamentos?"],
+)
+def test_canceled_status_never_takes_a_store_offline(repo, question):
+    """A-06: com status = cancelado toda loja tem 100% por definição; isso não é loja quebrada."""
+    f = Filters(status=["canceled"])
+    reading = local.build_reading(question, repo, f)
+    text = reading.answer.lower()
+    assert "tirar" not in text and "do ar" not in text
+    assert "100,0%" not in reading.answer
+    assert "status cancelado" in text or "status = cancelado" in text
+
+
+@pytest.mark.parametrize(
+    "question", ["como está a Loja 38?", "cancelamento por cidade", "fim de semana é pior que dia útil no SLA?"]
+)
+def test_canceled_status_points_to_removing_the_filter(repo, question):
+    reading = local.build_reading(question, repo, Filters(status=["canceled"]))
+    assert "status cancelado" in reading.answer.lower()
+    assert "remover o filtro" in reading.action
+
+
+def test_canceled_status_entity_reports_the_canceled_count(repo):
+    f = Filters(status=["canceled"])
+    reading = local.build_reading("como está a Loja 38?", repo, f)
+    assert fmt.integer(repo.metrics(Filters(status=["canceled"], store=[38]))["orders"]) in reading.answer
+    assert reading.drilldowns and reading.drilldowns[0].filters == {"store": [38]}
+
+
+# ----------------------------------------------------------------- loja homônima no recorte
+def _store_intent(repo, ids, label):
+    intent = local_intent.parse(f"como está a {label}?", repo)
+    intent.entity = local_intent.Entity("store", tuple(ids), label, label.lower())
+    return intent
+
+
+def test_homonymous_store_counts_only_the_units_in_the_recorte(repo):
+    """A-07: unidade homônima fora do recorte não entra na contagem, no hub nem no atalho."""
+    f = Filters(hub=[2])
+    res = local_answers.entity_answer(repo, f, _store_intent(repo, (25, 10), "Loja 25"))  # 10 é do Hub Centro
+    assert "unidades" not in res.text
+    assert "2 hubs" not in res.text
+    assert "(hub Hub Lento)" in res.text
+    assert [d.filters for d in res.drills] == [{"store": [25]}]
+
+
+def test_homonymous_broken_store_uses_the_unit_in_the_recorte(repo):
+    f = Filters(hub=[3])
+    res = local_answers.entity_answer(repo, f, _store_intent(repo, (10, 30), "Loja Quebrada"))
+    assert "Tirar Loja Quebrada do ar" in res.text
+    assert [d.filters for d in res.drills] == [{"store": [30]}]
+
+
+def test_homonymous_store_lists_units_when_both_are_in_the_recorte(repo):
+    res = local_answers.entity_answer(repo, Filters(), _store_intent(repo, (25, 10), "Loja 25"))
+    assert "tem 2 unidades com esse nome no recorte" in res.text
+    assert [d.filters for d in res.drills] == [{"store": [25, 10]}] or [d.filters for d in res.drills] == [{"store": [10, 25]}]
+
+
+# ----------------------------------------------------------------- métrica pedida × rota antiga
+@pytest.mark.parametrize(
+    ("question", "title"),
+    [
+        ("qual o subsídio por modal?", "Subsídio de frete por modal"),
+        ("qual o cancelamento por modal?", "Cancelamento por modal"),
+        ("qual o SLA por canal?", "SLA por canal"),
+    ],
+)
+def test_metric_by_dimension_beats_the_generic_route(repo, question, title):
+    """A-19: a rota de modal/canal só cobre as métricas que mostra; o resto vai para a quebra genérica."""
+    reading = local.build_reading(question, repo, Filters())
+    assert reading.title == title
+    assert reading.answer.startswith(title)
+
+
+# ----------------------------------------------------------------- ação com "quando"
+_WHEN = re.compile(r"hoje|semana|pico|\d+h|agora|antes de")
+
+
+def test_fallback_actions_say_when(repo, monkeypatch):
+    """A-29 (Regra 3): os ramos de reserva também dizem quando agir."""
+    monkeypatch.setattr(repo, "breakdown", lambda *_a, **_k: [])
+    f = Filters()
+    actions = [
+        local_answers._oos_menu(repo, f)[1],
+        local_answers._oos_experience(repo, f)[1],
+        local_answers._oos_courier(repo, f)[1],
+    ]
+    texts = [
+        local._channels(repo, f)[0],
+        local._payments(repo, f),
+        local._hubs(repo, f)[0],
+        local._stores(repo, f)[0],
+        local._stores(repo, Filters(status=["canceled"]))[0],
+        local._cancel(repo, Filters(status=["canceled"]))[0],
+    ]
+    actions += [t[t.rfind("**Ação:**"):] for t in texts]
+    for action in actions:
+        assert _WHEN.search(action), action
+
+
+def test_by_dimension_without_named_rows_says_when(repo, monkeypatch):
+    real = repo.query_metrics
+
+    def only_nulls(f, **kwargs):
+        out = real(f, **kwargs)
+        return {**out, "rows": [r for r in out["rows"] if all(k["key"] is None for k in r["keys"].values())]}
+
+    monkeypatch.setattr(repo, "query_metrics", only_nulls)
+    res = local_answers.by_dimension(repo, Filters(), "sla_rate", "hub")
+    action = res.text[res.text.rfind("**Ação:**"):]
+    assert _WHEN.search(action), action
+
+
+# ----------------------------------------------------------------- limiares e rótulos
+def test_local_thresholds_come_from_the_alerts(repo):
+    """A-30: local.py não repete os limiares dos alertas como número solto."""
+    tree = ast.parse((APP_DIR / "agent" / "local.py").read_text(encoding="utf-8"))
+    shared = {SLA_WARN, CANCEL_WARN, STUCK_HUB_MAX, BROKEN_CANCEL, HUB_MIN, STORE_MIN}
+    literals = {n.value for n in ast.walk(tree) if isinstance(n, ast.Constant) and type(n.value) in (int, float)}
+    assert not (literals & shared), literals & shared
+
+
+def test_segment_action_uses_the_ptbr_label(repo):
+    """A-31: 'segmento goods', nunca o código cru 'good'."""
+    reading = local.build_reading("qual o faturamento?", repo, Filters(segment=["good"]))
+    assert "segmento goods" in reading.action
+    assert not re.search(r"segmento good\b", reading.action)
+    assert all(d.label != "Ver só good" for d in reading.drilldowns)
+
+
+def test_payment_action_uses_the_ptbr_name(repo, monkeypatch):
+    real = repo.breakdown
+
+    def raw_code(f, by, **kwargs):
+        rows = real(f, by, **kwargs)
+        if by == "payment_method":
+            fake = {**rows[0], "key": "store_direct_payment", "label": "store_direct_payment", "orders": 10**6,
+                    "cancel_rate": 0.5, "cancel_above": True}
+            rows = [fake, *rows]
+        return rows
+
+    monkeypatch.setattr(repo, "breakdown", raw_code)
+    reading = local.build_reading("como estão as formas de pagamento?", repo, Filters())
+    assert "store_direct_payment" not in reading.action
+    assert "pagamento direto na loja" in reading.action
+
+
+def test_rows_without_parent_never_print_none(repo, monkeypatch):
+    real = repo.breakdown
+    monkeypatch.setattr(repo, "breakdown", lambda f, by, **kw: [{**r, "parent": None} for r in real(f, by, **kw)])
+    for question in ("quais os hubs?", "qual o volume do recorte?", "quais lojas cancelam mais?"):
+        assert "(None)" not in local.answer(question, repo, Filters())
+        assert "(None)" not in local.answer(question, repo, Filters(status=["canceled"]))
+    assert local._with_parent({"label": "Loja 1", "parent": None}) == "Loja 1"
+    assert local._with_parent({"label": "Loja 1", "parent": "Hub X"}) == "Loja 1 (Hub X)"
+
+
+def test_narrow_matches_city_ignoring_case(repo):
+    """O filtro de cidade não diferencia maiúsculas; o recorte da entidade também não."""
+    city = str(repo.meta()["cities"][0]["value"])
+    entity = local_intent.Entity("city", (city,), city, city.lower())
+    narrowed = local_answers.narrow(Filters(city=[city.upper()]), entity)
+    assert narrowed is not None and narrowed.city == [city]
+
+
+# ----------------------------------------------------------------- revisão final (FA-01…FA-04, FA-10)
+def test_thin_sample_action_survives_a_multi_alert_answer(repo):
+    """FA-01: com 2 alertas, cada um com a sua ação, a amostra pequena ainda fecha a comanda."""
+    f = Filters(start=date(2021, 3, 2), end=date(2021, 3, 2), store=[15])
+    assert len(detect_alerts(repo, f)) >= 2 and repo.metrics(f)["low_sample"] is True
+    reading = local.build_reading("quais os alertas?", repo, f)
+    assert reading.action == "Operador deve ampliar o período na Loja 15 antes de acionar alguém hoje."
+    assert reading.answer.count("**Ação:**") == 1
+    assert "**Ação:**" not in reading.diagnosis
+
+
+def test_sla_on_a_stuck_only_slice_points_to_the_data_problem(repo):
+    """FA-02: todo hub com base saiu do ranking por presos; a ação não pode cobrar SLA logo depois."""
+    reading = local.build_reading("qual hub tem o pior SLA?", repo, Filters(hub=[3]))
+    assert "É problema de dado, não de prazo" in reading.answer
+    assert "recuperar o SLA" not in reading.action
+    assert "Hub Preso" in reading.action and "baixa manual" in reading.action and "antes de cobrar SLA" in reading.action
+    assert [d.filters for d in reading.drilldowns] == [{"hub": [3]}]
+
+
+@pytest.mark.parametrize(
+    "question", ["qual hub tem o pior SLA?", "onde está o gargalo?", "qual o modal?", "subsídio de frete", "pedidos presos"]
+)
+def test_store_without_deliveries_never_gets_an_action_on_empty_metrics(repo, question):
+    """FA-03: 100% cancelado e 0 entregas: nada de SLA (—), preparo (—) ou modal; a ação é tirar do ar."""
+    f = Filters(store=[30])
+    assert repo.metrics(f)["delivered"] == 0
+    reading = local.build_reading(question, repo, f)
+    assert "Nenhuma entrega concluída no recorte" in reading.answer
+    assert "Tirar Loja Quebrada do ar" in reading.action
+    assert "—" not in reading.action and "modal" not in reading.action.lower()
+    assert [d.filters for d in reading.drilldowns] == [{"store": [30]}]
+
+
+def test_modal_null_bucket_is_never_the_target(repo, monkeypatch):
+    """FA-03: sem modal nomeado, a ação não cobra o balde "Sem entregador"."""
+    real = repo.breakdown
+
+    def only_null(f, dim, **kwargs):
+        rows = real(f, dim, **kwargs)
+        if dim == "modal":
+            return [{**rows[0], "key": None, "label": "Sem entregador"}]
+        return rows
+
+    monkeypatch.setattr(repo, "breakdown", only_null)
+    text, drills = local._modal(repo, Filters())
+    action = text[text.rfind("**Ação:**"):]
+    assert "Sem entregador" not in action and drills == []
+    assert _WHEN.search(action)
+
+
+@pytest.mark.parametrize(
+    "question",
+    ["qual o subsídio por modal?", "qual o ticket por hub?", "mais de uma tentativa por hub", "qual o GMV por cidade?",
+     "fim de semana é pior que dia útil no subsídio?", "fim de semana é pior que dia útil no ticket?",
+     "fim de semana é pior que dia útil em pedidos presos?"],
+)
+def test_canceled_status_blocks_every_delivery_metric(repo, question):
+    """FA-04: venda, frete, presos e entregas também ficam vazios com só cancelados no filtro."""
+    reading = local.build_reading(question, repo, Filters(status=["canceled"]))
+    assert "remover o filtro de status cancelado" in reading.action
+    assert "Nenhum grupo chega" not in reading.answer and "100,0%" not in reading.answer
+    assert "R$ 0,00" not in reading.answer
+
+
+@pytest.mark.parametrize(("status", "word"), [("canceled", "cancelado"), ("delivered", "concluído")])
+def test_why_cancel_under_a_status_filter_is_not_a_tautology(repo, status, word):
+    """FA-04: "por que o cancelamento subiu" com status fixo compararia 100% com 100% (ou 0% com 0%)."""
+    f = Filters(start=date(2021, 3, 1), end=date(2021, 3, 31), status=[status])
+    reading = local.build_reading("por que o cancelamento subiu vs o período anterior?", repo, f)
+    assert "ficou estável" not in reading.answer
+    assert f"remover o filtro de status {word}" in reading.action
+
+
+def test_why_without_base_in_one_period_speaks_ptbr(repo):
+    """FA-04: erro da tool sem base num dos lados não vaza a chave crua nem manda trocar o início do período."""
+    f = Filters(start=date(2021, 3, 20), end=date(2021, 3, 31), store=[13])
+    assert repo.previous_period(f) is not None
+    res = local_answers.why(repo, f, local_intent.parse("por que o subsídio subiu vs o período anterior?", repo))
+    assert "subsidy" not in res.text
+    assert "não comece em" not in res.text
+    assert "subsídio de frete" in res.text and _WHEN.search(res.text[res.text.rfind("**Ação:**"):])
+
+
+def test_canceled_group_without_a_big_store_still_points_to_the_filter(repo):
+    """FA-04: sem loja com base, a ação não vira "reduzir o cancelamento (12)" com a contagem no lugar da taxa."""
+    action = local_answers._cancel_group_action(repo, Filters(status=["canceled"]), "hub", 2, "Hub Lento", "12")
+    assert "remover o filtro de status cancelado" in action
+    assert "cancelamento (12)" not in action
+
+
+def test_notice_actions_say_when(repo, monkeypatch):
+    """FA-10 (Regra 3): avisos de filtro e de recorte vazio também dizem quando agir."""
+    canceled, delivered = Filters(status=["canceled"]), Filters(status=["delivered"])
+    texts = [
+        local._EMPTY,
+        local._sla(repo, canceled)[0],
+        local._cancel(repo, delivered)[0],
+        local._revenue(repo, canceled)[0],
+        local.build_reading("qual o subsídio por modal?", repo, canceled).answer,
+        local.build_reading("por que o SLA caiu vs o período anterior?", repo,
+                            Filters(start=date(2021, 3, 1), end=date(2021, 3, 31), status=["canceled"])).answer,
+        local.build_reading("por que o SLA caiu vs o período anterior?", repo,
+                            Filters(start=date(2021, 1, 1), end=date(2021, 1, 5))).answer,
+    ]
+    monkeypatch.setattr(repo, "metrics", lambda _f: {"orders": 0})
+    texts.append(local.briefing(repo, Filters()))
+    monkeypatch.setattr(repo, "breakdown", lambda *_a, **_k: [])
+    texts.append(local._peak(repo, Filters()))
+    for text in texts:
+        action = text[text.rfind("**Ação:**"):]
+        assert _WHEN.search(action), action

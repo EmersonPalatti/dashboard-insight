@@ -16,6 +16,10 @@ const ACTIVITY_TEXT: Record<AgentActivity, string> = {
   unread: "resposta nova",
 };
 
+const warmAgentChat = () => {
+  void prefetchAgentChat().catch(() => {});
+};
+
 /** Atalho conforme o sistema: ⌘K no Mac, Ctrl K no resto. */
 function shortcutLabel() {
   return typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.userAgent) ? "⌘K" : "Ctrl K";
@@ -62,11 +66,10 @@ export function AgentAskButton({ compact = false }: { compact?: boolean }) {
       aria-controls="agente"
       aria-expanded={open}
       aria-keyshortcuts="Control+K Meta+K"
-      aria-label={open ? "Fechar agente" : "Perguntar ao agente sobre este recorte"}
       onClick={toggleAgent}
       onKeyDown={onKeyDown}
-      onPointerEnter={prefetchAgentChat}
-      onFocus={prefetchAgentChat}
+      onPointerEnter={warmAgentChat}
+      onFocus={warmAgentChat}
       className={`agent-ask @container/ask flex w-full min-w-0 items-center gap-2 rounded-card border text-left whitespace-nowrap ${
         compact ? "h-8 px-2.5 text-aux" : "h-10 px-3 text-body"
       } transition-colors duration-(--duration-quick) ${
@@ -78,13 +81,16 @@ export function AgentAskButton({ compact = false }: { compact?: boolean }) {
         <>
           <span className="min-w-0 flex-1 truncate font-medium text-ink @min-[11rem]/ask:hidden">Aberta</span>
           <span className="hidden min-w-0 flex-1 truncate font-medium text-ink @min-[11rem]/ask:inline">Conversa aberta</span>
+          <span className="sr-only">, fechar agente</span>
         </>
       ) : (
         <>
           {/* o slot estreito (a barra cedeu a largura ao lugar) mostra "Agente"; 15rem+ de miolo: o convite */}
-          <span className="min-w-fit flex-1 font-medium text-ink @min-[15rem]/ask:hidden">Agente</span>
+          <span className="min-w-fit flex-1 font-medium text-ink @min-[15rem]/ask:hidden">
+            Agente<span className="sr-only"> do recorte, abrir conversa</span>
+          </span>
           <span className="hidden min-w-0 flex-1 truncate text-muted @min-[15rem]/ask:inline">
-            Pergunte sobre este recorte…
+            Pergunte sobre este recorte…<span className="sr-only">, abrir agente</span>
           </span>
         </>
       )}
@@ -114,9 +120,9 @@ export function AgentFab() {
       aria-label={`Perguntar ao agente sobre este recorte${activity !== "idle" ? `: ${ACTIVITY_TEXT[activity]}` : ""}`}
       title="Agente do recorte"
       onClick={toggleAgent}
-      onPointerEnter={prefetchAgentChat}
-      onFocus={prefetchAgentChat}
-      className="agent-fab no-print btn fixed right-4 bottom-[calc(1rem+env(safe-area-inset-bottom))] z-30 size-12 justify-center border border-wine-raised bg-wine p-0 text-white hover:bg-wine-raised focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-on-wine"
+      onPointerEnter={warmAgentChat}
+      onFocus={warmAgentChat}
+      className="agent-fab no-print btn fixed right-4 bottom-[calc(1rem+env(safe-area-inset-bottom))] z-30 size-12 justify-center border border-wine-raised bg-wine p-0 hover:bg-wine-raised focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-on-wine"
     >
       <Bot className="size-5 text-on-wine" aria-hidden />
       {activity !== "idle" && (

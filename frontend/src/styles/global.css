@@ -29,6 +29,10 @@
   --wine: #3d0b1f;
   --wine-raised: #5a1730;
   --on-wine: #f1dbe3;
+  /* Texto de maior peso na faixa (nome do produto, total de pedidos): a faixa é escura nos dois temas. */
+  --on-wine-strong: #ffffff;
+  /* Texto sobre o vermelho do botão principal. */
+  --on-crit: #ffffff;
   /* sinais sobre a faixa vinho: a faixa é escura nos dois temas */
   --shell-good: #9bc75a;
   --shell-crit: #ff6a5e;
@@ -89,6 +93,8 @@
   --wine: #26060f;
   --wine-raised: #45112a;
   --on-wine: #e6c3cf;
+  /* No escuro o vermelho clareia: o texto do botão principal passa a ser a superfície. */
+  --on-crit: #1b1b1b;
   --series: #e0789a;
   --series-deep: #f4b8cb;
   /* Ainda o degrau mais escuro da rampa, claro o bastante para 3:1 sobre a superfície. */
@@ -125,6 +131,8 @@
   --color-wine: var(--wine);
   --color-wine-raised: var(--wine-raised);
   --color-on-wine: var(--on-wine);
+  --color-on-wine-strong: var(--on-wine-strong);
+  --color-on-crit: var(--on-crit);
   --color-shell-good: var(--shell-good);
   --color-shell-crit: var(--shell-crit);
   --color-shell-warn: var(--shell-warn);
@@ -159,7 +167,7 @@
   }
   input,
   textarea {
-    caret-color: var(--crit);
+    caret-color: var(--ink);
   }
 }
 
@@ -215,7 +223,8 @@
 
 /*
  * Comanda: papel picotado no topo (máscara com furos), linha tracejada sob o
- * cabeçalho. Só alertas usam; fora deles vira fantasia.
+ * cabeçalho. Só comandas do trilho usam (alertas e comandas fixadas do agente);
+ * fora delas vira fantasia.
  */
 @utility ticket {
   border-radius: 0 0 var(--radius-card) var(--radius-card);
@@ -322,6 +331,10 @@ button.ticket:focus-visible {
    --sticky-bar é a altura medida da barra (o script da casca); 6.5rem cobre o primeiro quadro. */
 .evidence-anchor {
   scroll-margin-top: calc(var(--sticky-bar, 6.5rem) + 0.75rem);
+  border-radius: var(--radius-card);
+}
+/* "Ver no gráfico" pelo teclado mostra o anel de foco (:focus-visible da base); o clique não pisca contorno. */
+.evidence-anchor:focus:not(:focus-visible) {
   outline: none;
 }
 
@@ -337,7 +350,7 @@ button.ticket:focus-visible {
 
 /* Ação principal: vermelho só onde a tela pede para agir. */
 @utility btn-primary {
-  @apply btn bg-crit text-white hover:bg-crit-deep dark:text-[#1b1b1b];
+  @apply btn bg-crit text-on-crit hover:bg-crit-deep;
 }
 
 @utility btn-ink {

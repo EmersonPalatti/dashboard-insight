@@ -3,11 +3,15 @@
   "private": true,
   "type": "module",
   "version": "2.0.0",
+  "engines": {
+    "node": ">=22.23.4"
+  },
   "scripts": {
     "dev": "astro dev",
     "build": "astro check && astro build",
     "preview": "astro preview",
     "check": "astro check",
+    "test": "vitest run",
     "gen:api": "openapi-typescript ./openapi.json -o ./src/lib/api/schema.d.ts"
   },
   "dependencies": {
@@ -30,6 +34,7 @@
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "openapi-typescript": "^7.13.0",
-    "typescript": "~5.9"
+    "typescript": "~5.9",
+    "vitest": "5.1.1"
   }
 }

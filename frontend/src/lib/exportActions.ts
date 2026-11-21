@@ -78,13 +78,13 @@ export function briefingMarkdown(kpis: KpiResponse, alerts: AlertsResponse["aler
 }
 
 /** Busca KPIs e alertas do recorte (pelo cache do QueryClient) e copia o briefing. Lança se falhar. */
-export async function copyBriefing(qc: QueryClient, filters: Recorte): Promise<void> {
+export async function copyBriefing(qc: QueryClient, filters: Recorte, url = shareUrl()): Promise<void> {
   const query = toQuery(filters);
   const [kpis, alerts] = await Promise.all([
     qc.query({ queryKey: ["/api/kpis", filters, {}], queryFn: () => apiGet("/api/kpis", query) }),
     qc.query({ queryKey: ["/api/alerts", filters, {}], queryFn: () => apiGet("/api/alerts", query) }),
   ]);
-  await navigator.clipboard.writeText(briefingMarkdown(kpis, alerts.alerts, location.href));
+  await navigator.clipboard.writeText(briefingMarkdown(kpis, alerts.alerts, url));
 }
 
 /** Link do CSV de pedidos com o recorte atual. */
@@ -131,23 +131,37 @@ export function useCsvDownload() {
   const [state, setState] = useState<CsvState>("idle");
   const [message, setMessage] = useState<string | null>(null);
   const [armed, setArmed] = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
+    abortRef.current?.abort();
+    abortRef.current = null;
     setArmed(false);
     setMessage(null);
     setState("idle");
   }, [filters]);
 
+  useEffect(
+    () => () => {
+      abortRef.current?.abort();
+      abortRef.current = null;
+    },
+    [],
+  );
+
   const download = async (): Promise<boolean> => {
-    if (blocked) return false;
+    if (blocked || state === "busy" || abortRef.current !== null) return false;
     if (large && !armed) {
       setArmed(true);
       return false;
     }
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
     setState("busy");
     setMessage(null);
     try {
-      const res = await fetch(csvHref(filters));
+      const res = await fetch(csvHref(filters), { signal: ctrl.signal });
+      if (ctrl.signal.aborted) return false;
       if (!res.ok) {
         let detail = "Não deu para exportar o CSV.";
         try {
@@ -156,11 +170,13 @@ export function useCsvDownload() {
         } catch {
           /* corpo não-JSON */
         }
+        if (ctrl.signal.aborted) return false;
         setState("error");
         setMessage(detail);
         return false;
       }
       const blob = await res.blob();
+      if (ctrl.signal.aborted) return false;
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = url;
@@ -173,9 +189,12 @@ export function useCsvDownload() {
       setArmed(false);
       return true;
     } catch {
+      if (ctrl.signal.aborted) return false;
       setState("error");
       setMessage("Não deu para exportar o CSV.");
       return false;
+    } finally {
+      if (abortRef.current === ctrl) abortRef.current = null;
     }
   };
 

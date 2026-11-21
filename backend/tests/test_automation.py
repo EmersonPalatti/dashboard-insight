@@ -31,7 +31,8 @@ def test_briefing_on_planted_slice_counts_alerts_and_covers_dates(client):
     assert "Entregas fora do prazo" in body["markdown"]
     assert body["start"] == "2021-03-05"
     assert body["end"] == "2021-03-11"
-    assert client.get("/api/briefing", params={"store": 16}).headers["cache-control"] == "public, max-age=600"
+    # Rota de automação nunca vai para cache compartilhado, com ou sem AUTOMATION_TOKEN.
+    assert client.get("/api/briefing", params={"store": 16}).headers["cache-control"] == "private, no-store"
 
 
 def test_briefing_keeps_requested_dates(client):
@@ -66,7 +67,7 @@ def test_routing_on_planted_store_is_deterministic(client):
     first = client.get("/api/alerts/routing", params=params)
     second = client.get("/api/alerts/routing", params=params)
     assert first.status_code == 200
-    assert first.headers["cache-control"] == "public, max-age=600"
+    assert first.headers["cache-control"] == "private, no-store"
     rows = first.json()
     assert rows == second.json()
     assert rows
@@ -118,6 +119,49 @@ def test_automation_token_is_optional_until_configured(client, path):
         assert wrong.json()["detail"] == "Token de automação inválido."
         ok = client.get(path, params={"city": "Nenhuma"}, headers={"X-Automation-Token": "segredo"})
         assert ok.status_code == 200
+        assert ok.headers["cache-control"] == "private, no-store"
+    finally:
+        client.app.dependency_overrides.pop(get_settings, None)
+
+
+@pytest.mark.parametrize("path", ["/api/briefing", "/api/alerts/routing"])
+def test_non_ascii_token_header_is_401_not_500(client, path):
+    from app.config import Settings, get_settings
+
+    client.app.dependency_overrides[get_settings] = lambda: Settings(automation_token="segredo")
+    try:
+        for raw in ("café".encode(), b"\xc3\xa9", b"\xff\xfe"):
+            r = client.get(path, params={"city": "Nenhuma"}, headers={"X-Automation-Token": raw})
+            assert r.status_code == 401
+            assert r.json()["detail"] == "Token de automação inválido."
+    finally:
+        client.app.dependency_overrides.pop(get_settings, None)
+
+
+@pytest.mark.parametrize("path", ["/api/briefing", "/api/alerts/routing"])
+def test_accented_server_token_matches_utf8_header(client, path):
+    from app.config import Settings, get_settings
+
+    client.app.dependency_overrides[get_settings] = lambda: Settings(automation_token="operação")
+    try:
+        assert client.get(path, params={"city": "Nenhuma"}).status_code == 401
+        wrong = client.get(path, params={"city": "Nenhuma"}, headers={"X-Automation-Token": "operacao"})
+        assert wrong.status_code == 401
+        ok = client.get(path, params={"city": "Nenhuma"}, headers={"X-Automation-Token": "operação".encode()})
+        assert ok.status_code == 200
+    finally:
+        client.app.dependency_overrides.pop(get_settings, None)
+
+
+def test_whitespace_token_counts_as_unset(client):
+    from app.config import Settings, get_settings
+
+    assert Settings(automation_token="   ").automation_token is None
+    assert Settings(automation_token="  segredo ").automation_token == "segredo"
+    assert Settings(cors_origin_regex=" ").cors_origin_regex is None
+    client.app.dependency_overrides[get_settings] = lambda: Settings(automation_token="   ")
+    try:
+        assert client.get("/api/briefing", params={"city": "Nenhuma"}).status_code == 200
     finally:
         client.app.dependency_overrides.pop(get_settings, None)
 

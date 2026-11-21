@@ -46,16 +46,31 @@ export function PanelContent({ actions, hint, note, busy, children }: PanelConte
 
 /**
  * Fallback de `island()` para painéis: ocupa o lugar do corpo com a altura do estado carregando.
- * `hint: true` reserva também a linha da dica dinâmica (uma linha de `label`), para o corpo
- * não descer quando a ilha monta.
+ * `hint` reserva também as linhas da dica dinâmica (`true` = uma linha de `label`; um número =
+ * tantas linhas no desktop), para o corpo não descer quando a ilha monta. Dica longa quebra em
+ * mais linhas no celular: `hintMobile` diz quantas reservar abaixo de `lg`.
  */
-export function panelFallback(height: number, { hint = false }: { hint?: boolean } = {}) {
+export function panelFallback(
+  height: number,
+  { hint = false, hintMobile }: { hint?: boolean | number; hintMobile?: number } = {},
+) {
+  const lines = hint === true ? 1 : hint === false ? 0 : Math.max(0, Math.floor(hint));
+  const total = Math.max(lines, hintMobile ?? lines);
   return (
     <>
-      {hint && (
+      {total > 0 && (
         <div className="panel-sub" aria-hidden>
           <p className="label">
-            <span className="skeleton inline-block h-3 w-2/3 max-w-md align-middle" />
+            {Array.from({ length: total }, (_, i) => (
+              // Linhas além das do desktop só existem abaixo de lg; a última de cada faixa é mais curta.
+              <span key={i} className={i >= lines ? "block lg:hidden" : "block"}>
+                <span
+                  className={`skeleton inline-block h-3 max-w-md align-middle ${
+                    i === lines - 1 || i === total - 1 ? "w-2/3" : "w-full"
+                  }`}
+                />
+              </span>
+            ))}
           </p>
         </div>
       )}
@@ -268,7 +283,7 @@ export function Segmented<T extends string>({ value, options, onChange, label }:
       <span
         ref={indicatorRef}
         aria-hidden
-        className="seg-indicator pointer-events-none absolute top-0 left-0 z-0 rounded-t-[4px] border-b-2 border-ink bg-surface"
+        className="seg-indicator pointer-events-none absolute top-0 left-0 z-0 rounded-t-tick border-b-2 border-ink bg-surface"
       />
       {options.map((o, i) => {
         const checked = value === o.value;
@@ -281,7 +296,7 @@ export function Segmented<T extends string>({ value, options, onChange, label }:
             tabIndex={i === tabStop ? 0 : -1}
             onClick={() => onChange(o.value)}
             onKeyDown={(e) => onArrowKey(e, i)}
-            className={`relative z-[1] rounded-t-[4px] border-b-2 border-transparent px-2 py-1 text-aux whitespace-nowrap sm:px-2.5 max-lg:min-h-11 max-lg:min-w-11 transition-colors duration-(--duration-quick) ${
+            className={`relative z-[1] rounded-t-tick border-b-2 border-transparent px-2 py-1 text-aux whitespace-nowrap sm:px-2.5 max-lg:min-h-11 max-lg:min-w-11 transition-colors duration-(--duration-quick) ${
               checked ? "font-medium text-ink" : "text-muted hover:text-ink"
             }`}
           >

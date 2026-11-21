@@ -15,7 +15,8 @@ Decisões de limpeza (documentadas no README):
   de GMV e ticket.
 - Distância > 50 km ou negativa vira nulo.
 - `deliveries` e `payments` têm várias linhas por pedido: ficamos com a última
-  entrega concluída (entregador + distância) e o meio de pagamento de maior valor.
+  entrega concluída — ou, quando nenhuma concluiu, a última tentativa registrada —
+  (entregador + distância) e o meio de pagamento de maior valor.
 """
 
 from __future__ import annotations
@@ -44,7 +45,7 @@ with del as (
         count(*) as delivery_attempts,
         arg_max(
             {{'driver_id': driver_id, 'distance': delivery_distance_meters}},
-            (delivery_status = 'DELIVERED')::bigint * 10000000000 + delivery_id
+            (coalesce(delivery_status = 'DELIVERED', false), delivery_id)
         ) as pick
     from deliveries
     group by 1
@@ -62,7 +63,7 @@ base as (
     select
         o.order_id,
         o.order_moment_created - interval {TZ_OFFSET_HOURS} hour as created_at,
-        case o.order_status when 'FINISHED' then 'delivered' when 'CANCELED' then 'canceled' else 'canceled' end as status,
+        case o.order_status when 'FINISHED' then 'delivered' when 'CANCELED' then 'canceled' end as status,
         o.order_amount as amount,
         o.order_delivery_fee as delivery_fee,
         o.order_delivery_cost as delivery_cost,
@@ -74,7 +75,7 @@ base as (
         trim(h.hub_city) as city,
         h.hub_state as state,
         trim(ch.channel_name) as channel,
-        case ch.channel_type when 'MARKETPLACE' then 'marketplace' else 'own' end as channel_type,
+        case ch.channel_type when 'MARKETPLACE' then 'marketplace' when 'OWN CHANNEL' then 'own' end as channel_type,
         lower(pay.payment_method) as payment_method,
         coalesce(pay.has_chargeback, false) as has_chargeback,
         case dr.driver_modal when 'MOTOBOY' then 'moto' when 'BIKER' then 'bike' end as modal,
@@ -138,6 +139,45 @@ def _prettify_column(con: duckdb.DuckDBPyConnection, column: str) -> None:
     con.execute(f"update fact set {column} = name_map.v from name_map where fact.{column} = name_map.k")
 
 
+def _validate_sources(con: duckdb.DuckDBPyConnection) -> None:
+    """Falha cedo se algum domínio esperado ou coluna obrigatória vier fora do contrato."""
+    bad_status = con.execute(
+        "select distinct order_status from orders "
+        "where order_status not in ('FINISHED', 'CANCELED') or order_status is null"
+    ).fetchall()
+    if bad_status:
+        raise ValueError(f"order_status inesperado em orders.csv: {[r[0] for r in bad_status]}")
+
+    bad_channel = con.execute(
+        "select distinct channel_type from channels "
+        "where channel_type not in ('MARKETPLACE', 'OWN CHANNEL') or channel_type is null"
+    ).fetchall()
+    if bad_channel:
+        raise ValueError(f"channel_type inesperado em channels.csv: {[r[0] for r in bad_channel]}")
+
+    bad_segment = con.execute(
+        "select distinct store_segment from stores "
+        "where lower(store_segment) not in ('food', 'good') or store_segment is null"
+    ).fetchall()
+    if bad_segment:
+        raise ValueError(f"store_segment inesperado em stores.csv: {[r[0] for r in bad_segment]}")
+
+    required = (
+        ("orders", "order_id"),
+        ("orders", "order_moment_created"),
+        ("orders", "order_amount"),
+        ("orders", "order_delivery_fee"),
+        ("stores", "store_name"),
+        ("hubs", "hub_name"),
+        ("hubs", "hub_city"),
+        ("channels", "channel_name"),
+    )
+    for table, col in required:
+        nulls = con.execute(f"select count(*) from {table} where {col} is null").fetchone()[0]
+        if nulls:
+            raise ValueError(f"valores nulos em {table}.{col}: {nulls}")
+
+
 def build(raw: Path, out: Path) -> None:
     missing = [t for t in TABLES if not (raw / f"{t}.csv").exists()]
     if missing:
@@ -148,6 +188,7 @@ def build(raw: Path, out: Path) -> None:
         path = (raw / f"{table}.csv").as_posix().replace("'", "''")
         con.execute(f"create table {table} as select * from read_csv('{path}', header = true, encoding = 'latin-1')")
 
+    _validate_sources(con)
     con.execute(SQL)
     for column in ("store_name", "hub_name", "city", "channel"):
         _prettify_column(con, column)

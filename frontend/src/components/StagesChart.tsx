@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import { applyDrilldown } from "@/lib/filters";
 import { EVIDENCE_DIM } from "@/lib/evidence";
 import { fmt } from "@/lib/format";
@@ -7,7 +7,7 @@ import { BarChart } from "echarts/charts";
 import { LegendComponent } from "echarts/components";
 import * as echarts from "echarts/core";
 import { ChartAccess } from "./charts/ChartAccess";
-import { EChart, type Tokens } from "./charts/EChart";
+import { EChart, escapeHtml, type Tokens } from "./charts/EChart";
 import { AskAgentButton } from "./ui/AskAgentButton";
 import { EvidenceTag, useEvidence } from "./ui/EvidenceTag";
 import { AsyncBody, Empty, panelFallback, PanelContent } from "./ui/Panel";
@@ -15,34 +15,22 @@ import { AsyncBody, Empty, panelFallback, PanelContent } from "./ui/Panel";
 // Módulos deste gráfico: barras empilhadas e legenda. O resto fica em charts/EChart.tsx.
 echarts.use([BarChart, LegendComponent]);
 
-/**
- * Altura reservada do gráfico: skeleton, fallback do SSR e área mínima do resultado.
- * O gráfico em si pode ser mais baixo (poucos hubs); a área reservada impede o layout de encolher.
- */
-const CHART_H = 340;
+const TOP_HUBS = 14;
+const ROW_H = 26;
+const CHROME_H = 50;
 
+/**
+ * Altura reservada do gráfico (teto de 14 hubs): skeleton, fallback do SSR e área mínima
+ * coincidem com a altura renderizada no recorte padrão, evitando salto de layout.
+ */
+const CHART_H = TOP_HUBS * ROW_H + CHROME_H;
+
+// Apenas as três etapas mutuamente exclusivas do ciclo (coleta é subetapa da expedição).
 const STAGES = [
   { key: "production_p50", label: "Preparo na loja" },
-  { key: "collected_p50", label: "Coleta" },
   { key: "expedition_p50", label: "Expedição" },
   { key: "transit_p50", label: "Trânsito" },
 ] as const;
-
-const TOP_HUBS = 14;
-
-type StageRow = {
-  key: string | number | null;
-  label: string;
-  production_p50: number | null;
-  collected_p50: number | null;
-  expedition_p50: number | null;
-  transit_p50: number | null;
-};
-
-/** Soma das medianas das quatro etapas. Serve para dizer qual hub é o mais lento. */
-function stageTotal(row: StageRow) {
-  return STAGES.reduce((sum, stage) => sum + (row[stage.key] ?? 0), 0);
-}
 
 function StagesChartInner() {
   const { data, error, isPending, refetch, isPlaceholderData, waking, down } = useRecorteQuery("/api/breakdown", {
@@ -53,37 +41,67 @@ function StagesChartInner() {
   });
   // comanda aberta que aponta para um hub: ele fica no topo, cheio, e os outros recuam
   const focus = useEvidence("stages");
-  const marked = new Set((focus?.evidence.hubs ?? []).map(String));
-  // Os 14 hubs com mais pedidos; o hub da comanda entra se estiver fora deles.
-  const withCycle = (data?.rows ?? []).filter((r) => r.cycle_p50 !== null);
-  const top = withCycle.slice(0, TOP_HUBS);
-  const extra = withCycle.slice(TOP_HUBS).filter((r) => marked.has(String(r.key)));
-  const pool = [...top, ...extra];
-  const pinned = pool.filter((r) => marked.has(String(r.key)));
-  const others = pool.filter((r) => !marked.has(String(r.key)));
-  // No ECharts o índice 0 fica embaixo. Inverter os demais e depois os marcados põe o hub da comanda no topo.
-  const rows = [...others].reverse().concat([...pinned].reverse());
-  const anyMarked = pinned.length > 0;
-  const markedKey = [...marked].join(",");
-  const slowest = rows.reduce((best, row) => (stageTotal(row) > stageTotal(best) ? row : best), rows[0]);
-  const fastest = rows.reduce((best, row) => (stageTotal(row) < stageTotal(best) ? row : best), rows[0]);
-  const summary =
-    rows.length === 0
-      ? ""
-      : slowest === fastest
-        ? `${slowest.label}: ${fmt.min(stageTotal(slowest))} somando as medianas das etapas.`
-        : `Mais lento: ${slowest.label}, ${fmt.min(stageTotal(slowest))}. Mais rápido: ${fastest.label}, ${fmt.min(stageTotal(fastest))}. Soma das medianas das etapas.`;
+  const markedKey = (focus?.evidence.hubs ?? []).map(String).join(",");
+  const marked = useMemo(() => new Set(markedKey ? markedKey.split(",") : []), [markedKey]);
+
+  const { rows, anyMarked } = useMemo(() => {
+    const withCycle = (data?.rows ?? []).filter((r) => r.cycle_p50 !== null);
+    // Os 14 hubs com mais pedidos; se a comanda marcar algum fora deles, ele entra sem ultrapassar o teto.
+    const extra = withCycle.slice(TOP_HUBS).filter((r) => marked.has(String(r.key))).slice(0, TOP_HUBS);
+    const top = withCycle.slice(0, Math.max(0, TOP_HUBS - extra.length));
+    const pool = [...top, ...extra];
+    const pinned = pool.filter((r) => marked.has(String(r.key)));
+    const others = pool.filter((r) => !marked.has(String(r.key)));
+    // No ECharts o índice 0 fica embaixo. Inverter os demais e depois os marcados põe o hub da comanda no topo.
+    return {
+      rows: [...others].reverse().concat([...pinned].reverse()),
+      anyMarked: pinned.length > 0,
+    };
+  }, [data, marked]);
+
+  const summary = useMemo(() => {
+    if (rows.length === 0) return "";
+    const slowest = rows.reduce(
+      (best, row) => ((row.cycle_p50 ?? -Infinity) > (best.cycle_p50 ?? -Infinity) ? row : best),
+      rows[0],
+    );
+    const fastest = rows.reduce(
+      (best, row) => ((row.cycle_p50 ?? Infinity) < (best.cycle_p50 ?? Infinity) ? row : best),
+      rows[0],
+    );
+    return slowest === fastest
+      ? `${slowest.label}: ciclo mediano de ${fmt.min(slowest.cycle_p50)}.`
+      : `Mais lento: ${slowest.label}, ciclo mediano de ${fmt.min(slowest.cycle_p50)}. Mais rápido: ${fastest.label}, ${fmt.min(fastest.cycle_p50)}.`;
+  }, [rows]);
 
   const option = useCallback(
     (t: Tokens) => {
-      const colors = [t.seriesDeep, t.series, t.seriesSoft, t.muted];
+      const colors = [t.seriesDeep, t.series, t.seriesSoft];
       return {
         grid: { left: 8, right: 24, top: 30, bottom: 8, containLabel: true },
         legend: { top: 0, left: 0, itemWidth: 12, itemHeight: 8 },
         tooltip: {
           trigger: "axis",
           axisPointer: { type: "shadow" },
-          valueFormatter: (v: number) => fmt.min(v),
+          formatter: (params: unknown) => {
+            const items = (Array.isArray(params) ? params : [params]) as {
+              dataIndex?: number;
+              seriesName?: string;
+              marker?: string;
+              value?: unknown;
+            }[];
+            const idx = items[0]?.dataIndex;
+            const row = typeof idx === "number" ? rows[idx] : undefined;
+            if (!row) return "";
+            const lines = [`<b>${escapeHtml(row.label)}</b>`];
+            for (const item of items) {
+              const val = typeof item.value === "number" ? item.value : null;
+              lines.push(`${item.marker ?? ""}${escapeHtml(item.seriesName ?? "")}: <b>${escapeHtml(fmt.min(val))}</b>`);
+            }
+            lines.push(`Coleta (subetapa da expedição): <b>${escapeHtml(fmt.min(row.collected_p50))}</b>`);
+            lines.push(`Ciclo mediano: <b>${escapeHtml(fmt.min(row.cycle_p50))}</b>`);
+            return lines.join("<br/>");
+          },
         },
         xAxis: { type: "value", splitNumber: 4, axisLabel: { hideOverlap: true, formatter: (v: number) => (v === 0 ? "0" : `${v} min`) } },
         yAxis: {
@@ -114,7 +132,7 @@ function StagesChartInner() {
         })),
       };
     },
-    [rows, anyMarked, markedKey], // eslint-disable-line react-hooks/exhaustive-deps
+    [rows, anyMarked, marked],
   );
 
   return (
@@ -148,12 +166,16 @@ function StagesChartInner() {
         <div className="content-reveal min-w-0" style={{ minHeight: CHART_H }}>
           <EChart
             option={option}
-            height={Math.max(220, rows.length * 26 + 50)}
+            height={Math.max(220, rows.length * ROW_H + CHROME_H)}
             ariaLabel="Barras empilhadas com a mediana de cada etapa por hub"
             onEvents={{
-              click: (p: { dataIndex: number }) => {
-                const row = rows[p.dataIndex];
-                if (row) applyDrilldown({ hub: [Number(row.key)] });
+              click: (p: unknown) => {
+                const idx =
+                  typeof p === "object" && p !== null && "dataIndex" in p
+                    ? (p as { dataIndex?: unknown }).dataIndex
+                    : undefined;
+                const row = typeof idx === "number" ? rows[idx] : undefined;
+                if (row && row.key != null) applyDrilldown({ hub: [Number(row.key)] });
               },
             }}
           />

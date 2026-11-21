@@ -17,7 +17,7 @@ from app.agent.llm import SYSTEM_PROMPT, ToolRunner
 from app.analytics import explain_change
 from app.config import Settings
 from app.filters import Filters
-from app.schemas import ChatRequest
+from app.schemas import ChatRequest, ChatTurn
 
 # Últimos 12 dias da base sintética contra os 12 anteriores (08–19/03): a loja 13 cancela e atrasa
 # no fim de março e a loja 25 cancelou no período anterior, então SLA e cancelamento mudam.
@@ -163,12 +163,18 @@ def test_deterministic_nodes_decompose_twice_and_drill_the_top_driver(repo):
 
 def test_rate_metric_drills_the_driver_by_the_next_causal_dimension_against_the_rest(repo):
     state = _deterministic(repo, "por que o cancelamento subiu vs o período anterior?")
-    assert state["metric"] == "cancel_rate" and state["dims"] == ["store", "modal"]
-    by, key = _expected_driver(repo, MAR, "cancel_rate", ["store", "modal"])
+    assert state["metric"] == "cancel_rate" and state["dims"] == ["store", "hub"]
+    by, key = _expected_driver(repo, MAR, "cancel_rate", ["store", "hub"])
     drill = state["evidence"][-1]
     assert drill["tool"] == "query_metrics"
     assert drill["args"] == {
-        "metrics": ["cancel_rate", "canceled", "orders"], "group_by": ["hour"], "where": {by: [key]}, "compare": "rest",
+        "metrics": ["cancel_rate", "canceled", "orders"],
+        "group_by": ["channel"],
+        "where": {by: [key]},
+        "compare": "rest",
+        "sort": "cancel_rate",
+        "order": "worst",
+        "limit": inv._DRILL_ROWS,
     }
     assert drill["result"]["comparacao"] == "resto do recorte"
 
@@ -191,6 +197,18 @@ def test_default_settings_skip_the_review_and_make_one_call(repo, monkeypatch):
     assert res.tool_labels == [
         "KPIs do recorte", "Por que mudou: SLA por hub", "Por que mudou: SLA por loja", "Etapa que explica o atraso",
     ]
+
+
+def test_synthesis_prompt_has_no_tool_examples(repo, monkeypatch):
+    """FA-08: a síntese não tem tools; o plano de tools dos exemplos contradiria "não há ferramentas"."""
+    from app.agent.llm import _messages
+
+    assert "## Exemplos" in _messages(WHY_SLA, [], "")[0]["content"]  # a pergunta casa com exemplo no modo tools
+    seen: list[dict] = []
+    _install(monkeypatch, [_resp(FINAL)], seen)
+    inv.investigate(WHY_SLA, [], repo, MAR, _settings(investigation_max_probes=0), deadline=_far())
+    assert len(seen) == 1
+    assert seen[0]["messages"][0]["content"] == SYSTEM_PROMPT + inv._SYNTH_APPENDIX
 
 
 def test_assess_done_goes_straight_to_synthesis(repo, monkeypatch):
@@ -263,11 +281,12 @@ def test_probe_dedup_and_probe_limit(repo, monkeypatch):
 def test_short_deadline_skips_assess(repo, monkeypatch):
     seen: list[dict] = []
     _install(monkeypatch, [_resp(FINAL)], seen)
-    deadline = time.monotonic() + inv.SYNTH_RESERVE_S + inv.ASSESS_MIN_S - 1.0
+    budget = inv.SYNTH_RESERVE_S + inv.ASSESS_MIN_S - 1.0
+    deadline = time.monotonic() + budget
     state = inv.run_graph(WHY_SLA, [], repo, MAR, _settings(), deadline=deadline)
     assert len(seen) == 1 and not _is_assess(seen[0])
     assert state["assess_rounds"] == 0 and len(state["evidence"]) == 4
-    assert seen[0]["timeout"] <= deadline - time.monotonic() + 1.0
+    assert 0 < seen[0]["timeout"] <= budget
 
 
 def test_busy_assess_synthesizes_without_retrying(repo, monkeypatch):
@@ -369,3 +388,112 @@ def test_graph_budget_defaults():
     assert fields["investigation_budget_s"].default == 35.0
     assert fields["investigation_synth_max_tokens"].default == 7000
     assert fields["chat_budget_s"].default == 20.0  # o resto do agente não fica mais lento
+
+
+def test_cancel_metrics_never_decompose_or_drill_by_modal(monkeypatch):
+    # Mapa causal plantado com modal na frente: nem assim cancelamento quebra por modal.
+    planted = {
+        metric: SimpleNamespace(effect=metric, drivers=("orders",), dimensions=("modal", "store", "hub"), note="")
+        for metric in ("cancel_rate", "canceled", "sla_rate")
+    }
+    patched_causal = {**inv.SEM.causal, **planted}
+    monkeypatch.setattr(inv, "SEM", SimpleNamespace(causal=patched_causal, metrics=inv.SEM.metrics))
+    assert inv._dims_for("cancel_rate", Filters()) == ["store", "hub"]
+    assert inv._dims_for("canceled", Filters()) == ["store", "hub"]
+    assert inv._secondary_dim("cancel_rate", "store", ["store", "hub"], Filters()) != "modal"
+    assert inv._dims_for("sla_rate", Filters()) == ["modal", "store"]  # a exclusão vale só para cancelamento
+
+
+@pytest.mark.parametrize(
+    ("question", "history", "status", "expected"),
+    [
+        (WHY_SLA, [], ["canceled"], False),
+        ("por que o cancelamento subiu vs o período anterior?", [], ["canceled"], False),
+        ("por que as entregas caíram vs o período anterior?", [], ["canceled"], False),
+        ("por que o faturamento caiu vs o período anterior?", [], ["canceled"], False),
+        (
+            "e por que mudou em relação ao período anterior?",
+            [ChatTurn(role="user", content="como está o cancelamento?")],
+            ["canceled"],
+            False,
+        ),
+        ("por que o volume de pedidos caiu vs o período anterior?", [], ["canceled"], True),
+        ("por que o cancelamento caiu vs o período anterior?", [], ["delivered"], False),
+        ("por que os cancelados caíram vs o período anterior?", [], ["delivered"], False),
+        (WHY_SLA, [], ["delivered"], True),
+        ("por que o cancelamento subiu vs o período anterior?", [], ["delivered", "canceled"], True),
+    ],
+)
+def test_should_investigate_skips_baseless_or_tautological_status_slices(repo, question, history, status, expected):
+    f = MAR.model_copy(update={"status": status})
+    assert inv.should_investigate(question, history, repo, f) is expected
+
+
+def test_tight_budget_skips_synthesis_without_evidence(repo, monkeypatch):
+    seen: list[dict] = []
+    _install(monkeypatch, [_resp(FINAL)], seen)
+    state = inv.run_graph(WHY_SLA, [], repo, MAR, _settings(), deadline=time.monotonic() + 5.0)
+    assert seen == []
+    assert state["evidence"] == []
+    assert state["answer"] is None
+    assert any("sem evidência" in step for step in state["trace"])
+
+
+def test_probe_exception_is_ignored_and_synthesis_still_runs(repo, monkeypatch):
+    seen: list[dict] = []
+    probe_req = {
+        "done": False,
+        "hypothesis": "investigar canal",
+        "next": {"tool": "query_metrics", "args": {"metrics": ["sla_rate"], "group_by": ["channel"]}},
+    }
+    _install(monkeypatch, [_resp(json.dumps(probe_req)), _resp(FINAL)], seen)
+    real_run = inv._run
+
+    def flaky_run(state, step, tool, args):
+        if step == "probe":
+            raise RuntimeError("boom")
+        return real_run(state, step, tool, args)
+
+    monkeypatch.setattr(inv, "_run", flaky_run)
+    state = inv.run_graph(WHY_SLA, [], repo, MAR, _settings(investigation_max_probes=1), deadline=_far())
+    assert state["answer"] == FINAL
+    assert state["probes"] == 1
+    assert len(state["evidence"]) == 4
+    assert any("falhou; ignorada" in step for step in state["trace"])
+
+
+def test_failed_probe_is_not_recorded_in_tools_used(repo, monkeypatch):
+    seen: list[dict] = []
+    bad_probe = {
+        "done": False,
+        "hypothesis": "métrica inválida",
+        "next": {"tool": "query_metrics", "args": {"metrics": ["nps"]}},
+    }
+    _install(monkeypatch, [_resp(json.dumps(bad_probe)), _resp(DONE), _resp(FINAL)], seen)
+    state = inv.run_graph(WHY_SLA, [], repo, MAR, _settings(investigation_max_probes=2), deadline=_far())
+    assert state["answer"] == FINAL
+    assert state["probes"] == 1
+    assert len(state["evidence"]) == 4
+    assert state["tools_used"] == [
+        "get_kpis", "explain_change(sla_rate:hub)", "explain_change(sla_rate:store)", "drill_cause(sla_rate)",
+    ]
+    assert any("voltou erro" in step for step in state["trace"])
+    assert any(s.startswith("query_metrics:") for s in state["seen"])
+
+
+def test_add_skips_error_results_in_tools_used(repo):
+    err_entry, _, err_label = inv._run(
+        {"repo": repo, "filters": MAR}, "decompose", "query_metrics", {"metrics": ["nps"]},
+    )
+    ok_entry, _, ok_label = inv._run({"repo": repo, "filters": MAR}, "frame", "get_kpis", {})
+    assert err_label is None
+    assert ok_label == "get_kpis"
+
+    update = inv._add(
+        {"evidence": [], "tools_used": [], "seen": [], "trace": []},
+        [(err_entry, err_label), (ok_entry, ok_label), ({"step": "x", "tool": "explain_change", "args": {}, "result": {"erro": "sem comparação"}}, "explain_change")],
+        ["nota"],
+    )
+    assert len(update["evidence"]) == 3
+    assert update["tools_used"] == ["get_kpis"]
+    assert len(update["seen"]) == 3

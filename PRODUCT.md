@@ -10,7 +10,7 @@ web
 
 The primary visitor is an **iFood internship recruiter** (AI Builder track) evaluating a deployed internal tool as a portfolio piece. They are not operating a real praça; they need to understand, in a few minutes, that this is a working dashboard + insights agent on real data — not a chart gallery.
 
-The in-product persona is a **hub/praça operator** on a Brazilian delivery platform: they have already applied a recorte (period, city, hub, store, segment, channel, courier modal) and need to know whether delivery SLA, store prep time, or cancellation is off in *this* slice, then leave with an action for today (call the store, reinforce fleet before dinner, take a broken store offline, review radius).
+The in-product persona is a **hub/praça operator** on a Brazilian delivery platform: they have already applied a recorte (period, city, hub, store, segment, channel, courier modal, status) and need to know whether delivery SLA, store prep time, or cancellation is off in *this* slice, then leave with an action for today (call the store, reinforce fleet before dinner, take a broken store offline, review radius).
 
 Design the UI as that operator’s tool. Success is the recruiter being able to perform that job and see the differentiator.
 
@@ -32,19 +32,20 @@ Neighboring dashboards have charts. Neighboring agents chat over a whole CSV. Th
 - Recorte lives in a Nanostores atom synced to the URL query string; the same keys are the API’s query params, so links are shareable.
 - Data: **Delivery Center (Kaggle)** — 368,990 real orders, 01/01–30/04/2021, 32 hubs in São Paulo, Rio de Janeiro, Curitiba and Porto Alegre, ~950 stores (names anonymized by the dataset), segments food/goods. Built into `backend/data/orders.parquet` by `backend/scripts/build_parquet.py`.
 - Cleaning decisions that change numbers (keep them visible in the footer/README): timestamps converted UTC→Brasília; SLA by segment (food ≤ 60 min, goods ≤ 120 min); cycle > 4h = "preso" and excluded from medians and SLA; amount > R$ 5,000 excluded from GMV/ticket.
-- Agent: local rules + statistics without an API key; with `OPENROUTER_API_KEY`, an LLM with tool calling (KPIs, breakdowns, alerts, time series) — falls back to a single context prompt, then to local rules.
+- Agent: local rules and statistics without an API key. With `OPENROUTER_API_KEY`, an LLM with tool calling (`get_kpis`, `get_alerts`, `get_timeseries`, `query_metrics`, `explain_change`, `drill_cause`) backed by a semantic layer (`backend/app/semantic.toml`) and a LangGraph investigation flow (`backend/app/agent/investigate.py`) for "why did it change?" questions. Falls back to a single context prompt, then to local rules.
 - Product language is **Brazilian Portuguese**; pt-BR currency and number formats.
 
 ## Capabilities and Constraints
 
 **In the product today**
 
-- Filters: period (presets + dates + zoom-to-period from the trend chart), city, hub (scoped by city), store (searchable, scoped by hub), segment, channel type, courier modal. Empty multi-select = all.
+- Filters: period (presets + dates + zoom-to-period from the trend chart), city, hub (scoped by city), store (searchable, scoped by hub), segment, channel type, courier modal, status. Empty multi-select = all.
 - KPIs with delta vs. previous period of equal length: SLA, median cycle, cancelamento (hero row); pedidos, GMV, ticket (volume row).
 - Alerts: recorte SLA, slowest hub with the stage that explains it, cancel outliers by hub and store, broken stores (~100% canceled), SLA drop at peak, stuck orders (data), weekly volume drop, freight subsidy. Each has an action and, when scoped, a drill-down filter.
-- Charts: trend (volume / SLA+cycle / cancel; hour/day/week), cycle stages per hub, weekday × hour heatmap, store scatter with brush-to-filter.
+- Charts: trend (volume / SLA+cycle / cancel; hour/day/week), cycle stages per hub (stacks prep, expedition and transit; pickup, part of expedition, appears in the tooltip), weekday × hour heatmap, store scatter with brush-to-filter.
 - Tables: ranking by dimension (client sort) and raw orders (server paging/sort, virtualized).
 - Export: orders CSV, Markdown briefing to clipboard, print-to-PDF.
+- Daily automation: `GET /api/briefing` and `GET /api/alerts/routing` (template-based, no LLM), paired with a self-hosted n8n workflow (`n8n/`) delivering daily Telegram briefings and per-owner alert messages.
 
 **Must preserve**
 
@@ -67,7 +68,7 @@ Neighboring dashboards have charts. Neighboring agents chat over a whole CSV. Th
 ## Evidence on Hand
 
 - Real public dataset (Delivery Center, Kaggle), 2021. Not iFood data. Store names are anonymized strings.
-- No screenshots in `assets/` yet, no deploy URL yet, no usage metrics yet. Do not invent them.
+- Screenshots live in `assets/` (10 captures) and the live deploy is published on Vercel and Render (URLs in `README.md`). No real production usage metrics yet. Do not invent them.
 - No testimonials, customers, benchmarks or press.
 
 ## Product Principles
