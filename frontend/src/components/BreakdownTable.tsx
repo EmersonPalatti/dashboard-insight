@@ -277,7 +277,11 @@ function BreakdownTableInner() {
                       </th>
                     );
                   })}
-                  {canDrill && <th className="sticky right-0 border-b border-l border-rule bg-sunken px-2 py-2" aria-label="Filtrar" />}
+                  {canDrill && (
+                    <th className="sticky right-0 border-b border-l border-rule bg-sunken px-2 py-2">
+                      <span className="sr-only">Filtrar</span>
+                    </th>
+                  )}
                 </tr>
               ))}
             </thead>

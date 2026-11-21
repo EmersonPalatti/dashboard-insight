@@ -360,6 +360,24 @@ describe("estado reativo e drill-down", () => {
     expect(mod.isTrendFromUrl()).toBe(false);
   });
 
+  it("setView com replace chamado de dentro de outro listener não vira push", async () => {
+    // A comanda escolhe a métrica dentro do listener do $evidence. Ali o nanostores enfileira
+    // os listeners do $view e só roda depois do retorno do setView.
+    const browser = installBrowserStub("?hub=8");
+    const mod = await import("./filters");
+    const { atom } = await import("nanostores");
+
+    mod.initFilters();
+    const $trigger = atom(0);
+    const off = $trigger.listen(() => mod.setView({ trend: "sla" }, { history: "replace" }));
+    $trigger.set(1);
+    off();
+
+    expect(browser.pushCalls).toEqual([]);
+    expect(browser.replaceCalls.at(-1)).toBe("/?hub=8&trend=sla");
+    expect(mod.$view.get().trend).toBe("sla");
+  });
+
   it("popstate restaura recorte e vista da URL, sem empurrar histórico, e solta o trend do link", async () => {
     const browser = installBrowserStub("?hub=101&trend=cancel");
     const mod = await import("./filters");

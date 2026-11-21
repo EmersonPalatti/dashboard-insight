@@ -42,8 +42,9 @@ function Tag({ focus, note, className = "", compact = false }: TagProps) {
     );
   }
   const showAction = note === undefined && Boolean(focus.action);
+  // <span>, não <div>: o Hero do KPI põe a etiqueta dentro de um <p>.
   return (
-    <div
+    <span
       className={`inline-flex max-w-full flex-col gap-0.5 rounded-tick bg-sunken px-2 py-1 text-meta leading-snug transition-[opacity,translate] duration-(--duration-fast) ease-(--ease-smooth-out) starting:translate-y-(--distance-micro) starting:opacity-0 motion-reduce:transition-none ${caption ? "min-w-0" : "shrink-0"} ${className}`}
     >
       <span className="flex min-w-0 items-center gap-1.5">
@@ -56,6 +57,6 @@ function Tag({ focus, note, className = "", compact = false }: TagProps) {
           <span className="font-semibold text-ink">Ação:</span> {focus.action}
         </span>
       )}
-    </div>
+    </span>
   );
 }
