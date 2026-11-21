@@ -8,7 +8,7 @@ no agente melhorou alguma coisa e para pegar regressão.
 
 Cada caso é uma pergunta de operador (formal, informal, com erro de digitação ou sem acento), um recorte e as
 expectativas. **A verdade sai dos dados na hora**: `expect(repo, f)` roda as mesmas consultas do painel
-(`metrics`, `breakdown`, `subslice_metrics`, `previous_period`) e escolhe "o hub com mais pedidos", "a loja que
+(`metrics`, `breakdown`, `subslice_metrics`, `query_metrics`, `previous_period`) e escolhe "o hub com mais pedidos", "a loja que
 mais cancela com 150+ pedidos" e assim por diante. Nenhum nome fica fixo no código, então o mesmo caso roda no
 parquet sintético dos testes e nos 369 mil pedidos reais. Casos "por quê" usam uma decomposição exata da
 variação (decomposição simétrica taxa + mix via `analytics.explain_change`, onde a soma dos grupos fecha exatamente com a variação total) para achar quem mais empurrou a taxa.
@@ -58,7 +58,7 @@ erro. O teste `tests/test_evals.py` roda o motor local no sintético e trava 100
 - **Por categoria**: onde o agente é fraco (ex.: `por-que`, `fora-escopo`).
 - **Por modo**: `llm-tools`, `llm-context` ou `local`. Com LLM, *Caiu nas regras locais* é a taxa de fallback.
 - **Verificações que mais falham**: o tipo de erro mais comum.
-- **Falhas e motivos**: por caso, o que faltou ("não cita hub 'X'", "faltou SLA de X = 80,0 pct") e a ação devolvida.
+- **Falhas e motivos**: por caso, o que faltou ("não cita hub 'X'", "faltou SLA de X = 80.00 pct") e a ação devolvida.
 - **Fora do placar**: caso que os dados não sustentam (ex.: sem período anterior). Não conta como falha.
 
 ## Como adicionar um caso

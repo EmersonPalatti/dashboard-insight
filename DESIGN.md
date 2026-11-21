@@ -8,6 +8,8 @@ colors:
   sunken-strong: "#E8E8E8"
   rule: "#DCDCDC"
   ink: "#1A1A1A"
+  action: "#1A1A1A"
+  on-action: "#FFFFFF"
   muted: "#666666"
   crit: "#D92B20"
   crit-deep: "#A51E16"
@@ -107,8 +109,8 @@ components:
     rounded: "{rounded.card}"
     padding: "20px 20px 16px"
   ticket-action:
-    backgroundColor: "{colors.ink} (claro) / #27131A com borda {colors.wine-raised} (escuro)"
-    textColor: "{colors.surface} (claro) / {colors.ink} (escuro)"
+    backgroundColor: "{colors.action} (light #1A1A1A / dark #27131A with {colors.wine-raised} border)"
+    textColor: "{colors.on-action} (light #FFFFFF / dark #F2F2F2)"
     rounded: "{rounded.card}"
     padding: "14px 16px"
   ticket-stub:
@@ -134,15 +136,15 @@ components:
     backgroundColor: "{colors.wine}"
     textColor: "{colors.on-wine}"
     rounded: "{rounded.card}"
+    width: "48px"
     height: "48px"
-    padding: "0 16px"
-    typography: "{typography.label}"
+    padding: "0"
   ask-agent-button:
     backgroundColor: "{colors.surface}"
     textColor: "{colors.ink}"
     rounded: "{rounded.card}"
     padding: "4px 8px"
-    typography: "{typography.label}"
+    typography: "{typography.meta} (weight 500)"
   filter-bar:
     backgroundColor: "{colors.surface}"
     textColor: "{colors.ink}"
@@ -154,7 +156,7 @@ components:
     rounded: "{rounded.card}"
     height: "40px"
     padding: "0 12px"
-    typography: "{typography.label}"
+    typography: "{typography.body}"
   share-menu:
     backgroundColor: "{colors.surface}"
     textColor: "{colors.ink}"
@@ -200,7 +202,7 @@ The shell is a wine band, not red: it gives the product a recognisable colour fi
 
 ## Typography
 
-Two families, both from Google Fonts. **Libre Franklin** (`wght` 400–700) sets all reading text, labels, controls and charts. **Zilla Slab** (500, 600, 700) is the stamp voice, used only on headline figures (`figure`), the comanda identity and "Comandas abertas" rail title (`cond`), and the product name in the band (`font-slab`). Never on running text, labels or tables. `cond` keeps its name for compatibility; it now means the stamp voice (Zilla Slab caps), not a narrow cut.
+Two families, both from Google Fonts. **Libre Franklin** (`wght` 400–700) sets all reading text, labels, controls and charts. **Zilla Slab** (500, 600, 700) is the stamp voice, used only on headline figures (`figure`), the comanda identity, evidence tags and "Comandas abertas" rail title (`cond`), and the product name in the band (`font-slab`). Never on running text, labels or tables. `cond` keeps its name for compatibility; it now means the stamp voice (Zilla Slab caps), not a narrow cut.
 
 ### Scale
 Six steps, as `@theme` tokens in `global.css`; no `text-[x.xxrem]` outside them: `text-meta` 0.75 · `text-aux` 0.85 · `text-body` 0.95 · `text-lead` 1.125 · `text-figure` 1.5 · `text-hero` 2.5rem. Panel titles use `text-base`.
@@ -264,7 +266,7 @@ Exportar is no longer on the desktop bar. The Export dialog opens only from the 
 ### Inputs / Fields
 Filter selects are 40px surface boxes (44px below `lg`) with the label inline and muted before the value; an active filter gets an ink border. Selected options use an ink checkbox. From `lg` up, Período, Cidade, Hub and Loja stay visible; Segmento, Canal, Modal and Status live in the "Mais filtros" popover, which floats over the page instead of pushing it down. Below `lg` the bar collapses to one recorte summary ("Recorte · N / Rio de Janeiro · Editar") that opens a bottom sheet with every control (Período and Lugar open; Segmento, Canal, Modal and Status folded under "Pedido", which opens by itself when one of them is in use), plus a "Comandas · N / X críticas" shortcut to the queue. Every active value also shows as a removable chip.
 
-No native dropdown or calendar ships: their open state is the operating system's, with square corners and no tokens. Single choices (Quebrar por) use `Select`, dates use `DatePicker`; both open the same floating panel as the filter menus (`card` corners, rule border, surface, no shadow, same open/close motion). The calendar is pt-BR (dd/mm/aaaa, week from Sunday), day cells are `tick`, the chosen day is ink and the rest of the range a sunken tint. Below `lg` it opens in flow instead of floating, so the bottom sheet never clips it.
+No native dropdown or calendar ships: their open state is the operating system's, with square corners and no tokens. Single choices (Quebrar por) use `Select`, dates use `DatePicker`; both open the same floating panel as the filter menus (`card` corners, ink border, surface, no shadow, same open/close motion). The calendar is pt-BR (dd/mm/aaaa, week from Sunday), day cells are `tick`, the chosen day is ink and the rest of the range a sunken tint. Below `lg` it opens in flow instead of floating, so the bottom sheet never clips it.
 
 Table outliers (No prazo abaixo do recorte, cancelamento acima, ciclo fora do SLA) are flagged by the backend and drawn in ink with weight and an arrow mark, never in red: red stays with the comandas. The Orders table documents `↑ fora do SLA` in its panel hint and does not mutate global filters from column headers.
 
@@ -272,8 +274,8 @@ Table outliers (No prazo abaixo do recorte, cancelamento acima, ciclo fora do SL
 The wine band holds product name, subtitle, the API (Swagger) link, API status dot and the theme toggle. The agent does not live here: it opens from the filter bar, the mobile FAB or Ctrl K. Below `sm` the band is one 56px row: name, status dot (label kept for screen readers) and theme toggle; subtitle and API link hide. Below `lg` every control in the page is at least 44px tall.
 
 ### Comanda (signature component)
-The alert rail. **Rail tickets** hang side by side (`auto-cols minmax(12rem,1fr)`, 15rem under `sm`), scrolling sideways with snap when they don't fit: severity mark + `Nº 01 · CATEGORIA` in cond caps, then the title, which always reserves two lines so every ticket has the same height, then the ticket's **figure** on its foot: the headline number in Zilla Slab (`figure`, e.g. "80,0% no SLA") and its reference muted beside it ("recorte 86,2%", "meta 85%"), one line, truncated at the reference. Figure and reference come pre-formatted from the backend (`Alert.figure`, `Alert.figure_ref`), so the queue can be triaged without opening a ticket. When any comanda is about a store, one muted line under the band says the store names are anonymized by the dataset. Pinned agent comandas stay on the rail after the recorte changes, marked "Recorte mudou". A chevron at the right of the head says the ticket opens; it flips (`scaleY(-1)`, `--duration-fast`, symmetric) while its comanda is open. The severity word is left to the open band; on the rail the mark carries it. An ink bar under the rail marks the open ticket and slides between tickets (`--duration-fast`, `--ease-smooth-out`, symmetric like tabs); it fades out on collapse. When tickets are cut off at the right edge, the queue header shows "mais N" (ink, underlined, chevron), which scrolls the rail one page; it disappears when nothing is hidden ahead. Once the rail has scrolled, "voltar" (same style, chevron left) sits before it and scrolls one page back. Hovering (or focusing) a closed ticket previews that lane with a `rule` bar, lifts the paper to full `surface` and the title and chevron to full ink (`--duration-quick`). Clicking the open ticket again collapses it.
-The **open band** is a full-width comanda under the rail, never a popover: header with severity word and Recolher, then two columns from `lg` — title, detail and the actions (drill-down primary, Ver no gráfico and Perguntar ao agente ghost) on the left, the **Ação** block in inverted ink on the right. Under `lg` the diagnosis stays first, followed by the Ação block and the actions, without a right gutter. Severity is a shape as well as a colour: filled dot (crítico), hollow ring (atenção), dash (observar). Printed, every rail ticket carries its action.
+The alert rail. **Rail tickets** hang side by side (`auto-cols minmax(max-content,1fr)`, min `11.5rem` per ticket, `15rem` under `sm`), scrolling sideways with snap when they don't fit: severity mark + `Nº 01 · CATEGORIA` in cond caps, then the title, which always reserves two lines so every ticket has the same height, then the ticket's **figure** on its foot: the headline number in Zilla Slab (`figure`, e.g. "80,0% no SLA") and its reference muted beside it ("recorte 86,2%", "meta 85%"), one line, truncated at the reference. Figure and reference come pre-formatted from the backend (`Alert.figure`, `Alert.figure_ref`), so the queue can be triaged without opening a ticket. When any comanda is about a store, one muted line under the band says the store names are anonymized by the dataset. Pinned agent comandas stay on the rail after the recorte changes, marked "Recorte mudou". A chevron at the right of the head says the ticket opens; it flips (`scaleY(-1)`, `--duration-fast`, symmetric) while its comanda is open. The severity word is left to the open band; on the rail the mark carries it. An ink bar under the rail marks the open ticket and slides between tickets (`--duration-fast`, `--ease-smooth-out`, symmetric like tabs); it fades out on collapse. When tickets are cut off at the right edge, the queue header shows "mais N" (ink, underlined, chevron), which scrolls the rail one page; it disappears when nothing is hidden ahead. Once the rail has scrolled, "voltar" (same style, chevron left) sits before it and scrolls one page back. Hovering (or focusing) a closed ticket previews that lane with a `rule` bar, lifts the paper to full `surface` and the title and chevron to full ink (`--duration-quick`). Clicking the open ticket again collapses it.
+The **open band** is a full-width comanda under the rail, never a popover: header with severity word and Recolher, then two columns from `lg` — title, detail and the actions (drill-down primary, Ver no gráfico and Perguntar ao agente ghost) on the left, the **Ação** block (`action-block`: inverted ink in light mode, deep wine `#27131A` with a `wine-raised` border in dark mode) on the right. Under `lg` the diagnosis stays first, followed by the Ação block and the actions, without a right gutter. Severity is a shape as well as a colour: filled dot (crítico), hollow ring (atenção), dash (observar). Printed, every rail ticket carries its action.
 Motion: each new recorte reprints the rail, tickets unfolding in order (40ms stagger, six steps max, 280ms each) and the band last; switching comanda reprints the band (280ms, `cubic-bezier(0.16, 1, 0.3, 1)`). Opening from collapsed and collapsing animate the band's height as an accordion (`grid-template-rows: 0fr ↔ 1fr`, `--duration-fast`, `--ease-smooth-out`, symmetric, with a fade and `--blur-small` on the content), so the KPIs below glide instead of jumping. All of it is skipped under reduced motion.
 
 ### Evidence mark
@@ -305,7 +307,7 @@ Tokens live in `:root` (`--duration-*`, `--ease-*`, `--distance-*`, `--scale-*`,
 - The agent's wait is a shimmer over "Consultando o recorte…"; its answer rises 4px into place in 250ms.
 
 ### KPI grid
-Three operation cells joined by 1px rule gaps, each with a sentence-case label, figure, one status line, a daily trail in series wine, and a muted footnote that wraps, never truncates. The status line leads with the verdict (Dentro, Atenção, Crítico — dash in `good`, hollow ring in `warn`, filled dot in `crit`) and the reference, then the previous-period delta when it exists. Nothing in it truncates: the part that does not fit beside the rest drops whole to a second line. A dashed hairline marks the network value on the trail only when that value already sits inside the series scale; whenever one is drawn, the strip's SLA note gains a matching "--- rede" legend item. When the backend flags the measured base as small (`low_sample`), SLA and ciclo keep their figure and swap the status line for a `warn` note ("base: 20 entregas · amostra pequena"). Volume KPIs sit in one tile below, inline, and swap their delta for "amostra pequena" when either period has fewer than 100 orders.
+Three operation cells joined by 1px rule gaps, each with a sentence-case label, figure, one status line, a daily trail in series wine, and a muted footnote that wraps, never truncates. The status line leads with the verdict (Dentro, Atenção, Crítico — dash in `good`, hollow ring in `warn`, filled dot in `crit`) and the reference, then the previous-period delta when it exists. Nothing in it truncates: the part that does not fit beside the rest drops whole to a second line. A dashed hairline marks the network value on the trail only when that value already sits inside the series scale; whenever one is drawn, the strip's SLA note gains a matching "--- rede" legend item. When the backend flags a small base (`low_sample` on SLA and ciclo, or `volume_low_sample` without an extreme verdict on cancelamento), the cell keeps its figure and swaps the status line for a `warn` note ("base: 20 entregas · amostra pequena" / "base: 20 pedidos · amostra pequena"). Volume KPIs sit in one stacked tile (to the right from `@min-[52rem]`, below when narrower), with label and figure inline per row, and swap their delta for "amostra pequena" when either period has fewer than 100 orders.
 
 ## Do's and Don'ts
 

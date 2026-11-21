@@ -92,7 +92,7 @@ evals/  placar do agente (45 perguntas, verdade calculada dos dados)
 Decisões que vale conhecer:
 
 - **DuckDB sobre Parquet, sem banco.** O dataset tem 9,8 MB em Parquet; o DuckDB carrega tudo em memória e calcula os KPIs de 369 mil linhas em menos de 100 ms, e um cache LRU devolve recortes repetidos em menos de 1 ms. O SQL recebe valores só por parâmetros, e colunas e ordenações vêm de listas fixas.
-- **Um contrato de filtro e schema.** `Filters` (Pydantic) é a query string da API e da URL do navegador. Os tipos TypeScript são gerados do OpenAPI (`test_openapi_contract.py` falha se `frontend/openapi.json` divergir do backend, e o `astro check` quebra se o frontend ficar desatualizado). Regras de exibição vêm do servidor: `TimePoint` e `HeatCell` expõem `measured`, `low_sample` e `volume_low_sample`; `OrderRow` traz `hub_id`, `store_id` e `amount_outlier`; `AlertsResponse` traz `empty_reason`; datas e horas saem em horário de Brasília sem offset (wall-clock).
+- **Um contrato de filtro e schema.** `Filters` (Pydantic) é a query string da API e da URL do navegador. Os tipos TypeScript são gerados do OpenAPI (`test_openapi_contract.py` falha se `frontend/openapi.json` divergir do backend, e o `astro check` quebra se o frontend ficar desatualizado). Regras de exibição vêm do servidor: `TimePoint` e `HeatCell` expõem `measured`, `low_sample` e `volume_low_sample`; `OrderRow` traz `hub_id`, `store_id` e `amount_outlier`; `AlertsResponse` traz `empty_reason`; datas e horas saem em horário de Brasília, sem indicação de fuso.
 - **Ilhas que se falam sem Provider global.** O filtro grava num átomo Nanostores; KPIs, gráficos, tabelas e agente são ilhas separadas que escutam o mesmo átomo e compartilham um `QueryClient`. A comanda aberta publica sua evidência num segundo átomo: ele decide qual gráfico sobe para a investigação (os painéis são movidos no DOM, não reordenados por CSS), o que esse gráfico destaca e o que o fechamento mostra em foco.
 - **Sem salto de layout.** Moldura, título e dica fixa de cada painel saem no HTML do Astro; a ilha só preenche o corpo, e o skeleton reserva a altura final. Acima da dobra hidrata com `client:load`; gráficos, tabelas e fechamento com `client:visible`, e os painéis recolhidos só hidratam quando abertos; a conversa do agente, a folha de filtros e o diálogo de exportação entram com `React.lazy`.
 - **Camada semântica no lugar de SQL livre.** Inspirado no Genie do Databricks: o modelo não escreve SQL. Ele conhece métricas, dimensões, sinônimos ("atraso" = SLA, "jantar" = 18h–22h) e o mapa causal pelo `semantic.toml`, e pede números por ferramentas estruturadas (`query_metrics`, `explain_change`, `drill_cause`) que o backend valida e calcula. A pergunta reconhece os termos antes de chegar ao modelo, e o glossário do prompt é gerado do mesmo arquivo, então métrica nova entra num lugar só.
@@ -132,7 +132,7 @@ npm test                                            # testes unitários (Vitest)
 npm run build                                       # astro check + build estático
 ```
 
-O parquet processado já vem no repositório. Para refazer o ETL, coloque os CSVs do Kaggle em `backend/data/raw/` e rode `python scripts/build_parquet.py`.
+O parquet processado já vem no repositório. Para refazer o ETL, coloque os CSVs do Kaggle em `backend/data/raw/` e rode, em `backend/`, `python scripts/build_parquet.py`.
 
 Mudou um schema Pydantic? Em `backend/`, regere os tipos do frontend: `python scripts/export_openapi.py && (cd ../frontend && npm run gen:api)`.
 
@@ -144,12 +144,12 @@ Agente com LLM (opcional): copie `backend/.env.example` para `backend/.env` e pr
 | `OPENROUTER_MODEL` | `baidu/ernie-5.5-flash-preview:free` | Modelo usado pelo agente (escolhido num confronto de 5 modelos gratuitos com o placar) |
 | `OPENROUTER_FALLBACK_MODELS` | vazio | Modelos de reserva, por vírgula, que o OpenRouter tenta se o principal falhar. Vazio: congestionamento ganha uma nova tentativa no mesmo modelo e, se falhar, vale a leitura por regras |
 | `LLM_TIMEOUT_S` | `18` | Tempo máximo de cada chamada ao LLM (0 < x ≤ 120) |
-| `LLM_MAX_TOKENS` | `2000` | Limite de tokens gerados por resposta (100 a 16000) |
+| `LLM_MAX_TOKENS` | `2000` | Limite de tokens gerados por resposta (100 a 16.000) |
 | `LLM_REASONING_EFFORT` | `low` | Esforço de raciocínio enviado via OpenRouter (`low`, `medium`, `high` ou vazio) |
 | `CHAT_BUDGET_S` | `20` | Tempo total por pergunta antes de cair nas regras locais (0 < x ≤ 120) |
 | `INVESTIGATION_ENABLED` | `true` | Pergunta "por que mudou" com período anterior usa o grafo de investigação em vez do loop de tools. No placar: mesma taxa de resposta pelo LLM, 1,4 chamada por pergunta contra 3,4 e p50 de 8,6 s contra 11,5 s |
 | `INVESTIGATION_MAX_PROBES` | `0` | Consultas extras que uma revisão curta do LLM (em JSON) pode pedir antes da síntese (0 a 5). `0` pula a revisão: com o ERNIE ela estourava o teto de tokens sem devolver o JSON |
-| `INVESTIGATION_SYNTH_MAX_TOKENS` | `7000` | Teto de tokens da síntese do grafo (100 a 32000; inclui o raciocínio do modelo); separado de `LLM_MAX_TOKENS` |
+| `INVESTIGATION_SYNTH_MAX_TOKENS` | `7000` | Teto de tokens da síntese do grafo (100 a 32.000; inclui o raciocínio do modelo); separado de `LLM_MAX_TOKENS` |
 | `INVESTIGATION_BUDGET_S` | `35` | Prazo da pergunta que vai ao grafo (0 < x ≤ 120; 32 s no grafo + 3 s de reserva de contexto); o resto do agente usa `CHAT_BUDGET_S` e a leitura por regras fica na tela enquanto isso |
 | `LLM_MAX_CONCURRENT` | `8` | Perguntas ao LLM em voo ao mesmo tempo (1 a 64). Sem vaga, responde pelas regras locais com `fallback_reason="busy"` |
 | `CHAT_RATE_LIMIT_PER_MINUTE` | `8` | Perguntas ao LLM por minuto por IP |
@@ -166,7 +166,7 @@ Agente com LLM (opcional): copie `backend/.env.example` para `backend/.env` e pr
 
 ## API
 
-A query string é o recorte do painel: `start`, `end`, `city`, `hub`, `store`, `segment` (`food` ou `good`), `channel_type`, `modal` e `status`. Data inválida, `end` anterior a `start` ou `sort` inválido em `/api/orders` responde 422. Datas e horas das respostas saem em horário de Brasília sem offset (wall-clock). O contrato inteiro está em `/docs`.
+A query string é o recorte do painel: `start`, `end`, `city`, `hub`, `store`, `segment` (`food` ou `good`), `channel_type`, `modal` e `status`. Data inválida, `end` anterior a `start` ou `sort` inválido em `/api/orders` responde 422. Datas e horas das respostas saem em horário de Brasília, sem indicação de fuso. O contrato inteiro está em `/docs`.
 
 | Grupo | Rotas |
 |---|---|
