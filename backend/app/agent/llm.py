@@ -28,6 +28,7 @@ import openai
 from openai import OpenAI
 
 from app import semantic
+from app.agent import local_intent
 from app.alerts import detect_alerts
 from app.analytics import DRILL_METRICS, drill_cause, explain_change
 from app.config import LLM_MAX_CONCURRENT_CAP, Settings
@@ -1663,22 +1664,69 @@ def answer_with_tools(
     return None
 
 
-def context_payload(repo: Repository, f: Filters, runner: ToolRunner) -> dict[str, Any]:
-    """Agregados do modo contexto (sem tools): KPIs, alertas, hubs e, havendo período anterior,
-    o que puxou SLA e cancelamento. Pequeno de propósito: o modelo gratuito lê tudo de uma vez."""
+_CONTEXT_ENTITY_METRICS = ["sla_rate", "cancel_rate", "cycle_p50", "gmv", "ticket", "subsidy"]
+_CONTEXT_ENTITY_LIMIT = 5
+
+
+def _entity_context(
+    repo: Repository,
+    f: Filters,
+    runner: ToolRunner,
+    question: str,
+    total_orders: int,
+    has_prev: bool,
+) -> dict[str, Any] | None:
+    """Agregados da loja, hub ou cidade citada na pergunta, sempre dentro do recorte."""
+    if not question or not question.strip():
+        return None
+    entity = local_intent.find_entity(question, repo)
+    if entity is None:
+        return None
+    # Passa o rótulo (não os ids do cadastro inteiro) para o ToolRunner filtrar só o que existe em `f`
+    # e `_homonym_note` nunca vazar id/hub de unidade sem pedido no recorte (Regra 1).
+    where = {entity.dimension: [entity.label]}
+    # Loja: abre por loja × hub para expor ids e separar homônimas; hub: expõe hub_id (mesmo fora do top 8);
+    # cidade: `total` traz a cidade inteira e `rows` abre os maiores hubs dela.
+    group_by = ["store", "hub"] if entity.dimension == "store" else ["hub"]
+    metrics = runner.run(
+        "query_metrics",
+        {"metrics": _CONTEXT_ENTITY_METRICS, "group_by": group_by, "where": where, "limit": _CONTEXT_ENTITY_LIMIT},
+    )
+    out: dict[str, Any] = {"tipo": entity.dimension, "nome": entity.label, "metricas": metrics}
+    total = metrics.get("total") or {} if isinstance(metrics, dict) else {}
+    ent_orders = total.get("orders") or 0
+    ent_measured = total.get("measured") or 0
+    if ent_measured > 0:
+        if ent_orders < total_orders:
+            out["etapas"] = runner.run("drill_cause", {"metric": "sla_rate", "group": where})
+        elif has_prev:
+            # Entidade cobre o recorte inteiro: sem `group`, evita comparar contra um "resto" vazio (low_sample).
+            out["etapas"] = runner.run("drill_cause", {"metric": "sla_rate"})
+    return out
+
+
+def context_payload(repo: Repository, f: Filters, runner: ToolRunner, question: str = "") -> dict[str, Any]:
+    """Agregados do modo contexto (sem tools): KPIs, alertas, hubs, entidade citada na pergunta e,
+    havendo período anterior, o que puxou SLA e cancelamento. Pequeno de propósito: o modelo gratuito
+    lê tudo de uma vez."""
+    kpis = runner.run("get_kpis", {})
+    has_prev = repo.previous_period(f) is not None
     context: dict[str, Any] = {
-        "kpis": runner.run("get_kpis", {}),
+        "kpis": kpis,
         "alertas": runner.run("get_alerts", {}),
         "hubs": runner.run(
             "query_metrics",
             {"metrics": ["orders", "sla_rate", "cancel_rate", "cycle_p50"], "group_by": ["hub"], "limit": 8},
         ),
     }
-    if repo.previous_period(f) is not None:
+    if has_prev:
         context["mudanca_sla_por_hub"] = runner.run("explain_change", {"metric": "sla_rate", "by": "hub", "limit": 3})
         context["mudanca_cancelamento_por_hub"] = runner.run(
             "explain_change", {"metric": "cancel_rate", "by": "hub", "limit": 3}
         )
+    total_orders = ((kpis.get("atual") or {}).get("orders") or 0) if isinstance(kpis, dict) else 0
+    if entity_ctx := _entity_context(repo, f, runner, question, total_orders, has_prev):
+        context["entidade_citada"] = entity_ctx
     return context
 
 
@@ -1696,7 +1744,7 @@ def answer_with_context(
         return None
 
     runner = ToolRunner(repo, f)
-    context = context_payload(repo, f, runner)
+    context = context_payload(repo, f, runner, question)
     messages = _messages(
         question,
         history,
