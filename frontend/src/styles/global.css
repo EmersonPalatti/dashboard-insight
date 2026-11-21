@@ -223,7 +223,8 @@
 
 /*
  * Comanda: papel picotado no topo (máscara com furos), linha tracejada sob o
- * cabeçalho. Só alertas usam; fora deles vira fantasia.
+ * cabeçalho. Só comandas do trilho usam (alertas e comandas fixadas do agente);
+ * fora delas vira fantasia.
  */
 @utility ticket {
   border-radius: 0 0 var(--radius-card) var(--radius-card);
