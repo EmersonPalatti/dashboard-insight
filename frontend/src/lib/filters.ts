@@ -524,8 +524,6 @@ function publish(mode: "push" | "replace") {
 let started = false;
 let applying = false;
 let preserveUndo = false;
-/** Como a próxima troca de vista entra no histórico. `setView` liga e desliga em volta do `set`. */
-let viewHistory: "push" | "replace" = "push";
 /**
  * Verdadeiro quando a métrica da Tendência veio explícita no link aberto (`?trend=`)
  * e o operador ainda não a trocou. A abertura automática da primeira comanda não a sobrescreve.
@@ -587,11 +585,7 @@ export function initFilters() {
     if ($ignored.get().length > 0) $ignored.set([]);
     publish("push");
   };
-  const onViewChange = () => {
-    if (!applying) publish(viewHistory);
-  };
   $filters.listen(onFiltersChange);
-  $view.listen(onViewChange);
   window.addEventListener("popstate", () => {
     // voltar no histórico já é navegação do operador: a vista dali em diante segue as comandas
     trendFromUrl = false;
@@ -624,6 +618,8 @@ export function patchFilters(patch: Partial<Recorte>) {
 /**
  * Troca a vista. Clique do operador empurra histórico (Voltar desfaz); mudança
  * programática, como a comanda aberta escolhendo a métrica, passa `history: "replace"`.
+ * Publica aqui, e não num listener do `$view`: a comanda chama isto de dentro do listener
+ * do `$evidence`, e ali o nanostores só roda os listeners do `$view` depois do retorno.
  */
 export function setView(patch: Partial<PanelView>, opts: { history?: "push" | "replace" } = {}) {
   const prev = $view.get();
@@ -631,12 +627,8 @@ export function setView(patch: Partial<PanelView>, opts: { history?: "push" | "r
   if (next.rank === prev.rank && next.trend === prev.trend && next.grain === prev.grain) return;
   const mode = opts.history ?? "push";
   if (mode === "push" && next.trend !== prev.trend) trendFromUrl = false;
-  viewHistory = mode;
-  try {
-    $view.set(next);
-  } finally {
-    viewHistory = "push";
-  }
+  $view.set(next);
+  if (started) publish(mode);
 }
 
 /** O gráfico de lojas manda o foco para o filtro de cada loja no ranking. */

@@ -39,41 +39,44 @@ const repoUrl = "https://github.com/EmersonPalatti/dashboard-insight";
     <a class="skip-link" href="#filtros">Pular para os filtros</a>
     <!-- no escuro o vinho (#26060F) quase some no campo (#111): um fio de wine-raised marca a borda da faixa -->
     <!-- sm+: 64px com a promessa do recorte. Abaixo de sm: 56px; o nome desce um degrau da escala para caber inteiro. -->
-    <header class="h-14 bg-wine text-on-wine-strong sm:h-16 dark:border-b dark:border-wine-raised">
-      <div class="mx-auto flex h-full max-w-[1440px] min-w-0 items-center gap-1.5 px-4 sm:gap-3 sm:px-6">
-        <div class="flex min-w-0 flex-1 items-center gap-1.5 sm:gap-2.5">
-          <OpsLogo size={28} class="text-on-wine" />
-          <div class="min-w-0 flex-1">
-            <h1 class="header-reveal-title font-slab text-lead leading-tight font-bold text-on-wine-strong sm:truncate sm:text-figure">
-              Central de Operações
-            </h1>
-            <div class="header-reveal-sub mt-0.5 hidden min-w-0 items-center gap-2 sm:flex">
-              <p class="min-w-0 truncate text-meta leading-none text-on-wine/90">
-                KPIs, comandas e o agente respondem sobre o mesmo recorte.
-              </p>
-              <span class="hidden shrink-0 items-center gap-1.5 rounded-tick border border-on-wine/20 bg-wine-raised/60 px-2.5 py-1 text-meta leading-none font-medium text-on-wine sm:inline-flex xl:px-3 dark:bg-wine-raised/80">
-                <span class="xl:hidden">Kaggle · <span class="tabular-nums">2021</span></span>
-                <span class="hidden items-center gap-1.5 xl:inline-flex">
-                  <span>Delivery Center</span>
-                  <span class="opacity-50">·</span>
-                  <span class="tabular-nums">jan–abr 2021</span>
-                  <span class="opacity-50">·</span>
-                  <span class="tabular-nums font-semibold text-on-wine-strong">368.990 pedidos</span>
+    <header>
+      <div class="h-14 bg-wine text-on-wine-strong sm:h-16 dark:border-b dark:border-wine-raised">
+        <div class="mx-auto flex h-full max-w-[1440px] min-w-0 items-center gap-1.5 px-4 sm:gap-3 sm:px-6">
+          <div class="flex min-w-0 flex-1 items-center gap-1.5 sm:gap-2.5">
+            <OpsLogo size={28} class="text-on-wine" />
+            <div class="min-w-0 flex-1">
+              <h1 class="header-reveal-title font-slab text-lead leading-tight font-bold text-on-wine-strong sm:truncate sm:text-figure">
+                Central de Operações
+              </h1>
+              <div class="header-reveal-sub mt-0.5 hidden min-w-0 items-center gap-2 sm:flex">
+                <p class="min-w-0 truncate text-meta leading-none text-on-wine/90">
+                  KPIs, comandas e o agente respondem sobre o mesmo recorte.
+                </p>
+                <span class="hidden shrink-0 items-center gap-1.5 rounded-tick border border-on-wine/20 bg-wine-raised/60 px-2.5 py-1 text-meta leading-none font-medium text-on-wine sm:inline-flex xl:px-3 dark:bg-wine-raised/80">
+                  <span class="xl:hidden">Kaggle · <span class="tabular-nums">2021</span></span>
+                  <span class="hidden items-center gap-1.5 xl:inline-flex">
+                    <span>Delivery Center</span>
+                    <span class="opacity-50">·</span>
+                    <span class="tabular-nums">jan–abr 2021</span>
+                    <span class="opacity-50">·</span>
+                    <span class="tabular-nums font-semibold text-on-wine-strong">368.990 pedidos</span>
+                  </span>
                 </span>
-              </span>
+              </div>
             </div>
           </div>
-        </div>
-        <div class="no-print flex shrink-0 items-center gap-1">
-          <a class="hit-target relative hidden shrink-0 items-center rounded-card px-2 py-1.5 text-aux text-on-wine transition-colors duration-(--duration-quick) ease-(--ease-smooth-out) hover:bg-wine-raised hover:text-on-wine-strong sm:inline-flex" href={`${API_URL}/docs`} target="_blank" rel="noopener">API (Swagger)</a>
-          <TopBarStatus client:load />
+          <div class="no-print flex shrink-0 items-center gap-1">
+            <a class="hit-target relative hidden shrink-0 items-center rounded-card px-2 py-1.5 text-aux text-on-wine transition-colors duration-(--duration-quick) ease-(--ease-smooth-out) hover:bg-wine-raised hover:text-on-wine-strong sm:inline-flex" href={`${API_URL}/docs`} target="_blank" rel="noopener">API (Swagger)</a>
+            <TopBarStatus client:load />
+          </div>
         </div>
       </div>
-    </header>
 
-    <p class="mx-auto max-w-[1440px] px-4 pt-3 text-pretty text-aux leading-snug text-ink sm:hidden">
-      KPIs, comandas e o agente respondem sobre o mesmo recorte.
-    </p>
+      <!-- abaixo de sm a promessa sai da faixa vinho, mas segue dentro do banner (landmark) -->
+      <p class="mx-auto max-w-[1440px] px-4 pt-3 text-pretty text-aux leading-snug text-ink sm:hidden">
+        KPIs, comandas e o agente respondem sobre o mesmo recorte.
+      </p>
+    </header>
 
     <search id="filtros" data-filter-bar aria-label="Filtros do recorte" tabindex="-1" class="no-print sticky top-0 z-20 block border-b border-rule bg-surface">
       <!-- DESIGN: a barra desktop é 104px (12 + 40 + 8 + 32 + 12): respiro igual em cima e embaixo. -->
