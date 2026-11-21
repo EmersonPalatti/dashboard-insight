@@ -83,9 +83,10 @@ def _internal_terms() -> tuple[re.Pattern[str], dict[str, str]]:
     """Chave interna → rótulo pt-BR. Métricas vêm da camada semântica, nunca de lista duplicada aqui."""
     terms = {key: metric.label for key, metric in semantic.load().metrics.items() if "_" in key}
     terms.update(_FLAG_PT)
-    # Mais longa primeiro: `volume_low_sample` antes de `low_sample`. Crase em volta sai junto.
+    # Mais longa primeiro: `volume_low_sample` antes de `low_sample`. Crase em volta sai junto só quando
+    # fecha o par em volta da chave; trecho de código maior (`sla_pct = 0.82%`) fica intacto.
     alternation = "|".join(sorted(map(re.escape, terms), key=len, reverse=True))
-    return re.compile(rf"`?\b({alternation})\b`?"), terms
+    return re.compile(rf"`({alternation})`|(?<!`)\b({alternation})\b(?!`)"), terms
 
 
 # Nomes de argumento que o parser das tools aceita além dos declarados no schema (`llm._parse_*`).
@@ -118,15 +119,16 @@ def _pt_internal(text: str) -> str:
     tool_args, bare_args, tool_call = _arg_patterns()
     text = tool_call.sub("uma consulta", tool_args.sub("", text))
     text = bare_args.sub("", text)
-    return pattern.sub(lambda m: terms[m.group(1)], text)
+    return pattern.sub(lambda m: terms[m.group(1) or m.group(2)], text)
 
 
 # Número em formato en-US que o modelo às vezes devolve. Só formas sem ambiguidade: decimal com ponto
 # seguido de unidade (82.4%, 38.5 min, 1.2 p.p.) e valor em reais (R$ 1,234.56, R$ 9.90). Data, hora,
 # Nº de hub/loja e "1.200 pedidos" (milhar pt-BR) não casam. Código entre crases fica como está.
+# Valor negativo em reais (subsídio negativo, "R$ -0.97") também converte.
 _EN_UNIT = re.compile(r"(?<![\d.,])(\d+)\.(\d{1,2})(\s?(?:%|min\b|p\.\s?p\.|pp\b|km\b))")
-_EN_BRL_THOUSANDS = re.compile(r"(R\$\s?)(\d{1,3}(?:,\d{3})+)(?:\.(\d{1,2}))?(?![\d,]|\.\d)")
-_EN_BRL_DECIMAL = re.compile(r"(R\$\s?)(\d+)\.(\d{1,2})(?![\d.,]\d|\d)")
+_EN_BRL_THOUSANDS = re.compile(r"(R\$\s?[-−+]?\s?)(\d{1,3}(?:,\d{3})+)(?:\.(\d{1,2}))?(?![\d,]|\.\d)")
+_EN_BRL_DECIMAL = re.compile(r"(R\$\s?[-−+]?\s?)(\d+)\.(\d{1,2})(?![\d.,]\d|\d)")
 _CODE = re.compile(r"(```[\s\S]*?```|`[^`\n]*`)")
 
 
@@ -410,16 +412,16 @@ def _strip_fence(text: str) -> str:
     return _OPEN_FENCE.sub("", _FENCE.sub("", text)).strip()
 
 
-# "Ação:", "**Ação**:", "__Ação:__", "Acao:", "- **Ação:**", "### Ação:" no começo da linha: modelos
-# diferentes formatam a marca de jeitos diferentes. Sem normalizar, uma resposta boa vira leitura local.
+# "Ação:", "**Ação**:", "__Ação:__", "Acao:", "- **Ação:**", "1. **Ação:**", "### Ação:" no começo da
+# linha: modelos diferentes formatam a marca de jeitos diferentes. Sem normalizar, uma resposta boa vira
+# leitura local. O negrito só sai em par em volta de "ação" ("**Ação:**", "**Ação**:"); o "**" que abre
+# a primeira palavra da ação ("Ação: **Líder do hub** revisa") fica.
+_BOLD_MARK = r"(\*\*|__)[ \t]*a[çc][ãa]o(?:[ \t]*:[ \t]*\1|[ \t]*\1[ \t]*:)|(?:\*\*|__)[ \t]*a[çc][ãa]o[ \t]*:"
 _ACTION_LINE = re.compile(
-    r"(?im)^[ \t]*(?:[-*•+][ \t]+|#{1,4}[ \t]*)?(?:\*\*|__)?[ \t]*a[çc][ãa]o[ \t]*(?:\*\*|__)?[ \t]*:[ \t]*"
-    r"(?:\*\*|__)?[ \t]*"
+    rf"(?im)^[ \t]*(?:(?:[-*•+]|\d{{1,2}}[.)])[ \t]+|#{{1,4}}[ \t]*)?(?:{_BOLD_MARK}|a[çc][ãa]o[ \t]*:)[ \t]*"
 )
 # Marca em negrito no meio da linha ("Corpo. **Ação:** Líder revisa hoje."): vai para parágrafo próprio.
-_INLINE_ACTION = re.compile(
-    r"(?i)(?<=\S)[ \t]*(?:\*\*|__)[ \t]*a[çc][ãa]o[ \t]*(?:\*\*|__)?[ \t]*:[ \t]*(?:\*\*|__)?[ \t]*"
-)
+_INLINE_ACTION = re.compile(rf"(?i)(?<=\S)[ \t]*(?:{_BOLD_MARK})[ \t]*")
 _LEITURA_FENCE = re.compile(r"```(?:leitura|json)\b", re.IGNORECASE)
 _LIST_ITEM = re.compile(r"^[ \t]*(?:[-*•+]|\d{1,2}[.)])[ \t]+")
 _MARKER = "**Ação:**"
@@ -472,16 +474,21 @@ def _action_lines(lines: list[str]) -> tuple[str, list[str]]:
 
 
 def split_markdown(text: str) -> tuple[str, str]:
-    """Separa o corpo da última marca de ação. Passos em lista entram na ação; nota depois dela volta
-    para o corpo. Sem ação, o segundo item vem vazio."""
+    """Separa o corpo da última marca de ação não vazia. Passos em lista entram na ação; nota depois dela
+    volta para o corpo; marca anterior no corpo vira "Próximo passo:". Sem ação, o segundo item vem vazio."""
     stripped = _mark_action(_strip_fence(text)).strip()
     index = stripped.rfind(_MARKER)
+    paragraphs: list[str] = []
+    while index != -1:
+        paragraphs = [p for p in re.split(r"\n[ \t]*\n", stripped[index + len(_MARKER):].strip()) if p.strip()]
+        if paragraphs:
+            break
+        # Marca vazia no fim ("**Ação:**" sem texto): a ação que vale é a anterior.
+        stripped = stripped[:index].rstrip()
+        index = stripped.rfind(_MARKER)
     if index == -1:
-        return stripped, ""
-    head = stripped[:index].rstrip()
-    paragraphs = [p for p in re.split(r"\n[ \t]*\n", stripped[index + len(_MARKER):].strip()) if p.strip()]
-    if not paragraphs:
-        return head, ""
+        return _demote_markers(stripped), ""
+    head = _demote_markers(stripped[:index].rstrip())
     lines = [line for line in paragraphs[0].splitlines() if line.strip()]
     rest = paragraphs[1:]
     # "**Ação:** Líder do hub:" seguido de lista em parágrafo próprio: a lista é a ação.
@@ -491,6 +498,11 @@ def split_markdown(text: str) -> tuple[str, str]:
     tail = "\n\n".join(part for part in ["\n".join(trailing), *rest] if part.strip())
     body = "\n\n".join(part for part in (head, tail) if part)
     return body, action
+
+
+def _demote_markers(text: str) -> str:
+    """Ação de um alerta listado antes da ação final fica no corpo como passo, sem a marca da comanda."""
+    return text.replace(_MARKER, "Próximo passo:")
 
 
 def has_extractable_action(text: str | None) -> bool:

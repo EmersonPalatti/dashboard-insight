@@ -17,6 +17,8 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 # 3 de 8, Nemotron 3.5 Lightning estourou 6 de 12 e Gemma 4 31B ficou 12 de 12 com o provedor
 # congestionado (429). "preview" pode sair do ar: troque por OPENROUTER_MODEL sem mexer em código.
 DEFAULT_MODEL = "baidu/ernie-5.5-flash-preview:free"
+# Teto de `llm_max_concurrent`. O pool de threads do LLM (`llm._llm_pool`) usa o mesmo número.
+LLM_MAX_CONCURRENT_CAP = 64
 
 
 class Settings(BaseSettings):
@@ -70,7 +72,7 @@ class Settings(BaseSettings):
     # síntese chega. A síntese usa este prazo, não o teto por chamada (llm_timeout_s).
     investigation_budget_s: float = Field(default=35.0, gt=0, le=120)
     # Teto de perguntas com LLM em voo ao mesmo tempo (cada uma segura uma thread do servidor).
-    llm_max_concurrent: int = Field(default=8, ge=1, le=64)
+    llm_max_concurrent: int = Field(default=8, ge=1, le=LLM_MAX_CONCURRENT_CAP)
     chat_rate_limit_per_minute: int = 8
     # Teto de chamadas ao LLM por minuto, somando todos os IPs. 0 desliga.
     chat_global_rate_limit_per_minute: int = 60

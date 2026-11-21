@@ -746,10 +746,10 @@ def test_hour_ranges_are_half_open_like_the_semantic_windows(repo):
     ("Quanto gastamos com subsídio de frete?", "Quanto estamos pagando de frete subsidiado?"),
 ])
 def test_relevant_examples_reach_the_prompt_within_budget(repo, question, expected):
-    from app.agent.llm import CONTEXT_SYSTEM_APPENDIX, MAX_EXAMPLES
+    from app.agent.llm import MAX_EXAMPLES
 
     plan = next(ex.plan for ex in semantic.load().examples if ex.question == expected)
-    for system in (SYSTEM_PROMPT, SYSTEM_PROMPT + CONTEXT_SYSTEM_APPENDIX):
+    for system in (SYSTEM_PROMPT, SYSTEM_PROMPT + "\n\nApêndice."):
         content = _messages(question, [], repo.describe(Filters()), system_prompt=system)[0]["content"]
         assert content.startswith(system)  # parte fixa segue idêntica: prefixo do cache de prompt
         assert f"- {expected} → {plan}" in content
@@ -786,29 +786,86 @@ def test_openai_client_is_cached_by_key_and_url_not_by_timeout():
     llm_mod._shared_openai.cache_clear()
 
 
-def test_store_name_shared_by_several_units_warns_with_ids(repo, monkeypatch):
-    real_meta = repo.meta()
-    hub_a, hub_b = real_meta["hubs"][0], real_meta["hubs"][1]
-    stores = [
-        {"value": 901, "label": "Loja Gêmea", "parent": hub_a["value"], "orders": 10},
-        {"value": 902, "label": "Loja Gêmea", "parent": hub_b["value"], "orders": 8},
-        *real_meta["stores"],
-    ]
-    monkeypatch.setattr(repo, "meta", lambda: {**real_meta, "stores": stores})
-    runner = ToolRunner(repo, Filters())
+@pytest.fixture(scope="module")
+def twin_repo(parquet_path, tmp_path_factory):
+    """Fixture com 3 lojas homônimas de verdade: 13 (Hub Centro) e 26 (Hub Lento) só em março, 40 (Hub Goods)
+    só em jan–fev. Homônimas no mesmo hub ganham o id no nome; em hubs diferentes, o nome repete."""
+    import duckdb
+
+    from app.repository import Repository
+
+    out = tmp_path_factory.mktemp("twin") / "orders.parquet"
+    src = parquet_path.as_posix().replace("'", "''")
+    dest = out.as_posix().replace("'", "''")
+    con = duckdb.connect()
+    try:
+        con.execute(
+            "copy (select * replace (case when store_id in (13, 26, 40) then 'Loja Gêmea' else store_name end"
+            f" as store_name) from read_parquet('{src}')) to '{dest}' (format parquet)"
+        )
+    finally:
+        con.close()
+    return Repository(out, 60, 120)
+
+
+def test_store_name_shared_by_several_units_warns_with_ids(twin_repo):
+    hubs = {h["value"]: h["label"] for h in twin_repo.meta()["hubs"]}
+    runner = ToolRunner(twin_repo, Filters())
     res = runner.run("query_metrics", {"metrics": ["orders"], "where": {"store": ["loja gêmea"]}})
     assert "várias lojas têm o nome 'Loja Gêmea'" in res["nota"]
-    assert f"901 em {hub_a['label']}" in res["nota"] and f"902 em {hub_b['label']}" in res["nota"]
+    for store, hub in ((13, 1), (26, 2), (40, 4)):
+        assert f"{store} em {hubs[hub]}" in res["nota"]
     drill = runner.run("drill_cause", {"metric": "sla_rate", "group": {"store": ["Loja Gêmea"]}})
     assert "Várias lojas" in drill["nota"]
 
     # Recorte num hub só: a homônima do outro hub não conta, nada a avisar.
-    one_hub = ToolRunner(repo, Filters(hub=[hub_a["value"]]))
+    one_hub = ToolRunner(twin_repo, Filters(hub=[1]))
     res = one_hub.run("query_metrics", {"metrics": ["orders"], "where": {"store": ["Loja Gêmea"]}})
     assert "várias lojas" not in res.get("nota", "")
     # Id numérico já isola a unidade.
-    res = runner.run("query_metrics", {"metrics": ["orders"], "where": {"store": [901]}})
+    res = runner.run("query_metrics", {"metrics": ["orders"], "where": {"store": [13]}})
     assert "várias lojas" not in res.get("nota", "")
+
+
+def test_homonym_note_respects_the_tool_where_and_the_whole_recorte(twin_repo):
+    """FA-07: o hub no `where` da tool já isola a unidade; loja sem pedido no período não vaza id nem hub."""
+    hubs = {h["value"]: h["label"] for h in twin_repo.meta()["hubs"]}
+    runner = ToolRunner(twin_repo, Filters())
+    res = runner.run("query_metrics", {"metrics": ["orders"], "where": {"store": ["Loja Gêmea"], "hub": [1]}})
+    assert "várias lojas" not in res.get("nota", "")
+
+    march = ToolRunner(twin_repo, Filters(start=date(2021, 3, 1), end=date(2021, 3, 31)))
+    res = march.run("query_metrics", {"metrics": ["orders"], "where": {"store": ["Loja Gêmea"]}})
+    assert "13 em" in res["nota"] and "26 em" in res["nota"]
+    assert "40 em" not in res["nota"] and hubs[4] not in res["nota"]
+
+    # Período em que só uma unidade vende: nenhuma nota.
+    feb = ToolRunner(twin_repo, Filters(start=date(2021, 2, 1), end=date(2021, 2, 15)))
+    res = feb.run("query_metrics", {"metrics": ["orders"], "where": {"store": ["Loja Gêmea"]}})
+    assert "várias lojas" not in res.get("nota", "")
+
+
+def test_context_mode_sends_no_tool_examples(repo, monkeypatch):
+    """FA-08: o modo contexto não tem tools; exemplos "pergunta → plano de tools" contradiriam a regra."""
+    from app.agent.llm import CONTEXT_SYSTEM_APPENDIX
+
+    question = "Por que o SLA caiu?"
+    assert "## Exemplos" in _messages(question, [], "")[0]["content"]  # no modo tools, a pergunta ganha exemplo
+    seen: list[dict] = []
+    _install(monkeypatch, [_resp(content="Resumo.\n\n**Ação:** Líder do hub revisa o SLA hoje.")], seen)
+    assert answer_with_context(question, [], repo, Filters(), Settings(openrouter_api_key="k")) is not None
+    assert seen[0]["messages"][0]["content"] == SYSTEM_PROMPT + CONTEXT_SYSTEM_APPENDIX
+
+
+def test_llm_pool_is_never_smaller_than_the_semaphore():
+    """FA-09: com LLM_MAX_CONCURRENT acima de 8, as perguntas com vaga não podem ficar na fila do pool."""
+    from app.agent import llm as llm_mod
+    from app.agent.service import _llm_slots
+
+    cap = next(m.le for m in Settings.model_fields["llm_max_concurrent"].metadata if hasattr(m, "le"))
+    assert llm_mod._llm_pool._max_workers >= cap
+    settings = Settings(llm_max_concurrent=cap)
+    assert settings.llm_max_concurrent == cap and _llm_slots(settings)._initial_value == cap
 
 
 def test_prompt_names_every_untrusted_data_tag():

@@ -149,6 +149,37 @@ def _measured_based(metric: str) -> bool:
     return _layer().metrics[metric].base in ("measured", "valid")
 
 
+def only_delivered(f: Filters) -> bool:
+    return set(f.status) == {"delivered"}
+
+
+def _delivery_based(metric: str) -> bool:
+    """Métrica que precisa de entrega (prazo, frete, venda, presos, entregas): vazia com só cancelados no filtro."""
+    return _layer().metrics[metric].base != "orders" or metric == "delivered"
+
+
+def _status_blocks(f: Filters, metric: str) -> str | None:
+    """Filtro de status que zera a métrica ou a torna tautológica. Devolve o status a tirar do filtro."""
+    if only_canceled(f) and (_delivery_based(metric) or metric == "cancel_rate"):
+        return "cancelado"
+    if only_delivered(f) and metric in ("cancel_rate", "canceled"):
+        return "concluído"
+    return None
+
+
+def _status_notice(repo: Repository, f: Filters, metric: str, status: str, versus: str) -> str:
+    m = repo.metrics(f)
+    if status == "cancelado":
+        tail = (": a taxa de cancelamento é 100% por definição do filtro" if metric == "cancel_rate"
+                else f", sem entregas para medir {short(metric)}")
+        head = f"O recorte filtra só pedidos cancelados ({fmt.integer(m['canceled'])}){tail}."
+    else:
+        head = (f"O recorte filtra só pedidos concluídos ({fmt.integer(m['delivered'])}): "
+                f"{short(metric)} é zero por definição do filtro.")
+    return (f"{head}\n\n**Ação:** Operador deve remover o filtro de status {status} hoje para comparar "
+            f"{short(metric)} {versus}.")
+
+
 def with_parent(row: dict) -> str:
     """'Loja 25 (Hub Lento)'; sem o pai quando a linha não tem um (nunca '(None)')."""
     return f"{row['label']} ({row['parent']})" if row.get("parent") else str(row["label"])
@@ -551,6 +582,10 @@ def _cancel_group_action(repo: Repository, f: Filters, dim: str, key, label: str
                             sort="orders" if canceled_only else "cancel_rate", limit=1, min_orders=STORE_MIN)
     row = next((r for r in qm["rows"] if r["keys"]["store"]["key"] is not None and r["cancel_rate"]), None)
     if row is None:
+        if canceled_only:
+            # `value` aqui é a contagem de cancelados, não uma taxa: nada de "reduzir o cancelamento (1.309)".
+            return (f"{owner_for(dim, label, 'cancel_rate')} deve auditar {_when(dim, key)} os {value} cancelados, ou "
+                    "remover o filtro de status cancelado para comparar taxas.")
         return f"{owner_for(dim, label, 'cancel_rate')} deve {metric_verb('cancel_rate', value)} {_when(dim, key)}."
     store_key, store = row["keys"]["store"]["key"], row["keys"]["store"]["label"]
     if canceled_only:
@@ -567,12 +602,10 @@ def by_dimension(repo: Repository, f: Filters, metric: str, dim: str, intent: In
     """Qualquer métrica do glossário quebrada por qualquer dimensão, com amostra mínima e ação no topo."""
     title = f"{cap(short(metric))} por {dim_label(dim).lower()}"
     tools = ["get_kpis", f"query_metrics({metric}:{dim})"]
-    if only_canceled(f) and _measured_based(metric):
-        m = repo.metrics(f)
-        text = (f"O recorte filtra só pedidos cancelados ({fmt.integer(m['canceled'])}), sem entregas para medir "
-                f"{short(metric)}.\n\n**Ação:** Operador deve remover o filtro de status cancelado para comparar "
-                f"{short(metric)} por {dim_label(dim).lower()}.")
-        return Answer(text, title, tools)
+    blocked = _status_blocks(f, metric)
+    # Só cancelados × taxa de cancelamento ainda responde: o ranking vira volume de cancelados (abaixo).
+    if blocked and not (blocked == "cancelado" and metric == "cancel_rate"):
+        return Answer(_status_notice(repo, f, metric, blocked, f"por {dim_label(dim).lower()}"), title, tools)
     canceled_note = ""
     if only_canceled(f) and metric == "cancel_rate":
         # Só cancelados no filtro: a taxa é 100% em todo grupo e não separa ninguém. O ranking vira volume.
@@ -924,12 +957,10 @@ def why(repo: Repository, f: Filters, intent: Intent, scope_label: str | None = 
     if metric not in layer.metrics:
         metric = "sla_rate"
     tools = ["get_kpis"]
-    if only_canceled(f) and _measured_based(metric):
-        m = repo.metrics(f)
-        text = (f"O recorte filtra só pedidos cancelados ({fmt.integer(m['canceled'])}), sem entregas para medir "
-                f"{short(metric)}.\n\n**Ação:** Operador deve remover o filtro de status cancelado para comparar "
-                f"{short(metric)} com o período anterior.")
-        return Answer(text, f"{cap(short(metric))} sem base", tools)
+    blocked = _status_blocks(f, metric)
+    if blocked:
+        return Answer(_status_notice(repo, f, metric, blocked, "com o período anterior"),
+                      f"{cap(short(metric))} sem base", tools)
     cur_f, unit, fallback = _windowed(repo, f, intent)
     dims = _change_dims(metric, intent, cur_f)
     results = []
@@ -944,9 +975,16 @@ def why(repo: Repository, f: Filters, intent: Intent, scope_label: str | None = 
     where = f" {scope_label}" if scope_label else ""
     if error or not results:
         total = repo.query_metrics(cur_f, metrics=[metric])["total"][metric]
-        text = (f"{cap(short(metric))}{where} no recorte: {show(metric, total)}. {error or 'Sem base para comparar.'}"
-                f"\n\n**Ação:** Operador deve escolher um período que não comece em {repo.min_date:%d/%m/%Y} "
-                "para comparar com o período anterior.")
+        if repo.previous_period(cur_f) is None:
+            reason = error or "Sem base para comparar."
+            action = (f"Operador deve escolher hoje um período que não comece em {repo.min_date:%d/%m/%Y} "
+                      "para comparar com o período anterior.")
+        else:
+            # Há período anterior, mas um dos lados não tem base (o erro da tool traz a chave crua da métrica).
+            reason = f"Sem base de {short(metric)} em um dos dois períodos."
+            action = (f"Operador deve ampliar hoje o período ou afrouxar os filtros para ter base de {short(metric)} "
+                      "nos dois períodos.")
+        text = f"{cap(short(metric))}{where} no recorte: {show(metric, total)}. {reason}\n\n**Ação:** {action}"
         return Answer(text, f"{cap(short(metric))} sem período anterior", tools)
 
     first = results[0][1]
@@ -1147,13 +1185,17 @@ def windows(repo: Repository, f: Filters, intent: Intent) -> Answer:
     b = second if second is not None and not _complement(a, second) else None
     layer = _layer()
     focus = intent.metric if intent.metric and layer.metrics[intent.metric].kind not in ("count", "sum") else "sla_rate"
-    if only_canceled(f) and (_measured_based(focus) or focus == "cancel_rate"):
+    if only_canceled(f) and (_delivery_based(focus) or focus == "cancel_rate"):
         # Só cancelados no filtro: não há entrega para medir prazo e a taxa de cancelamento é 100% nas duas janelas.
         m = repo.metrics(f)
         text = (f"O recorte filtra só pedidos com status cancelado ({fmt.integer(m['canceled'])}), sem entregas para "
                 f"comparar {short(focus)} {in_window(a.label)} com o resto.\n\n**Ação:** Operador deve remover o filtro "
                 f"de status cancelado hoje para comparar {short(focus)} {in_window(a.label)}.")
         return Answer(text, f"{cap(a.label)} sem base"[:80], ["get_kpis"])
+    if _status_blocks(f, focus) == "concluído":
+        # Só concluídos no filtro: o cancelamento é zero nas duas janelas.
+        return Answer(_status_notice(repo, f, focus, "concluído", in_window(a.label)), f"{cap(a.label)} sem base"[:80],
+                      ["get_kpis"])
     metrics = list(dict.fromkeys([focus, *_WINDOW_METRICS]))
     tools = [f"query_metrics({','.join(metrics[:3])})", "get_breakdown(hour)" if a.hours else "get_breakdown(weekday)"]
     if b is None:

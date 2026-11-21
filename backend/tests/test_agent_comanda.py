@@ -653,3 +653,54 @@ def test_validate_drilldowns_matches_city_case_insensitively_and_returns_canonic
     )
     assert len(drills) == 1
     assert drills[0].filters == {"city": [canonical]}
+
+
+# FA-05: a marca de ação não come o negrito da ação, não deixa número de lista nem ação anterior no corpo.
+@pytest.mark.parametrize(
+    "text",
+    ["O SLA caiu para 82,4%.\n\nAção: **Líder do hub** revisa hoje.",
+     "O SLA caiu.\n\n**Ação**: **Líder do hub** revisa hoje.",
+     "O SLA caiu. **Ação**: **Líder do hub** revisa hoje."],
+)
+def test_action_marker_keeps_the_bold_that_opens_the_action(text):
+    from app.agent.reading import normalize_action, split_markdown
+
+    _body, action = split_markdown(normalize_action(text))
+    assert action == "**Líder do hub** revisa hoje."
+
+
+def test_numbered_action_line_leaves_no_list_number_in_the_body():
+    from app.agent.reading import normalize_action, split_markdown
+
+    body, action = split_markdown(normalize_action("O SLA caiu.\n\n1. **Ação:** Líder do hub revisa hoje."))
+    assert (body, action) == ("O SLA caiu.", "Líder do hub revisa hoje.")
+
+
+def test_earlier_action_lines_leave_the_diagnosis():
+    from app.agent.reading import has_extractable_action, split_markdown
+
+    text = ("Alertas:\n- Hub A: SLA 70%.\n**Ação:** Líder A revisa hoje.\n- Hub B: SLA 75%.\n"
+            "**Ação:** Líder B revisa hoje.")
+    body, action = split_markdown(text)
+    assert action == "Líder B revisa hoje."
+    assert "**Ação:**" not in body and "Líder A revisa hoje." in body
+    # Marca vazia no fim: vale a ação anterior, não "sem ação".
+    text = "Alerta 1.\n**Ação:** Líder A revisa hoje.\n\n**Ação:** "
+    assert split_markdown(text) == ("Alerta 1.", "Líder A revisa hoje.")
+    assert has_extractable_action(text)
+
+
+# FA-06: real negativo (subsídio negativo) e código entre crases passando pelo caminho inteiro.
+def test_negative_brl_is_normalized_to_pt_br():
+    from app.agent.reading import _pt_severity
+
+    text = "Subsídio de R$ -0.97 no hub (diferença R$ -1,234.56); pt-BR R$ -0,97 e R$ -1.234,56 ficam."
+    assert _pt_severity(text) == "Subsídio de R$ -0,97 no hub (diferença R$ -1.234,56); pt-BR R$ -0,97 e R$ -1.234,56 ficam."
+
+
+def test_inline_code_survives_the_internal_key_cleanup():
+    from app.agent.reading import _pt_severity
+
+    text = "Campo `sla_pct = 0.82%` no código."
+    assert _pt_severity(text) == text
+    assert _pt_severity("Hub com `sla_below` hoje.") == "Hub com SLA abaixo do recorte hoje."

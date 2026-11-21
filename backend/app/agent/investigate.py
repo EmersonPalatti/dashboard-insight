@@ -474,7 +474,7 @@ def synthesize(state: InvestigationState) -> dict[str, Any]:
     repo, f = state["repo"], state["filters"]
     messages = llm._messages(
         state["question"], state.get("history", []), repo.describe(f),
-        system_prompt=llm.SYSTEM_PROMPT + _SYNTH_APPENDIX,
+        system_prompt=llm.SYSTEM_PROMPT + _SYNTH_APPENDIX, include_examples=False,
     )
     messages[-1]["content"] = evidence_block(state) + messages[-1]["content"]
     # Sem o teto por chamada (llm_timeout_s): a síntese é a única chamada do grafo e pode levar ~27 s.

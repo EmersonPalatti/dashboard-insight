@@ -820,3 +820,117 @@ def test_narrow_matches_city_ignoring_case(repo):
     entity = local_intent.Entity("city", (city,), city, city.lower())
     narrowed = local_answers.narrow(Filters(city=[city.upper()]), entity)
     assert narrowed is not None and narrowed.city == [city]
+
+
+# ----------------------------------------------------------------- revisão final (FA-01…FA-04, FA-10)
+def test_thin_sample_action_survives_a_multi_alert_answer(repo):
+    """FA-01: com 2 alertas, cada um com a sua ação, a amostra pequena ainda fecha a comanda."""
+    f = Filters(start=date(2021, 3, 2), end=date(2021, 3, 2), store=[15])
+    assert len(detect_alerts(repo, f)) >= 2 and repo.metrics(f)["low_sample"] is True
+    reading = local.build_reading("quais os alertas?", repo, f)
+    assert reading.action == "Operador deve ampliar o período na Loja 15 antes de acionar alguém hoje."
+    assert reading.answer.count("**Ação:**") == 1
+    assert "**Ação:**" not in reading.diagnosis
+
+
+def test_sla_on_a_stuck_only_slice_points_to_the_data_problem(repo):
+    """FA-02: todo hub com base saiu do ranking por presos; a ação não pode cobrar SLA logo depois."""
+    reading = local.build_reading("qual hub tem o pior SLA?", repo, Filters(hub=[3]))
+    assert "É problema de dado, não de prazo" in reading.answer
+    assert "recuperar o SLA" not in reading.action
+    assert "Hub Preso" in reading.action and "baixa manual" in reading.action and "antes de cobrar SLA" in reading.action
+    assert [d.filters for d in reading.drilldowns] == [{"hub": [3]}]
+
+
+@pytest.mark.parametrize(
+    "question", ["qual hub tem o pior SLA?", "onde está o gargalo?", "qual o modal?", "subsídio de frete", "pedidos presos"]
+)
+def test_store_without_deliveries_never_gets_an_action_on_empty_metrics(repo, question):
+    """FA-03: 100% cancelado e 0 entregas: nada de SLA (—), preparo (—) ou modal; a ação é tirar do ar."""
+    f = Filters(store=[30])
+    assert repo.metrics(f)["delivered"] == 0
+    reading = local.build_reading(question, repo, f)
+    assert "Nenhuma entrega concluída no recorte" in reading.answer
+    assert "Tirar Loja Quebrada do ar" in reading.action
+    assert "—" not in reading.action and "modal" not in reading.action.lower()
+    assert [d.filters for d in reading.drilldowns] == [{"store": [30]}]
+
+
+def test_modal_null_bucket_is_never_the_target(repo, monkeypatch):
+    """FA-03: sem modal nomeado, a ação não cobra o balde "Sem entregador"."""
+    real = repo.breakdown
+
+    def only_null(f, dim, **kwargs):
+        rows = real(f, dim, **kwargs)
+        if dim == "modal":
+            return [{**rows[0], "key": None, "label": "Sem entregador"}]
+        return rows
+
+    monkeypatch.setattr(repo, "breakdown", only_null)
+    text, drills = local._modal(repo, Filters())
+    action = text[text.rfind("**Ação:**"):]
+    assert "Sem entregador" not in action and drills == []
+    assert _WHEN.search(action)
+
+
+@pytest.mark.parametrize(
+    "question",
+    ["qual o subsídio por modal?", "qual o ticket por hub?", "mais de uma tentativa por hub", "qual o GMV por cidade?",
+     "fim de semana é pior que dia útil no subsídio?", "fim de semana é pior que dia útil no ticket?",
+     "fim de semana é pior que dia útil em pedidos presos?"],
+)
+def test_canceled_status_blocks_every_delivery_metric(repo, question):
+    """FA-04: venda, frete, presos e entregas também ficam vazios com só cancelados no filtro."""
+    reading = local.build_reading(question, repo, Filters(status=["canceled"]))
+    assert "remover o filtro de status cancelado" in reading.action
+    assert "Nenhum grupo chega" not in reading.answer and "100,0%" not in reading.answer
+    assert "R$ 0,00" not in reading.answer
+
+
+@pytest.mark.parametrize(("status", "word"), [("canceled", "cancelado"), ("delivered", "concluído")])
+def test_why_cancel_under_a_status_filter_is_not_a_tautology(repo, status, word):
+    """FA-04: "por que o cancelamento subiu" com status fixo compararia 100% com 100% (ou 0% com 0%)."""
+    f = Filters(start=date(2021, 3, 1), end=date(2021, 3, 31), status=[status])
+    reading = local.build_reading("por que o cancelamento subiu vs o período anterior?", repo, f)
+    assert "ficou estável" not in reading.answer
+    assert f"remover o filtro de status {word}" in reading.action
+
+
+def test_why_without_base_in_one_period_speaks_ptbr(repo):
+    """FA-04: erro da tool sem base num dos lados não vaza a chave crua nem manda trocar o início do período."""
+    f = Filters(start=date(2021, 3, 20), end=date(2021, 3, 31), store=[13])
+    assert repo.previous_period(f) is not None
+    res = local_answers.why(repo, f, local_intent.parse("por que o subsídio subiu vs o período anterior?", repo))
+    assert "subsidy" not in res.text
+    assert "não comece em" not in res.text
+    assert "subsídio de frete" in res.text and _WHEN.search(res.text[res.text.rfind("**Ação:**"):])
+
+
+def test_canceled_group_without_a_big_store_still_points_to_the_filter(repo):
+    """FA-04: sem loja com base, a ação não vira "reduzir o cancelamento (12)" com a contagem no lugar da taxa."""
+    action = local_answers._cancel_group_action(repo, Filters(status=["canceled"]), "hub", 2, "Hub Lento", "12")
+    assert "remover o filtro de status cancelado" in action
+    assert "cancelamento (12)" not in action
+
+
+def test_notice_actions_say_when(repo, monkeypatch):
+    """FA-10 (Regra 3): avisos de filtro e de recorte vazio também dizem quando agir."""
+    canceled, delivered = Filters(status=["canceled"]), Filters(status=["delivered"])
+    texts = [
+        local._EMPTY,
+        local._sla(repo, canceled)[0],
+        local._cancel(repo, delivered)[0],
+        local._revenue(repo, canceled)[0],
+        local.build_reading("qual o subsídio por modal?", repo, canceled).answer,
+        local.build_reading("por que o SLA caiu vs o período anterior?", repo,
+                            Filters(start=date(2021, 3, 1), end=date(2021, 3, 31), status=["canceled"])).answer,
+        local.build_reading("por que o SLA caiu vs o período anterior?", repo,
+                            Filters(start=date(2021, 1, 1), end=date(2021, 1, 5))).answer,
+    ]
+    monkeypatch.setattr(repo, "metrics", lambda _f: {"orders": 0})
+    texts.append(local.briefing(repo, Filters()))
+    monkeypatch.setattr(repo, "breakdown", lambda *_a, **_k: [])
+    texts.append(local._peak(repo, Filters()))
+    for text in texts:
+        action = text[text.rfind("**Ação:**"):]
+        assert _WHEN.search(action), action

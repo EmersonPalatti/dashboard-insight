@@ -199,6 +199,18 @@ def test_default_settings_skip_the_review_and_make_one_call(repo, monkeypatch):
     ]
 
 
+def test_synthesis_prompt_has_no_tool_examples(repo, monkeypatch):
+    """FA-08: a síntese não tem tools; o plano de tools dos exemplos contradiria "não há ferramentas"."""
+    from app.agent.llm import _messages
+
+    assert "## Exemplos" in _messages(WHY_SLA, [], "")[0]["content"]  # a pergunta casa com exemplo no modo tools
+    seen: list[dict] = []
+    _install(monkeypatch, [_resp(FINAL)], seen)
+    inv.investigate(WHY_SLA, [], repo, MAR, _settings(investigation_max_probes=0), deadline=_far())
+    assert len(seen) == 1
+    assert seen[0]["messages"][0]["content"] == SYSTEM_PROMPT + inv._SYNTH_APPENDIX
+
+
 def test_assess_done_goes_straight_to_synthesis(repo, monkeypatch):
     seen: list[dict] = []
     _install(monkeypatch, [_resp(DONE), _resp(FINAL)], seen)

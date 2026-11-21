@@ -54,8 +54,27 @@ def _canceled_delivery_notice(m: dict, subject: str) -> str:
     return (
         f"O recorte atual filtra apenas pedidos com status cancelado ({fmt.integer(m['canceled'])} pedidos), "
         f"sem entregas concluídas para medir {subject}.\n\n"
-        "**Ação:** Operador deve remover o filtro de status cancelado para avaliar entregas concluídas neste período."
+        "**Ação:** Operador deve remover o filtro de status cancelado hoje para avaliar entregas concluídas neste período."
     )
+
+
+def _no_deliveries(m: dict) -> bool:
+    """Recorte com pedidos e nenhuma entrega (loja que só cancela): SLA, etapas, frete e modal ficam vazios."""
+    return bool(m.get("orders")) and not m.get("delivered")
+
+
+def _no_delivery_answer(repo: Repository, f: Filters, m: dict, subject: str) -> tuple[str, list[DrillDown]]:
+    """Sem entrega não há o que medir: a ação é a do cancelamento (tirar do ar a loja quebrada), nunca um
+    ajuste de prazo ou de frota em cima de métrica vazia."""
+    text, drills = _cancel(repo, f)
+    _body, action = _split_closing_action(text)
+    lines = [
+        (f"Nenhuma entrega concluída no recorte para medir {subject}: {fmt.integer(m['canceled'])} dos "
+         f"{fmt.integer(m['orders'])} pedidos foram cancelados ({fmt.pct(m['cancel_rate'])})."),
+        "",
+        action or "**Ação:** Gerente de contas deve apurar hoje os cancelamentos do recorte antes de cobrar prazo.",
+    ]
+    return "\n".join(lines), drills
 
 
 def _words(text: str) -> list[str]:
@@ -145,7 +164,7 @@ def briefing(repo: Repository, f: Filters) -> str:
     if m["orders"] == 0:
         return (
             "Nenhum pedido no recorte. Afrouxe período, hub ou loja.\n\n"
-            "**Ação:** Operador deve afrouxar os filtros do recorte para carregar dados da operação."
+            "**Ação:** Operador deve afrouxar hoje os filtros do recorte para carregar dados da operação."
         )
     if _only_canceled(f):
         hubs = repo.breakdown(f, "hub", sort="orders", limit=1)
@@ -153,7 +172,7 @@ def briefing(repo: Repository, f: Filters) -> str:
         return (
             f"**Briefing do recorte** ({repo.describe(f)})\n\n"
             f"- {fmt.integer(m['canceled'])} pedidos cancelados (filtro status = cancelado; sem entregas concluídas neste recorte).{top_hub}\n\n"
-            "**Ação:** Operador deve remover o filtro de status cancelado para comparar taxas e SLA, ou atuar no hub com maior volume de cancelamentos."
+            "**Ação:** Operador deve remover o filtro de status cancelado hoje para comparar taxas e SLA, ou atuar no hub com maior volume de cancelamentos."
         )
     alerts = detect_alerts(repo, f)
     lines = [
@@ -216,6 +235,8 @@ def _stages(repo: Repository, f: Filters) -> tuple[str, list[DrillDown]]:
     m = repo.metrics(f)
     if _only_canceled(f):
         return _canceled_delivery_notice(m, "as etapas do ciclo"), []
+    if _no_deliveries(m):
+        return _no_delivery_answer(repo, f, m, "as etapas do ciclo")
     parts = [f"- {label.capitalize()}: {fmt.minutes(m[key])}" for key, label in STAGES.items()]
     hubs = repo.breakdown(f, "hub", sort="orders", limit=100, min_orders=HUB_MIN)
     # Sem hub limpo, a comparação volta para todos: melhor um hub marcado do que nenhum.
@@ -306,6 +327,8 @@ def _sla(repo: Repository, f: Filters) -> tuple[str, list[DrillDown]]:
     m = repo.metrics(f)
     if _only_canceled(f):
         return _canceled_delivery_notice(m, "SLA e ciclo"), []
+    if _no_deliveries(m):
+        return _no_delivery_answer(repo, f, m, "SLA e ciclo")
     ranked = [
         h for h in repo.breakdown(f, "hub", sort="sla_rate", desc=False, limit=100, min_orders=HUB_MIN,
                                   min_measured=MIN_MEASURED)
@@ -345,6 +368,16 @@ def _sla(repo: Repository, f: Filters) -> tuple[str, list[DrillDown]]:
         ]
         return "\n".join(lines), _drill("hub", worst_hub)
 
+    if stuck:
+        # Todo hub com base saiu do ranking como problema de dado: a ação é a do dado, não cobrar prazo.
+        lead = stuck[0]
+        lines += [
+            "",
+            (f"**Ação:** Líder do hub {lead['label']} deve conferir hoje a rotina de baixa manual e agendamentos "
+             f"({fmt.pct(lead['stuck_rate'])} presos) antes de cobrar SLA."),
+        ]
+        return "\n".join(lines), _drill("hub", lead)
+
     hubs_low = repo.breakdown(f, "hub", sort="sla_rate", desc=False, limit=5, min_orders=10)
     if not hubs_low:
         hubs_low = repo.breakdown(f, "hub", sort="sla_rate", desc=False, limit=5, min_orders=1)
@@ -377,7 +410,7 @@ def _cancel(repo: Repository, f: Filters) -> tuple[str, list[DrillDown]]:
         return (
             f"O recorte atual filtra apenas pedidos com status concluído ({fmt.integer(m['delivered'])} entregas), "
             "portanto o cancelamento é 0,0% por definição do filtro.\n\n"
-            "**Ação:** Operador deve remover o filtro de status concluído para analisar os cancelamentos do período."
+            "**Ação:** Operador deve remover o filtro de status concluído hoje para analisar os cancelamentos do período."
         ), []
     if _only_canceled(f):
         stores = repo.breakdown(f, "store", sort="orders", limit=5, min_orders=1)
@@ -568,7 +601,7 @@ def _peak(repo: Repository, f: Filters, window=None) -> str:
     if not hours:
         return (
             "Sem pedidos no recorte.\n\n"
-            "**Ação:** Operador deve ajustar os filtros do recorte para avaliar os horários de pico."
+            "**Ação:** Operador deve ajustar hoje os filtros do recorte para avaliar os horários de pico."
         )
     top = sorted(hours[:4], key=lambda h: int(h["key"]))
     worst = min((h for h in hours[:6] if h["sla_rate"] is not None), key=lambda h: h["sla_rate"], default=None)
@@ -600,6 +633,8 @@ def _freight(repo: Repository, f: Filters) -> tuple[str, list[DrillDown]]:
     m = repo.metrics(f)
     if _only_canceled(f):
         return _canceled_delivery_notice(m, "frete e subsídio"), []
+    if _no_deliveries(m):
+        return _no_delivery_answer(repo, f, m, "frete e subsídio")
     hubs = repo.breakdown(f, "hub", sort="subsidy", limit=3, min_orders=HUB_MIN)
     lines = [
         (
@@ -703,8 +738,11 @@ def _channels(repo: Repository, f: Filters, by_type: bool = False) -> tuple[str,
 
 
 def _modal(repo: Repository, f: Filters) -> tuple[str, list[DrillDown]]:
+    m = repo.metrics(f)
     if _only_canceled(f):
-        return _canceled_delivery_notice(repo.metrics(f), "os modais de entrega"), []
+        return _canceled_delivery_notice(m, "os modais de entrega"), []
+    if _no_deliveries(m):
+        return _no_delivery_answer(repo, f, m, "os modais de entrega")
     rows = repo.breakdown(f, "modal", sort="orders", limit=2)
     if not rows:
         return (
@@ -718,7 +756,11 @@ def _modal(repo: Repository, f: Filters) -> tuple[str, list[DrillDown]]:
             f"· distância mediana {fmt.km(r['distance_p50_km'])} · SLA {fmt.pct(r['sla_rate'])}"
         )
 
-    named = [r for r in rows if r.get("key") is not None] or rows
+    # "Sem entregador" é o balde nulo: aparece na lista, mas não é modal para acionar.
+    named = [r for r in rows if r.get("key") is not None]
+    if not named:
+        lines += ["", "**Ação:** Time de frota deve conferir hoje o registro de entregador desses pedidos antes de avaliar modais."]
+        return "\n".join(lines), []
     worst_sla = min((r for r in named if r.get("sla_rate") is not None), key=lambda r: r["sla_rate"], default=None)
     slow_transit = max((r for r in named if r.get("transit_p50") is not None), key=lambda r: r["transit_p50"], default=None)
 
@@ -742,7 +784,7 @@ def _revenue(repo: Repository, f: Filters) -> tuple[str, list[DrillDown]]:
         return (
             f"O recorte atual filtra apenas status cancelado ({fmt.integer(m['canceled'])} pedidos), "
             "por isso GMV e ticket de entregas concluídas são R$ 0,00 / —.\n\n"
-            "**Ação:** Operador deve remover o filtro de status cancelado para analisar o faturamento das entregas."
+            "**Ação:** Operador deve remover o filtro de status cancelado hoje para analisar o faturamento das entregas."
         ), []
     seg = repo.breakdown(f, "segment", sort="gmv", limit=2)
     lines = [f"GMV {fmt.brl(m['gmv'])} em {fmt.integer(m['delivered'])} entregas · ticket {fmt.brl(m['ticket'])}."]
@@ -825,6 +867,8 @@ def _stuck(repo: Repository, f: Filters) -> tuple[str, list[DrillDown]]:
     m = repo.metrics(f)
     if _only_canceled(f):
         return _canceled_delivery_notice(m, "pedidos presos"), []
+    if _no_deliveries(m):
+        return _no_delivery_answer(repo, f, m, "pedidos presos")
     stuck_rate = m["stuck_rate"] or 0.0
     stuck_n = round(stuck_rate * m["delivered"])
     hubs = [
@@ -981,8 +1025,10 @@ def _apply_thin(text: str, metrics: dict, repo: Repository, f: Filters) -> str:
         f"Atenção: amostra reduzida no recorte ({fmt.integer(metrics.get('measured'))} entregas medidas, "
         f"{fmt.integer(metrics.get('orders'))} pedidos; mínimo confiável {MIN_MEASURED})."
     )
-    body, _action = _split_closing_action(text)
-    if _action is None:
+    # Todas as ações em linha própria saem (a lista de alertas tem uma por alerta): com amostra pequena
+    # a única ação é ampliar a base, e `_plain_parts` pega a primeira que sobrar.
+    body = re.sub(r"\n{3,}", "\n\n", _ACTION_LINE.sub("", text)).strip()
+    if body == text.strip():
         marker = "**Ação:**"
         index = text.rfind(marker)
         body = text[:index].rstrip() if index != -1 else text.rstrip()
@@ -1236,7 +1282,7 @@ def _plan(question: str, repo: Repository, f: Filters, history: list | None = No
 
 _EMPTY = (
     "Nenhum pedido no recorte atual. Afrouxe os filtros para o agente ter o que analisar.\n\n"
-    "**Ação:** Operador deve afrouxar os filtros de período, hub ou cidade para carregar dados da operação."
+    "**Ação:** Operador deve afrouxar hoje os filtros de período, hub ou cidade para carregar dados da operação."
 )
 
 
