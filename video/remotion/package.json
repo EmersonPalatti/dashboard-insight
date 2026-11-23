@@ -28,7 +28,9 @@
     "upgrade": "remotion upgrade",
     "lint": "eslint src && tsc",
     "render": "remotion render LinkedIn ../out/linkedin.mp4 --codec=h264 --crf=16",
-    "capa": "remotion still LinkedIn ../out/capa.png --frame=570"
+    "capa": "remotion still LinkedIn ../out/capa.png --frame=570",
+    "render:agente": "remotion render Agente ../out/agente.mp4 --codec=h264 --crf=16",
+    "capa:agente": "remotion still Agente ../out/capa-agente.png --frame=780"
   },
   "allowScripts": {
     "esbuild": false
