@@ -35,7 +35,9 @@ Thumbs.db
 # Spill do DuckDB (nunca versionar)
 .tmp/
 
-# Vídeo do LinkedIn: MP4 e capa são versionados; quadros de conferência não
+# Vídeos do LinkedIn: MP4 e capa são versionados; quadros de conferência não
 video/out/*
 !video/out/linkedin.mp4
 !video/out/capa.png
+!video/out/agente.mp4
+!video/out/capa-agente.png
