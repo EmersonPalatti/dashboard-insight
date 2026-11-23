@@ -52,7 +52,7 @@ const RepoIcon = ({ color }: { readonly color: string }) => (
   </svg>
 );
 
-const CloseContent = () => {
+const CloseContent = ({ footer }: { readonly footer: string }) => {
   const t = useTokens();
   const frame = useCurrentFrame();
 
@@ -170,15 +170,18 @@ const CloseContent = () => {
           opacity: 0.6 * Number(footerAnim.opacity ?? 1),
         }}
       >
-        <span style={{ maxWidth: 820 }}>{LINKS.footer}</span>
+        <span style={{ maxWidth: 820 }}>{footer}</span>
       </div>
     </AbsoluteFill>
   );
 };
 
-/** Cena 11: Fechamento. Fundo vinho escuro #26060F, logo + marca + links + rodapé sem fade no fim. */
-export const S11Close = () => (
+/**
+ * Cena 11: Fechamento. Fundo vinho escuro #26060F, logo + marca + links + rodapé sem fade no fim.
+ * `footer` troca só o rodapé (o vídeo do agente reaproveita esta cena).
+ */
+export const S11Close = ({ footer = LINKS.footer }: { readonly footer?: string }) => (
   <ThemeProvider tokens={DARK}>
-    <CloseContent />
+    <CloseContent footer={footer} />
   </ThemeProvider>
 );
